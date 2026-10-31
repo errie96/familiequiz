@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Familiequiz - Tussenstand & Scorebord</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body style="max-width: 800px; margin: 0 auto; padding: 24px;">
+  <div class="card" style="max-width: 100%; text-align: center;">
+    
+    <h1 style="font-size: 36px; margin-bottom: 8px;">🏆 Tussenstand 🏆</h1>
+    <p id="round-indicator" style="color: #94a3b8; margin-bottom: 24px; font-size: 18px;">Familiequiz</p>
+
+    <!-- Scorebord ranking -->
+    <ul id="scoreboard-table" style="text-align: left; font-size: 20px;"></ul>
+
+  </div>
+
+  <script>
+    const socket = io();
+
+    socket.on("connect", () => {
+      socket.emit("register_scoreboard");
+    });
+
+    socket.on("state_update", (state) => {
+      document.getElementById("round-indicator").textContent = state.roundName || "Familiequiz";
+      renderScores(state.playerList);
+    });
+
+    socket.on("show_results", (data) => {
+      renderScores(data.scores);
+    });
+
+    function renderScores(list) {
+      const container = document.getElementById("scoreboard-table");
+      container.innerHTML = "";
+
+      const sorted = [...list].sort((a, b) => b.score - a.score);
+
+      sorted.forEach((p, index) => {
+        const li = document.createElement("li");
+        li.style.padding = "16px";
+
+        let medal = `#${index + 1}`;
+        if (index === 0) medal = "🥇";
+        if (index === 1) medal = "🥈";
+        if (index === 2) medal = "🥉";
+
+        li.innerHTML = `
+          <span><b>${medal}</b> &nbsp; ${p.name}</span>
+          <b style="color: #38bdf8; font-size: 22px;">${p.score} pt</b>
+        `;
+        container.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
