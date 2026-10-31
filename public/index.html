@@ -9,98 +9,122 @@
 </head>
 <body>
   <div class="card">
-    <!-- Stap 1: Meedoen -->
+    
+    <!-- 1. Login / Meedoen scherm -->
     <div id="join-screen">
       <h1>Familiequiz 🏆</h1>
       <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
-      <input type="text" id="username" placeholder="Bijv. Mark of Team Blauw" maxlength="20">
+      <input type="text" id="username" placeholder="Bijv. Mark of Team Rood" maxlength="20">
       <button class="btn-primary" id="join-btn">Klaar voor de start</button>
     </div>
 
-    <!-- Stap 2: Lobby / Wachten -->
+    <!-- 2. Wachtkamer / Lobby -->
     <div id="lobby-screen" class="hidden">
       <h2>Welkom, <span id="display-name"></span>!</h2>
-      <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de host de volgende vraag start...</p>
+      <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de ronde start...</p>
     </div>
 
-    <!-- Stap 3: Vraag actief -->
+    <!-- 3. Vraag beantwoord / Vraag actief -->
     <div id="question-screen" class="hidden">
       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span class="badge" id="player-round-badge">Ronde</span>
         <span class="badge" id="player-timer-badge">⏱️ --s</span>
       </div>
       <h3 id="player-question-text">Vraag laadt...</h3>
-      
+
       <div id="media-container"></div>
-      
-      <!-- Keuze opties -->
       <div id="options-container"></div>
 
-      <!-- Bevestigingsknop -->
       <button id="submit-btn" class="btn-primary hidden" style="margin-top: 16px; background: #22c55e;">
         Antwoord Indienen 📤
       </button>
 
-      <!-- Feedback status -->
       <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
         ✅ Ingediend! Wachten tot iedereen heeft ingediend...
       </p>
     </div>
 
-    <!-- Stap 4: Pauze Scherm -->
+    <!-- 4. Pauzescherm -->
     <div id="pause-screen" class="hidden" style="text-align: center;">
       <h2>☕ Pauze!</h2>
-      <p>Even tijd voor een hapje, drankje of het buffet.</p>
+      <p>Even pauze voor eten en drinken.</p>
     </div>
+
   </div>
 
   <script>
     const socket = io();
-    let myName = "";
+    let playerId = localStorage.getItem("quiz_player_id") || null;
+    let playerName = localStorage.getItem("quiz_player_name") || "";
     let selectedOptionIndex = null;
+    let hasSubmittedCurrent = false;
 
-    // 1. Anti-spiek detectie
+    // Anti-spiek detectie
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        socket.emit("player_blurred", { type: "visibility_hidden" });
+      if (document.hidden && playerId) {
+        socket.emit("player_blurred", { playerId });
       }
     });
     window.addEventListener("blur", () => {
-      socket.emit("player_blurred", { type: "window_blur" });
-    });
-
-    // 2. Inloggen
-    document.getElementById("join-btn").addEventListener("click", () => {
-      const name = document.getElementById("username").value;
-      if (name.trim()) {
-        socket.emit("join_game", name);
+      if (playerId) {
+        socket.emit("player_blurred", { playerId });
       }
     });
 
-    socket.on("joined", (data) => {
-      myName = data.name;
-      document.getElementById("display-name").textContent = myName;
-      document.getElementById("join-screen").classList.add("hidden");
-      document.getElementById("lobby-screen").classList.remove("hidden");
+    // Automatisch herstellen bij verbinden of vernieuwen
+    socket.on("connect", () => {
+      if (playerId && playerName) {
+        socket.emit("init_player", { playerId, name: playerName });
+      }
     });
 
-    // 3. Antwoord indienen knop
+    // Inlogknop
+    document.getElementById("join-btn").addEventListener("click", () => {
+      const name = document.getElementById("username").value.trim();
+      if (name) {
+        socket.emit("init_player", { playerId: null, name });
+      }
+    });
+
+    // Nieuw ingelogd
+    socket.on("joined", (data) => {
+      playerId = data.playerId;
+      playerName = data.name;
+      localStorage.setItem("quiz_player_id", playerId);
+      localStorage.setItem("quiz_player_name", playerName);
+      showLobby();
+    });
+
+    // Sessie hersteld na vernieuwen
+    socket.on("session_restored", (data) => {
+      playerId = data.playerId;
+      playerName = data.name;
+      hasSubmittedCurrent = data.answered;
+      showLobby();
+    });
+
+    function showLobby() {
+      document.getElementById("display-name").textContent = playerName;
+      document.getElementById("join-screen").classList.add("hidden");
+      document.getElementById("lobby-screen").classList.remove("hidden");
+    }
+
+    // Antwoord indienen
     const submitBtn = document.getElementById("submit-btn");
     submitBtn.addEventListener("click", () => {
-      if (selectedOptionIndex !== null) {
-        socket.emit("submit_answer", selectedOptionIndex);
-        
-        // Blokkeer alle knoppen en toon wachtbericht
+      if (selectedOptionIndex !== null && !hasSubmittedCurrent) {
+        hasSubmittedCurrent = true;
+        socket.emit("submit_answer", { playerId, answerIndex: selectedOptionIndex });
         submitBtn.classList.add("hidden");
         const options = document.getElementById("options-container").children;
-        Array.from(options).forEach(btn => btn.disabled = true);
+        Array.from(options).forEach(b => b.disabled = true);
         document.getElementById("feedback-text").classList.remove("hidden");
       }
     });
 
-    // 4. State updates ontvangen
+    // State synchronisatie
     socket.on("state_update", (state) => {
-      if (!myName) return;
+      if (!playerId) return;
 
       if (state.gameState === "PAUSED") {
         document.getElementById("question-screen").classList.add("hidden");
@@ -114,40 +138,43 @@
       if (state.gameState === "QUESTION" && state.currentQuestion) {
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("question-screen").classList.remove("hidden");
-        document.getElementById("feedback-text").classList.add("hidden");
-        submitBtn.classList.add("hidden");
-        selectedOptionIndex = null;
 
         document.getElementById("player-round-badge").textContent = state.roundName;
         document.getElementById("player-question-text").textContent = state.currentQuestion.question;
 
-        // Media
-        const mediaContainer = document.getElementById("media-container");
-        mediaContainer.innerHTML = "";
-        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
-          mediaContainer.innerHTML = `<img src="${state.currentQuestion.imageUrl}" class="media-img" />`;
+        // Kijk of speler volgens server al heeft ingediend
+        const me = state.playerList.find(p => p.playerId === playerId);
+        if (me && me.answered) {
+          hasSubmittedCurrent = true;
+          submitBtn.classList.add("hidden");
+          document.getElementById("feedback-text").classList.remove("hidden");
+        } else {
+          hasSubmittedCurrent = false;
+          document.getElementById("feedback-text").classList.add("hidden");
         }
 
-        // Opties renderen
+        // Opties opbouwen
         const optionsContainer = document.getElementById("options-container");
         optionsContainer.innerHTML = "";
         state.currentQuestion.options.forEach((opt, idx) => {
           const btn = document.createElement("button");
           btn.className = "btn-option";
           btn.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
-          
+          if (hasSubmittedCurrent) btn.disabled = true;
+
           btn.onclick = () => {
+            if (hasSubmittedCurrent) return;
             selectedOptionIndex = idx;
-            // Reset stijl van alle knoppen en highlight de geselecteerde
             Array.from(optionsContainer.children).forEach(b => b.style.background = "#334155");
             btn.style.background = "#2563eb";
-            
-            // Toon de indienen-knop
             submitBtn.classList.remove("hidden");
           };
           optionsContainer.appendChild(btn);
         });
+
       } else if (state.gameState === "SCOREBOARD" || state.gameState === "LOBBY") {
+        selectedOptionIndex = null;
+        hasSubmittedCurrent = false;
         document.getElementById("question-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.remove("hidden");
       }
