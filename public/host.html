@@ -58,7 +58,14 @@
   <script>
     const socket = io();
 
-    // QR Code
+    // 1. Host Token ophalen of aanmaken voor herstel na F5
+    let hostToken = localStorage.getItem("quiz_host_token");
+    if (!hostToken) {
+      hostToken = "host_" + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem("quiz_host_token", hostToken);
+    }
+
+    // 2. QR Code genereren
     const joinUrl = window.location.origin;
     document.getElementById("join-url-text").textContent = joinUrl;
     new QRCode(document.getElementById("qrcode"), {
@@ -69,18 +76,32 @@
       colorLight: "#ffffff"
     });
 
+    // 3. Registreren & sessie direct herstellen bij F5
     socket.on("connect", () => {
-      socket.emit("register_host");
+      document.getElementById("connection-status").textContent = "● Verbonden als Host";
+      document.getElementById("connection-status").style.color = "#4ade80";
+      socket.emit("register_host", { token: hostToken });
     });
 
-    // Knoppen
+    socket.on("disconnect", () => {
+      document.getElementById("connection-status").textContent = "○ Verbinding verbroken...";
+      document.getElementById("connection-status").style.color = "#ef4444";
+    });
+
+    socket.on("host_confirmed", (data) => {
+      if (data.token) {
+        localStorage.setItem("quiz_host_token", data.token);
+      }
+    });
+
+    // 4. Knoppen
     const btnNext = document.getElementById("btn-next");
     const btnPause = document.getElementById("btn-pause");
 
     btnNext.addEventListener("click", () => socket.emit("next_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
 
-    // Spiekalarm
+    // 5. Spiekalarm
     socket.on("cheat_warning", (data) => {
       const container = document.getElementById("cheat-alerts");
       const alert = document.createElement("div");
@@ -90,7 +111,7 @@
       setTimeout(() => alert.remove(), 8000);
     });
 
-    // State sync
+    // 6. State synchronisatie
     socket.on("state_update", (state) => {
       document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
       
@@ -137,7 +158,6 @@
         });
       }
 
-      // Speler status bijwerken
       renderPlayerStatuses(state.playerList, state.gameState);
     });
 
