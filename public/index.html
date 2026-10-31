@@ -10,7 +10,7 @@
 <body>
   <div class="card">
     
-    <!-- Inloggen -->
+    <!-- 1. Inloggen -->
     <div id="join-screen">
       <h1>Familiequiz 🏆</h1>
       <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
@@ -18,13 +18,13 @@
       <button class="btn-primary" id="join-btn">Klaar voor de start</button>
     </div>
 
-    <!-- Lobby / Wachten -->
+    <!-- 2. Wachtkamer / Lobby -->
     <div id="lobby-screen" class="hidden">
       <h2>Welkom, <span id="display-name"></span>!</h2>
       <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de ronde start...</p>
     </div>
 
-    <!-- Vraag Beantwoorden -->
+    <!-- 3. Vraag Beantwoorden -->
     <div id="question-screen" class="hidden">
       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span class="badge" id="player-round-badge">Ronde</span>
@@ -44,13 +44,31 @@
       </p>
     </div>
 
-    <!-- Pauzescherm -->
-    <div id="pause-screen" class="hidden" style="text-align: center;">
-      <h2>☕ Pauze!</h2>
-      <p>Even tijd voor een drankje of het buffet.</p>
+    <!-- 4. Gezellig Pauzescherm -->
+    <div id="pause-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
+      <div style="font-size: 54px; animation: bounce 2s infinite;">☕ 🍕 🍷</div>
+      <h2 style="font-size: 26px; margin: 12px 0; color: #f59e0b;">Tijd voor Pauze!</h2>
+      <p style="color: #cbd5e1; font-size: 16px; line-height: 1.5;">
+        Even de glazen bijvullen, wat lekkers pakken en bijkletsen.
+      </p>
+
+      <div style="background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 20px; border: 1px dashed #475569;">
+        <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
+        <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;">
+          "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond."
+        </p>
+      </div>
+      <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de host pauze beëindigt.</small>
     </div>
 
   </div>
+
+  <style>
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+  </style>
 
   <script>
     const socket = io();
@@ -58,30 +76,44 @@
     let playerName = localStorage.getItem("quiz_player_name") || "";
     let selectedOptionIndex = null;
     let hasSubmittedCurrent = false;
+    let isPausedState = false;
 
-    // Directe spiekdetectie: direct doorgeven bij wisselen, wegdrukken of vergrendelen
-    function notifyLeftApp() {
-      if (playerId && !hasSubmittedCurrent) {
-        socket.emit("player_blurred", { playerId });
-      }
+    // Lokale cooldown tegen dubbele triggers binnen 3 seconden
+    let lastNotifyTime = 0;
+
+    function notifyLeftApp(reason) {
+      if (!playerId || isPausedState) return;
+
+      const now = Date.now();
+      if (now - lastNotifyTime < 3000) return;
+      lastNotifyTime = now;
+
+      socket.emit("player_blurred", { playerId, reason });
     }
 
+    // Onderscheid tussen scherm vergrendelen en app-wissel
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
-        notifyLeftApp();
+        // Op mobiele toestellen triggert schermvergrendeling direct visibilitychange zonder pagehide/blur overlap
+        notifyLeftApp("locked");
       }
     });
-    window.addEventListener("pagehide", notifyLeftApp);
-    window.addEventListener("blur", notifyLeftApp);
 
-    // Automatisch herverbinden na F5
+    window.addEventListener("pagehide", () => {
+      notifyLeftApp("app_switch");
+    });
+
+    window.addEventListener("blur", () => {
+      notifyLeftApp("app_switch");
+    });
+
+    // Automatisch herstellen na F5
     socket.on("connect", () => {
       if (playerId && playerName) {
         socket.emit("init_player", { playerId, name: playerName });
       }
     });
 
-    // Inlogknop
     document.getElementById("join-btn").addEventListener("click", () => {
       const name = document.getElementById("username").value.trim();
       if (name) {
@@ -110,7 +142,7 @@
       document.getElementById("lobby-screen").classList.remove("hidden");
     }
 
-    // Antwoord indienen
+    // Indienen
     const submitBtn = document.getElementById("submit-btn");
     submitBtn.addEventListener("click", () => {
       if (selectedOptionIndex !== null && !hasSubmittedCurrent) {
@@ -123,14 +155,26 @@
       }
     });
 
-    // State updates
+    // Willekeurige weetjes voor op het pauzescherm
+    const funFacts = [
+      "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
+      "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
+      "Wist je dat de familiequizzen statistisch gezien voor 80% gezelligheid en 20% fanatiek kibbelen zorgen?",
+      "Neem gerust nog een drankje; de quizmaster houdt toch alles bij.",
+      "Tactische tip: de koploper voelt nu de meeste druk!"
+    ];
+
+    // State synchronisatie
     socket.on("state_update", (state) => {
       if (!playerId) return;
 
-      if (state.gameState === "PAUSED") {
+      isPausedState = (state.gameState === "PAUSED");
+
+      if (isPausedState) {
         document.getElementById("question-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("pause-screen").classList.remove("hidden");
+        document.getElementById("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
         return;
       } else {
         document.getElementById("pause-screen").classList.add("hidden");
