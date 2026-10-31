@@ -49,7 +49,6 @@ function broadcastState() {
   });
 }
 
-// Wordt aangeroepen zodra iedereen heeft ingediend
 function completeQuestion() {
   const q = getCurrentQuestion();
   gameState = "WAITING_NEXT";
@@ -60,7 +59,6 @@ function completeQuestion() {
       if (isCorrect) {
         p.score += 10;
       }
-      // Antwoord opslaan voor de eindevaluatie
       if (!p.answersHistory) p.answersHistory = [];
       p.answersHistory.push({
         questionId: q.id,
@@ -75,7 +73,6 @@ function completeQuestion() {
     });
   }
 
-  // Stuur signaal dat iedereen klaar is (zonder het antwoord te verklappen!)
   io.emit('all_submitted');
   broadcastState();
 }
@@ -143,7 +140,6 @@ io.on('connection', (socket) => {
 
       broadcastState();
 
-      // Check of alle actieve spelers klaar zijn
       const activePlayers = Object.values(players).filter(p => p.connected);
       const allDone = activePlayers.length > 0 && activePlayers.every(p => p.answered);
 
@@ -153,7 +149,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5. Anti-spiek: NIET actief in LOBBY of PAUSED
+  // 5. Anti-spiek: NIET in LOBBY of PAUSED
   socket.on('player_blurred', ({ playerId, reason }) => {
     if (gameState === "LOBBY" || gameState === "PAUSED") return;
 
@@ -188,18 +184,32 @@ io.on('connection', (socket) => {
         currentQuestionIndex = 0;
       }
 
-      // Quiz is helemaal klaar
+      // Quiz is afgelopen
       if (currentRoundIndex >= rounds.length) {
         gameState = "END";
         
-        // Alle vragen en juiste antwoorden meesturen voor de eindonthulling
+        // Gedetailleerd overzicht per vraag inclusief de keuzes van elk team
+        let questionCounter = 0;
         const finalAnswersOverview = rounds.map(r => ({
           roundName: r.roundName,
-          questions: r.questions.map(q => ({
-            question: q.question,
-            options: q.options,
-            correctAnswer: q.answer
-          }))
+          questions: r.questions.map(q => {
+            const qIndex = questionCounter++;
+            const playerResponses = Object.values(players).map(p => {
+              const hist = p.answersHistory ? p.answersHistory[qIndex] : null;
+              return {
+                playerName: p.name,
+                chosen: hist ? hist.chosen : null,
+                isCorrect: hist ? hist.isCorrect : false
+              };
+            });
+
+            return {
+              question: q.question,
+              options: q.options,
+              correctAnswer: q.answer,
+              playerResponses
+            };
+          })
         }));
 
         io.emit('game_over', {
