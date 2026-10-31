@@ -10,7 +10,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Inladen vragen
+// Quizvragen inladen
 let rounds = [];
 try {
   rounds = JSON.parse(fs.readFileSync(path.join(__dirname, 'questions.json'), 'utf8'));
@@ -18,11 +18,13 @@ try {
   console.error("Fout bij inladen questions.json:", e);
 }
 
+// Speler-state persistent op playerId
+// players[playerId] = { playerId, socketId, name, score, answered, submittedAnswer, connected }
 let players = {};
 let hostSocketId = null;
 let currentRoundIndex = 0;
 let currentQuestionIndex = 0;
-let gameState = "LOBBY";
+let gameState = "LOBBY"; // LOBBY, QUESTION, PAUSED, SCOREBOARD, END
 let currentTimer = null;
 let timeLeft = 0;
 
@@ -35,15 +37,20 @@ function getCurrentQuestion() {
 
 function broadcastState() {
   const currentQ = getCurrentQuestion();
+  
+  // Stuur globale update naar iedereen
   io.emit('state_update', {
     gameState,
     roundName: rounds[currentRoundIndex]?.roundName || "Familiequiz",
     currentQuestion: (gameState === "QUESTION" || gameState === "PAUSED") ? currentQ : null,
     timeLeft,
-    playerList: Object.values(players).map(p => ({ 
-      name: p.name, 
+    // Lijst met spelers voor host en scorebord
+    playerList: Object.values(players).map(p => ({
+      playerId: p.playerId,
+      name: p.name,
       score: p.score,
-      answered: p.answered // Host kan zien wie al heeft ingediend
+      answered: p.answered,
+      connected: p.connected
     }))
   });
 }
@@ -59,7 +66,6 @@ function startCountdown(duration) {
     timeLeft--;
     io.emit('timer_tick', { timeLeft });
 
-    // Als de tijd op is, sluit de vraag automatisch af
     if (timeLeft <= 0) {
       clearInterval(currentTimer);
       evaluateRound();
@@ -70,65 +76,99 @@ function startCountdown(duration) {
 function evaluateRound() {
   gameState = "SCOREBOARD";
   const q = getCurrentQuestion();
-  
+
   if (q) {
-    Object.keys(players).forEach(id => {
-      if (players[id].submittedAnswer === q.answer) {
-        players[id].score += 10;
+    Object.values(players).forEach(p => {
+      if (p.submittedAnswer === q.answer) {
+        p.score += 10;
       }
-      players[id].answered = false;
-      players[id].submittedAnswer = null;
+      p.answered = false;
+      p.submittedAnswer = null;
     });
   }
 
   io.emit('show_results', {
     correctAnswer: q ? q.answer : null,
-    scores: Object.values(players).sort((a, b) => b.score - a.score)
+    scores: Object.values(players)
+      .map(p => ({ name: p.name, score: p.score }))
+      .sort((a, b) => b.score - a.score)
   });
   broadcastState();
 }
 
 io.on('connection', (socket) => {
+  // 1. Host registratie
   socket.on('register_host', () => {
     hostSocketId = socket.id;
     socket.join('host_room');
     broadcastState();
   });
 
-  socket.on('join_game', (name) => {
-    players[socket.id] = {
-      name: name.trim().slice(0, 20),
-      score: 0,
-      answered: false,
-      submittedAnswer: null
-    };
-    socket.emit('joined', { name: players[socket.id].name });
+  // 2. Scoreboard registratie
+  socket.on('register_scoreboard', () => {
+    socket.join('scoreboard_room');
     broadcastState();
   });
 
-  // Pas actief als een speler op "Antwoord Indienen" heeft geklikt
-  socket.on('submit_answer', (answerIndex) => {
-    const player = players[socket.id];
+  // 3. Speler login of herstel (reconnect na verversen)
+  socket.on('init_player', ({ playerId, name }) => {
+    if (playerId && players[playerId]) {
+      // Bestaande speler herstelt sessie
+      const player = players[playerId];
+      player.socketId = socket.id;
+      player.connected = true;
+
+      socket.emit('session_restored', {
+        playerId: player.playerId,
+        name: player.name,
+        score: player.score,
+        answered: player.answered,
+        submittedAnswer: player.submittedAnswer
+      });
+    } else if (name && name.trim()) {
+      // Nieuwe speler
+      const newPlayerId = 'p_' + Math.random().toString(36).substr(2, 9);
+      players[newPlayerId] = {
+        playerId: newPlayerId,
+        socketId: socket.id,
+        name: name.trim().slice(0, 20),
+        score: 0,
+        answered: false,
+        submittedAnswer: null,
+        connected: true
+      };
+
+      socket.emit('joined', {
+        playerId: newPlayerId,
+        name: players[newPlayerId].name
+      });
+    }
+    broadcastState();
+  });
+
+  // 4. Antwoord definitief indienen
+  socket.on('submit_answer', ({ playerId, answerIndex }) => {
+    const player = players[playerId];
     if (player && gameState === "QUESTION" && !player.answered) {
       player.answered = true;
       player.submittedAnswer = answerIndex;
 
-      // Update naar host en spelers (zodat host ziet wie er klaar is)
       broadcastState();
 
-      // Controleer of ALLE aangesloten spelers hebben ingediend
-      const playerList = Object.values(players);
-      const allSubmitted = playerList.length > 0 && playerList.every(p => p.answered);
+      // Check of alle actieve (verbonden) spelers hebben ingediend
+      const activePlayers = Object.values(players).filter(p => p.connected);
+      const allDone = activePlayers.length > 0 && activePlayers.every(p => p.answered);
 
-      if (allSubmitted) {
+      if (allDone) {
         clearInterval(currentTimer);
         evaluateRound();
       }
     }
   });
 
-  socket.on('player_blurred', () => {
-    const player = players[socket.id];
+  // 5. Anti-spiek waarschuwing
+  socket.on('player_blurred', ({ playerId }) => {
+    const player = players[playerId];
     if (player && gameState === "QUESTION") {
       io.to('host_room').emit('cheat_warning', {
         playerName: player.name,
@@ -137,6 +177,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 6. Host regie: Volgende vraag
   socket.on('next_question', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -161,15 +202,16 @@ io.on('connection', (socket) => {
 
     const q = getCurrentQuestion();
     if (q) {
-      Object.keys(players).forEach(id => {
-        players[id].answered = false;
-        players[id].submittedAnswer = null;
+      Object.values(players).forEach(p => {
+        p.answered = false;
+        p.submittedAnswer = null;
       });
       broadcastState();
       startCountdown(q.time || 30);
     }
   });
 
+  // 7. Host regie: Pauze toggle
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -178,22 +220,19 @@ io.on('connection', (socket) => {
       io.emit('resumed');
     } else if (gameState === "QUESTION") {
       gameState = "PAUSED";
-      io.emit('paused', { message: "Pauze!" });
+      io.emit('paused');
     }
     broadcastState();
   });
 
+  // 8. Disconnect: speler tijdelijk offline markeren (blijft bewaard in geheugen)
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
       hostSocketId = null;
-    } else if (players[socket.id]) {
-      delete players[socket.id];
-      // Check opnieuw of de overgebleven spelers toevallig allemaal al klaar zijn
-      const playerList = Object.values(players);
-      if (gameState === "QUESTION" && playerList.length > 0 && playerList.every(p => p.answered)) {
-        clearInterval(currentTimer);
-        evaluateRound();
-      } else {
+    } else {
+      const player = Object.values(players).find(p => p.socketId === socket.id);
+      if (player) {
+        player.connected = false;
         broadcastState();
       }
     }
@@ -202,5 +241,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Quiz server actief op poort ${PORT}`);
+  console.log(`Server gestart op http://localhost:${PORT}`);
 });
