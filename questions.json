@@ -1,0 +1,54 @@
+[
+  {
+    "round": 1,
+    "roundName": "Ronde 1: Nieuws & Algemeen",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "multiple_choice",
+        "question": "Welk evenement hield Nederland begin dit jaar dagenlang in spanning?",
+        "options": ["Koningsdag in Emmen", "De Boerenprotesten", "Het Songfestivaldebacle", "Het recordwarme voorjaar"],
+        "answer": 2,
+        "time": 20
+      }
+    ]
+  },
+  {
+    "round": 2,
+    "roundName": "Ronde 2: Hitster Muziekronde",
+    "questions": [
+      {
+        "id": "q2",
+        "type": "audio",
+        "question": "Uit welk jaar komt dit nummer?",
+        "audioUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/6e/82/3b/6e823b53-41ea-bfcf-7711-2e861d8a0d4c/mzaf_15024479585918342261.plus.aac.p.m4a",
+        "options": ["1996", "1999", "2003", "2008"],
+        "answer": 1,
+        "time": 25
+      }
+    ]
+  },
+  {
+    "round": 3,
+    "roundName": "Ronde 3: Typisch Drenthe",
+    "questions": [
+      {
+        "id": "q3",
+        "type": "multiple_choice",
+        "question": "Wat betekent de Drentse uitdrukking 'Moi' NIET?",
+        "options": ["Hallo", "Tot ziens", "Goedemorgen", "Schiet eens op"],
+        "answer": 3,
+        "time": 20
+      },
+      {
+        "id": "q4",
+        "type": "location",
+        "question": "Welke bekende Drentse locatie zien we hier?",
+        "imageUrl": "https://images.unsplash.com/photo-1596401057633-54a8fe8ef647?w=800",
+        "options": ["Hunebedcentrum Borger", "TT Circuit Assen", "Drents Museum", "Kamp Westerbork"],
+        "answer": 0,
+        "time": 20
+      }
+    ]
+  }
+]
