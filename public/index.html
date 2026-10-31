@@ -23,7 +23,7 @@
       <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de host de volgende vraag start...</p>
     </div>
 
-    <!-- Stap 3: Vraag beantwoord / Vraag actief -->
+    <!-- Stap 3: Vraag actief -->
     <div id="question-screen" class="hidden">
       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span class="badge" id="player-round-badge">Ronde</span>
@@ -32,8 +32,19 @@
       <h3 id="player-question-text">Vraag laadt...</h3>
       
       <div id="media-container"></div>
+      
+      <!-- Keuze opties -->
       <div id="options-container"></div>
-      <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8;">Antwoord vastgelegd! Even wachten op de rest...</p>
+
+      <!-- Bevestigingsknop -->
+      <button id="submit-btn" class="btn-primary hidden" style="margin-top: 16px; background: #22c55e;">
+        Antwoord Indienen 📤
+      </button>
+
+      <!-- Feedback status -->
+      <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
+        ✅ Ingediend! Wachten tot iedereen heeft ingediend...
+      </p>
     </div>
 
     <!-- Stap 4: Pauze Scherm -->
@@ -46,8 +57,9 @@
   <script>
     const socket = io();
     let myName = "";
+    let selectedOptionIndex = null;
 
-    // 1. Anti-spiek detectie (Page Visibility API + Blur)
+    // 1. Anti-spiek detectie
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         socket.emit("player_blurred", { type: "visibility_hidden" });
@@ -57,10 +69,10 @@
       socket.emit("player_blurred", { type: "window_blur" });
     });
 
-    // 2. Join flow
+    // 2. Inloggen
     document.getElementById("join-btn").addEventListener("click", () => {
       const name = document.getElementById("username").value;
-      if (name) {
+      if (name.trim()) {
         socket.emit("join_game", name);
       }
     });
@@ -72,7 +84,21 @@
       document.getElementById("lobby-screen").classList.remove("hidden");
     });
 
-    // 3. State & Vragen ontvangen
+    // 3. Antwoord indienen knop
+    const submitBtn = document.getElementById("submit-btn");
+    submitBtn.addEventListener("click", () => {
+      if (selectedOptionIndex !== null) {
+        socket.emit("submit_answer", selectedOptionIndex);
+        
+        // Blokkeer alle knoppen en toon wachtbericht
+        submitBtn.classList.add("hidden");
+        const options = document.getElementById("options-container").children;
+        Array.from(options).forEach(btn => btn.disabled = true);
+        document.getElementById("feedback-text").classList.remove("hidden");
+      }
+    });
+
+    // 4. State updates ontvangen
     socket.on("state_update", (state) => {
       if (!myName) return;
 
@@ -89,29 +115,35 @@
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("question-screen").classList.remove("hidden");
         document.getElementById("feedback-text").classList.add("hidden");
+        submitBtn.classList.add("hidden");
+        selectedOptionIndex = null;
 
         document.getElementById("player-round-badge").textContent = state.roundName;
         document.getElementById("player-question-text").textContent = state.currentQuestion.question;
 
-        // Media afhandelen
+        // Media
         const mediaContainer = document.getElementById("media-container");
         mediaContainer.innerHTML = "";
         if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
           mediaContainer.innerHTML = `<img src="${state.currentQuestion.imageUrl}" class="media-img" />`;
         }
 
-        // Opties tonen
+        // Opties renderen
         const optionsContainer = document.getElementById("options-container");
         optionsContainer.innerHTML = "";
         state.currentQuestion.options.forEach((opt, idx) => {
           const btn = document.createElement("button");
           btn.className = "btn-option";
           btn.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
+          
           btn.onclick = () => {
-            socket.emit("submit_answer", idx);
+            selectedOptionIndex = idx;
+            // Reset stijl van alle knoppen en highlight de geselecteerde
+            Array.from(optionsContainer.children).forEach(b => b.style.background = "#334155");
             btn.style.background = "#2563eb";
-            Array.from(optionsContainer.children).forEach(b => b.disabled = true);
-            document.getElementById("feedback-text").classList.remove("hidden");
+            
+            // Toon de indienen-knop
+            submitBtn.classList.remove("hidden");
           };
           optionsContainer.appendChild(btn);
         });
