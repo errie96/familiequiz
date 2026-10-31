@@ -10,7 +10,7 @@
 <body>
   <div class="card">
     
-    <!-- 1. Login / Meedoen scherm -->
+    <!-- Inloggen -->
     <div id="join-screen">
       <h1>Familiequiz 🏆</h1>
       <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
@@ -18,13 +18,13 @@
       <button class="btn-primary" id="join-btn">Klaar voor de start</button>
     </div>
 
-    <!-- 2. Wachtkamer / Lobby -->
+    <!-- Lobby / Wachten -->
     <div id="lobby-screen" class="hidden">
       <h2>Welkom, <span id="display-name"></span>!</h2>
       <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de ronde start...</p>
     </div>
 
-    <!-- 3. Vraag beantwoord / Vraag actief -->
+    <!-- Vraag Beantwoorden -->
     <div id="question-screen" class="hidden">
       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span class="badge" id="player-round-badge">Ronde</span>
@@ -44,10 +44,10 @@
       </p>
     </div>
 
-    <!-- 4. Pauzescherm -->
+    <!-- Pauzescherm -->
     <div id="pause-screen" class="hidden" style="text-align: center;">
       <h2>☕ Pauze!</h2>
-      <p>Even pauze voor eten en drinken.</p>
+      <p>Even tijd voor een drankje of het buffet.</p>
     </div>
 
   </div>
@@ -59,19 +59,22 @@
     let selectedOptionIndex = null;
     let hasSubmittedCurrent = false;
 
-    // Anti-spiek detectie
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden && playerId) {
+    // Directe spiekdetectie: direct doorgeven bij wisselen, wegdrukken of vergrendelen
+    function notifyLeftApp() {
+      if (playerId && !hasSubmittedCurrent) {
         socket.emit("player_blurred", { playerId });
       }
-    });
-    window.addEventListener("blur", () => {
-      if (playerId) {
-        socket.emit("player_blurred", { playerId });
-      }
-    });
+    }
 
-    // Automatisch herstellen bij verbinden of vernieuwen
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        notifyLeftApp();
+      }
+    });
+    window.addEventListener("pagehide", notifyLeftApp);
+    window.addEventListener("blur", notifyLeftApp);
+
+    // Automatisch herverbinden na F5
     socket.on("connect", () => {
       if (playerId && playerName) {
         socket.emit("init_player", { playerId, name: playerName });
@@ -86,7 +89,6 @@
       }
     });
 
-    // Nieuw ingelogd
     socket.on("joined", (data) => {
       playerId = data.playerId;
       playerName = data.name;
@@ -95,7 +97,6 @@
       showLobby();
     });
 
-    // Sessie hersteld na vernieuwen
     socket.on("session_restored", (data) => {
       playerId = data.playerId;
       playerName = data.name;
@@ -122,7 +123,7 @@
       }
     });
 
-    // State synchronisatie
+    // State updates
     socket.on("state_update", (state) => {
       if (!playerId) return;
 
@@ -142,7 +143,6 @@
         document.getElementById("player-round-badge").textContent = state.roundName;
         document.getElementById("player-question-text").textContent = state.currentQuestion.question;
 
-        // Kijk of speler volgens server al heeft ingediend
         const me = state.playerList.find(p => p.playerId === playerId);
         if (me && me.answered) {
           hasSubmittedCurrent = true;
@@ -153,7 +153,12 @@
           document.getElementById("feedback-text").classList.add("hidden");
         }
 
-        // Opties opbouwen
+        const mediaContainer = document.getElementById("media-container");
+        mediaContainer.innerHTML = "";
+        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
+          mediaContainer.innerHTML = `<img src="${state.currentQuestion.imageUrl}" class="media-img" />`;
+        }
+
         const optionsContainer = document.getElementById("options-container");
         optionsContainer.innerHTML = "";
         state.currentQuestion.options.forEach((opt, idx) => {
