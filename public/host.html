@@ -1,64 +1,315 @@
-<small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
-</div>
-<div style="display: flex; gap: 10px;">
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Familiequiz - Host Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body style="max-width: 900px; margin: 0 auto; padding: 20px;">
+  <div class="card" style="max-width: 100%;">
+    
+    <!-- Bedieningsbalk -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 20px;">
+      <div>
+        <h1 style="text-align: left; margin: 0;">Quiz Master Regie</h1>
+        <small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
+      </div>
+      <div style="display: flex; gap: 10px;">
         <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Herstart Quiz</button>
-<button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 18px; margin: 0;">☕ Pauzeer</button>
-<button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
-</div>
-</div>
+        <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 18px; margin: 0;">☕ Pauzeer</button>
+        <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
+      </div>
+    </div>
 
-    <!-- Live Meldingen Container (slechts 1 per gebeurtenis) -->
     <!-- Live Meldingen Container -->
-<div id="cheat-alerts"></div>
+    <div id="cheat-alerts"></div>
 
-<!-- QR Code & Deelnemen -->
-@@ -124,11 +125,17 @@ <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
-// 5. Knoppen
-const btnNext = document.getElementById("btn-next");
-const btnPause = document.getElementById("btn-pause");
+    <!-- QR Code & Deelnemen -->
+    <div id="lobby-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+      <h2>Laat de familie scannen om mee te doen 📱</h2>
+      <p style="color: #94a3b8; margin-bottom: 12px;">Link: <b id="join-url-text" style="color:#38bdf8;"></b></p>
+      <div id="qrcode" style="background: white; padding: 12px; border-radius: 8px;"></div>
+    </div>
+
+    <!-- Pauzescherm Weergave voor Host -->
+    <div id="host-pause-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; text-align: center; margin-bottom: 20px; border: 2px dashed #f59e0b;">
+      <span style="font-size: 44px;">☕ 🍕</span>
+      <h2 style="color: #f59e0b; margin: 10px 0;">PAUZE IS ACTIEF</h2>
+      <p style="color: #94a3b8;">Alle telefoons staan op het pauzescherm. Meldingen zijn tijdelijk uitgeschakeld.</p>
+    </div>
+
+    <!-- Huidige Vraagweergave (ZONDER timer) -->
+    <div id="host-main-view">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+        <span class="badge" id="host-round-title">Familiequiz</span>
+        <span class="badge" id="submission-status-badge" style="background: #334155;">Iedereen kiest...</span>
+      </div>
+
+      <h2 id="host-question" style="font-size: 24px; min-height: 40px; margin: 15px 0;">Wachten op de start...</h2>
+      <div id="host-media" style="text-align: center; margin: 15px 0;"></div>
+      <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
+    </div>
+
+    <!-- Eindoverzicht / Antwoorden onthulling -->
+    <div id="host-end-view" class="hidden" style="margin-top: 20px;">
+      <h2 style="color: #38bdf8; text-align: center;">🏆 Einduitslag & Juiste Antwoorden 🏆</h2>
+      <div id="final-answers-list" style="margin-top: 16px;"></div>
+    </div>
+
+    <hr style="border-color: #334155; margin: 24px 0;">
+
+    <!-- Deelnemerslijst met Live Ingediend Status (Geen scores) -->
+    <div>
+      <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Scorebord bekijken: <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
+      <ul id="players-status-list"></ul>
+    </div>
+
+  </div>
+
+  <script>
+    const socket = io();
+
+    // Host Token
+    let hostToken = localStorage.getItem("quiz_host_token");
+    if (!hostToken) {
+      hostToken = "host_" + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem("quiz_host_token", hostToken);
+    }
+
+    // QR Code
+    const joinUrl = window.location.origin;
+    document.getElementById("join-url-text").textContent = joinUrl;
+    new QRCode(document.getElementById("qrcode"), {
+      text: joinUrl,
+      width: 160,
+      height: 160,
+      colorDark: "#0f172a",
+      colorLight: "#ffffff"
+    });
+
+    // Alarm
+    function playAlarmSound(isLocked) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = isLocked ? "sine" : "sawtooth";
+        const startFreq = isLocked ? 350 : 500;
+        const endFreq = isLocked ? 200 : 900;
+        osc.frequency.setValueAtTime(startFreq, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(endFreq, audioCtx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.25);
+      } catch (e) {}
+    }
+
+    socket.on("connect", () => {
+      document.getElementById("connection-status").textContent = "● Verbonden als Host";
+      document.getElementById("connection-status").style.color = "#4ade80";
+      socket.emit("register_host", { token: hostToken });
+    });
+
+    socket.on("disconnect", () => {
+      document.getElementById("connection-status").textContent = "○ Verbinding verbroken...";
+      document.getElementById("connection-status").style.color = "#ef4444";
+    });
+
+    socket.on("host_confirmed", (data) => {
+      if (data.token) {
+        localStorage.setItem("quiz_host_token", data.token);
+      }
+    });
+
+    // Knoppen
+    const btnNext = document.getElementById("btn-next");
+    const btnPause = document.getElementById("btn-pause");
     const btnReset = document.getElementById("btn-reset");
 
-btnNext.addEventListener("click", () => socket.emit("next_question"));
-btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
+    btnNext.addEventListener("click", () => socket.emit("next_question"));
+    btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
     btnReset.addEventListener("click", () => {
-      if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden op 0 gezet en we gaan terug naar de lobby.")) {
+      if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden gewist en we keren terug naar de startpagina.")) {
         socket.emit("reset_quiz");
       }
     });
 
-    // 6. Enkele duidelijke melding (Onderscheid tussen Vergrendeld en Andere App)
-    // 6. Meldingen
-socket.on("cheat_warning", (data) => {
-const isLocked = data.reason === "locked";
-playAlarmSound(isLocked);
-@@ -138,18 +145,17 @@ <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
-alert.className = "alert-box";
+    // Meldingen
+    socket.on("cheat_warning", (data) => {
+      const isLocked = data.reason === "locked";
+      playAlarmSound(isLocked);
 
-if (isLocked) {
-        alert.style.backgroundColor = "#d97706"; // Amber oranje
+      const container = document.getElementById("cheat-alerts");
+      const alert = document.createElement("div");
+      alert.className = "alert-box";
+
+      if (isLocked) {
         alert.style.backgroundColor = "#d97706";
-alert.style.border = "2px solid #fbbf24";
-alert.innerHTML = `🔒 <b>TELEFOON VERGRENDELD:</b> <u>${data.playerName}</u> vergrendelde het scherm om ${data.timestamp}`;
-} else {
-        alert.style.backgroundColor = "#dc2626"; // Rood
+        alert.style.border = "2px solid #fbbf24";
+        alert.innerHTML = `🔒 <b>TELEFOON VERGRENDELD:</b> <u>${data.playerName}</u> vergrendelde het scherm om ${data.timestamp}`;
+      } else {
         alert.style.backgroundColor = "#dc2626";
-alert.style.border = "2px solid #f87171";
-alert.innerHTML = `🚨 <b>ANDERE APP GEOPEND:</b> <u>${data.playerName}</u> verliet de quiz om ${data.timestamp}!`;
-}
+        alert.style.border = "2px solid #f87171";
+        alert.innerHTML = `🚨 <b>ANDERE APP GEOPEND:</b> <u>${data.playerName}</u> verliet de quiz om ${data.timestamp}!`;
+      }
 
-container.prepend(alert);
+      container.prepend(alert);
 
-      // Verdwijnt automatisch na 7 seconden
-setTimeout(() => {
-alert.style.transition = "opacity 0.4s ease";
-alert.style.opacity = "0";
-@@ -170,6 +176,9 @@ <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
-if (state.gameState === "LOBBY") {
-lobbyBox.classList.remove("hidden");
-btnNext.textContent = "Start Quiz 🚀";
+      setTimeout(() => {
+        alert.style.transition = "opacity 0.4s ease";
+        alert.style.opacity = "0";
+        setTimeout(() => alert.remove(), 400);
+      }, 7000);
+    });
+
+    // Melding als iedereen heeft ingediend (zonder antwoord te tonen!)
+    socket.on("all_submitted", () => {
+      document.getElementById("submission-status-badge").textContent = "✅ Iedereen heeft ingediend!";
+      document.getElementById("submission-status-badge").style.background = "#22c55e";
+    });
+
+    // State Synchronisatie
+    socket.on("state_update", (state) => {
+      document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
+
+      const mediaBox = document.getElementById("host-media");
+      const optionsBox = document.getElementById("host-options");
+      const lobbyBox = document.getElementById("lobby-container");
+      const pauseView = document.getElementById("host-pause-view");
+      const mainView = document.getElementById("host-main-view");
+      const endView = document.getElementById("host-end-view");
+
+      if (state.gameState === "LOBBY") {
+        lobbyBox.classList.remove("hidden");
+        endView.classList.add("hidden");
+        mainView.classList.remove("hidden");
+        btnNext.textContent = "Start Quiz 🚀";
         document.getElementById("host-question").textContent = "Wachten op de start...";
+        document.getElementById("submission-status-badge").textContent = "Wachten...";
+        document.getElementById("submission-status-badge").style.background = "#334155";
         mediaBox.innerHTML = "";
         optionsBox.innerHTML = "";
-} else {
-lobbyBox.classList.add("hidden");
-btnNext.textContent = "Volgende Vraag ➡️";
+      } else {
+        lobbyBox.classList.add("hidden");
+        btnNext.textContent = "Volgende Vraag ➡️";
+      }
+
+      if (state.gameState === "END") {
+        mainView.classList.add("hidden");
+        pauseView.classList.add("hidden");
+        endView.classList.remove("hidden");
+        btnNext.disabled = true;
+        renderPlayerStatuses(state.playerList, state.gameState);
+        return;
+      } else {
+        btnNext.disabled = false;
+        endView.classList.add("hidden");
+      }
+
+      if (state.gameState === "PAUSED") {
+        pauseView.classList.remove("hidden");
+        mainView.classList.add("hidden");
+        btnPause.textContent = "▶️ Hervat Quiz";
+        btnPause.style.background = "#22c55e";
+        renderPlayerStatuses(state.playerList, state.gameState);
+        return;
+      } else {
+        pauseView.classList.add("hidden");
+        mainView.classList.remove("hidden");
+        btnPause.textContent = "☕ Pauzeer";
+        btnPause.style.background = "#f59e0b";
+      }
+
+      if (state.gameState === "QUESTION" && state.currentQuestion) {
+        document.getElementById("submission-status-badge").textContent = "Bezig met antwoorden...";
+        document.getElementById("submission-status-badge").style.background = "#334155";
+        document.getElementById("host-question").textContent = state.currentQuestion.question;
+        mediaBox.innerHTML = "";
+        optionsBox.innerHTML = "";
+
+        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
+          mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height: 250px; border-radius: 8px;">`;
+        }
+        if (state.currentQuestion.type === "audio" && state.currentQuestion.audioUrl) {
+          mediaBox.innerHTML = `<audio controls autoplay src="${state.currentQuestion.audioUrl}"></audio>`;
+        }
+
+        state.currentQuestion.options.forEach((opt, idx) => {
+          const div = document.createElement("div");
+          div.className = "btn-option";
+          div.style.padding = "10px";
+          div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
+          optionsBox.appendChild(div);
+        });
+      }
+
+      renderPlayerStatuses(state.playerList, state.gameState);
+    });
+
+    // Eindoverzicht: toon alle vragen en het juiste antwoord
+    socket.on("game_over", (data) => {
+      const container = document.getElementById("final-answers-list");
+      container.innerHTML = "";
+
+      data.overview.forEach((round) => {
+        const roundTitle = document.createElement("h3");
+        roundTitle.style.marginTop = "20px";
+        roundTitle.style.color = "#f59e0b";
+        roundTitle.textContent = round.roundName;
+        container.appendChild(roundTitle);
+
+        round.questions.forEach((q, idx) => {
+          const card = document.createElement("div");
+          card.style.background = "#0f172a";
+          card.style.padding = "12px";
+          card.style.borderRadius = "8px";
+          card.style.marginTop = "8px";
+
+          const correctLetter = ['A', 'B', 'C', 'D'][q.correctAnswer];
+          const correctText = q.options[q.correctAnswer];
+
+          card.innerHTML = `
+            <div><b>Vraag ${idx + 1}:</b> ${q.question}</div>
+            <div style="color: #4ade80; margin-top: 6px;">👉 <b>Juiste antwoord:</b> [${correctLetter}] ${correctText}</div>
+          `;
+          container.appendChild(card);
+        });
+      });
+    });
+
+    function renderPlayerStatuses(list, gameState) {
+      document.getElementById("player-count").textContent = list.length;
+      const listEl = document.getElementById("players-status-list");
+      listEl.innerHTML = "";
+
+      list.forEach(p => {
+        const li = document.createElement("li");
+        let statusBadge = "";
+
+        if (!p.connected) {
+          statusBadge = `<span style="color:#94a3b8;">(offline)</span>`;
+        } else if (gameState === "QUESTION") {
+          statusBadge = p.answered 
+            ? `<span style="color:#4ade80; font-weight:bold;">✓ Ingediend</span>` 
+            : `<span style="color:#f59e0b;">⏳ Bezig met kiezen</span>`;
+        } else if (gameState === "WAITING_NEXT") {
+          statusBadge = `<span style="color:#4ade80; font-weight:bold;">✓ Klaar</span>`;
+        } else if (gameState === "PAUSED") {
+          statusBadge = `<span style="color:#f59e0b;">☕ Pauze</span>`;
+        } else {
+          statusBadge = `<span style="color:#38bdf8;">Klaar</span>`;
+        }
+
+        li.innerHTML = `<span>${p.name}</span>${statusBadge}`;
+        listEl.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
