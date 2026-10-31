@@ -17,12 +17,13 @@
         <small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
       </div>
       <div style="display: flex; gap: 10px;">
+        <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Herstart Quiz</button>
         <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 18px; margin: 0;">☕ Pauzeer</button>
         <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
       </div>
     </div>
 
-    <!-- Live Meldingen Container (slechts 1 per gebeurtenis) -->
+    <!-- Live Meldingen Container -->
     <div id="cheat-alerts"></div>
 
     <!-- QR Code & Deelnemen -->
@@ -124,11 +125,17 @@
     // 5. Knoppen
     const btnNext = document.getElementById("btn-next");
     const btnPause = document.getElementById("btn-pause");
+    const btnReset = document.getElementById("btn-reset");
 
     btnNext.addEventListener("click", () => socket.emit("next_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
+    btnReset.addEventListener("click", () => {
+      if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden op 0 gezet en we gaan terug naar de lobby.")) {
+        socket.emit("reset_quiz");
+      }
+    });
 
-    // 6. Enkele duidelijke melding (Onderscheid tussen Vergrendeld en Andere App)
+    // 6. Meldingen
     socket.on("cheat_warning", (data) => {
       const isLocked = data.reason === "locked";
       playAlarmSound(isLocked);
@@ -138,18 +145,17 @@
       alert.className = "alert-box";
 
       if (isLocked) {
-        alert.style.backgroundColor = "#d97706"; // Amber oranje
+        alert.style.backgroundColor = "#d97706";
         alert.style.border = "2px solid #fbbf24";
         alert.innerHTML = `🔒 <b>TELEFOON VERGRENDELD:</b> <u>${data.playerName}</u> vergrendelde het scherm om ${data.timestamp}`;
       } else {
-        alert.style.backgroundColor = "#dc2626"; // Rood
+        alert.style.backgroundColor = "#dc2626";
         alert.style.border = "2px solid #f87171";
         alert.innerHTML = `🚨 <b>ANDERE APP GEOPEND:</b> <u>${data.playerName}</u> verliet de quiz om ${data.timestamp}!`;
       }
 
       container.prepend(alert);
 
-      // Verdwijnt automatisch na 7 seconden
       setTimeout(() => {
         alert.style.transition = "opacity 0.4s ease";
         alert.style.opacity = "0";
@@ -170,6 +176,9 @@
       if (state.gameState === "LOBBY") {
         lobbyBox.classList.remove("hidden");
         btnNext.textContent = "Start Quiz 🚀";
+        document.getElementById("host-question").textContent = "Wachten op de start...";
+        mediaBox.innerHTML = "";
+        optionsBox.innerHTML = "";
       } else {
         lobbyBox.classList.add("hidden");
         btnNext.textContent = "Volgende Vraag ➡️";
