@@ -10,7 +10,7 @@
 <body style="max-width: 900px; margin: 0 auto; padding: 20px;">
   <div class="card" style="max-width: 100%;">
     
-    <!-- Header -->
+    <!-- Bediening -->
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 20px;">
       <div>
         <h1 style="text-align: left; margin: 0;">Quiz Master Regie</h1>
@@ -22,7 +22,7 @@
       </div>
     </div>
 
-    <!-- Spiekwaarschuwingen -->
+    <!-- Live Spiekwaarschuwingen met Alarm -->
     <div id="cheat-alerts"></div>
 
     <!-- QR Code & Deelnemen -->
@@ -32,7 +32,7 @@
       <div id="qrcode" style="background: white; padding: 12px; border-radius: 8px;"></div>
     </div>
 
-    <!-- Huidige vraagweergave -->
+    <!-- Vraagweergave -->
     <div id="host-main-view">
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
         <span class="badge" id="host-round-title">Familiequiz</span>
@@ -46,10 +46,10 @@
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
-    <!-- Live Indienen Status per speler (GEEN scores) -->
+    <!-- Deelnemersstatus (Geen scores) -->
     <div>
-      <h3>Deelnemers & Ingediend status (<span id="player-count">0</span>)</h3>
-      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Bekijk het scorebord op <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
+      <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Het scorebord draait apart op <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
       <ul id="players-status-list"></ul>
     </div>
 
@@ -58,7 +58,7 @@
   <script>
     const socket = io();
 
-    // 1. Host Token ophalen of aanmaken voor herstel na F5
+    // 1. Host Token ophalen of instellen voor herstel bij F5
     let hostToken = localStorage.getItem("quiz_host_token");
     if (!hostToken) {
       hostToken = "host_" + Math.random().toString(36).substr(2, 9);
@@ -76,7 +76,25 @@
       colorLight: "#ffffff"
     });
 
-    // 3. Registreren & sessie direct herstellen bij F5
+    // 3. Audio alarmtoon voor spiekdetectie
+    function playAlarmSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      } catch (e) {}
+    }
+
+    // 4. Verbinding & F5 herstel
     socket.on("connect", () => {
       document.getElementById("connection-status").textContent = "● Verbonden als Host";
       document.getElementById("connection-status").style.color = "#4ade80";
@@ -94,27 +112,36 @@
       }
     });
 
-    // 4. Knoppen
+    // 5. Knoppen
     const btnNext = document.getElementById("btn-next");
     const btnPause = document.getElementById("btn-pause");
 
     btnNext.addEventListener("click", () => socket.emit("next_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
 
-    // 5. Spiekalarm
+    // 6. Direct spiekalarm
     socket.on("cheat_warning", (data) => {
+      playAlarmSound();
+
       const container = document.getElementById("cheat-alerts");
       const alert = document.createElement("div");
       alert.className = "alert-box";
-      alert.innerHTML = `⚠️ <b>Spiekalarm!</b> ${data.playerName} verliet de browser om ${data.timestamp}`;
+      alert.style.backgroundColor = "#dc2626";
+      alert.style.border = "2px solid #f87171";
+      alert.innerHTML = `🚨 <b>SPIEKALARM:</b> <u>${data.playerName}</u> verliet zojuist de quiz om ${data.timestamp}!`;
       container.prepend(alert);
-      setTimeout(() => alert.remove(), 8000);
+
+      setTimeout(() => {
+        alert.style.transition = "opacity 0.5s ease";
+        alert.style.opacity = "0";
+        setTimeout(() => alert.remove(), 500);
+      }, 9000);
     });
 
-    // 6. State synchronisatie
+    // 7. State sync
     socket.on("state_update", (state) => {
       document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
-      
+
       const mediaBox = document.getElementById("host-media");
       const optionsBox = document.getElementById("host-options");
       const lobbyBox = document.getElementById("lobby-container");
