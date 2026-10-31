@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Familiequiz - Host Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body style="max-width: 900px; margin: 0 auto;">
+  <div class="card" style="max-width: 100%;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h1>Quiz Master Dashboard</h1>
+      <div>
+        <button id="btn-pause" class="btn-pause" style="width: auto; padding: 8px 16px;">☕ Pauzeer Quiz</button>
+        <button id="btn-next" class="btn-primary" style="width: auto; padding: 8px 16px;">Volgende ➡️</button>
+      </div>
+    </div>
+
+    <!-- Live Spiekwaarschuwingen -->
+    <div id="cheat-alerts"></div>
+
+    <!-- Huidige Spelstatus -->
+    <div id="host-main-view">
+      <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
+        <span class="badge" id="host-round-title">Ronde</span>
+        <span class="badge" id="host-timer">⏱️ 0s</span>
+      </div>
+
+      <h2 id="host-question" style="font-size: 24px;">Wachten op de start...</h2>
+      <div id="host-media" style="text-align: center; margin: 15px 0;"></div>
+      <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
+    </div>
+
+    <hr style="border-color: #334155; margin: 24px 0;">
+
+    <!-- Scorebord / Deelnemerslijst -->
+    <h3>Spelers & Scores</h3>
+    <ul id="scoreboard-list"></ul>
+  </div>
+
+  <script>
+    const socket = io();
+    socket.emit("register_host");
+
+    // Knoppen bediening
+    document.getElementById("btn-next").addEventListener("click", () => {
+      socket.emit("next_question");
+    });
+    document.getElementById("btn-pause").addEventListener("click", () => {
+      socket.emit("toggle_pause");
+    });
+
+    // Spiekwaarschuwing tonen
+    socket.on("cheat_warning", (data) => {
+      const container = document.getElementById("cheat-alerts");
+      const alert = document.createElement("div");
+      alert.className = "alert-box";
+      alert.innerHTML = `⚠️ <b>Spiekalarm!</b> ${data.playerName} verliet de browser om ${data.timestamp}`;
+      container.prepend(alert);
+      setTimeout(() => alert.remove(), 7000);
+    });
+
+    // Sync State
+    socket.on("state_update", (state) => {
+      document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
+      
+      const mediaBox = document.getElementById("host-media");
+      const optionsBox = document.getElementById("host-options");
+      mediaBox.innerHTML = "";
+      optionsBox.innerHTML = "";
+
+      if (state.gameState === "PAUSED") {
+        document.getElementById("host-question").textContent = "PAUZE (Eten / Drinken)";
+        document.getElementById("btn-pause").textContent = "▶️ Hervat Quiz";
+        return;
+      } else {
+        document.getElementById("btn-pause").textContent = "☕ Pauzeer Quiz";
+      }
+
+      if (state.gameState === "QUESTION" && state.currentQuestion) {
+        document.getElementById("host-question").textContent = state.currentQuestion.question;
+
+        // Afbeelding (bijv. Locatieronde)
+        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
+          mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height:300px; border-radius:8px;">`;
+        }
+
+        // Geluid (Hitster ronde)
+        if (state.currentQuestion.type === "audio" && state.currentQuestion.audioUrl) {
+          mediaBox.innerHTML = `<audio controls autoplay src="${state.currentQuestion.audioUrl}"></audio>`;
+        }
+
+        state.currentQuestion.options.forEach((opt, idx) => {
+          const div = document.createElement("div");
+          div.className = "btn-option";
+          div.style.padding = "12px";
+          div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
+          optionsBox.appendChild(div);
+        });
+      }
+
+      // Update spelerslijst
+      renderScoreboard(state.playerList);
+    });
+
+    socket.on("timer_tick", (data) => {
+      document.getElementById("host-timer").textContent = `⏱️ ${data.timeLeft}s`;
+    });
+
+    socket.on("show_results", (data) => {
+      document.getElementById("host-question").textContent = `Het juiste antwoord was optie: ${['A', 'B', 'C', 'D'][data.correctAnswer]}`;
+      renderScoreboard(data.scores);
+    });
+
+    function renderScoreboard(list) {
+      const scoreList = document.getElementById("scoreboard-list");
+      scoreList.innerHTML = "";
+      list.forEach(p => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span>${p.name}</span><b>${p.score} pt</b>`;
+        scoreList.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
