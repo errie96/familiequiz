@@ -6,7 +6,9 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -35,10 +37,11 @@ function getCurrentQuestion() {
 }
 
 function broadcastState() {
+  const currentQ = getCurrentQuestion();
   io.emit('state_update', {
     gameState,
-    roundName: rounds[currentRoundIndex]?.roundName || "",
-    currentQuestion: gameState === "QUESTION" ? getCurrentQuestion() : null,
+    roundName: rounds[currentRoundIndex]?.roundName || "Familiequiz",
+    currentQuestion: (gameState === "QUESTION" || gameState === "PAUSED") ? currentQ : null,
     timeLeft,
     playerList: Object.values(players).map(p => ({ name: p.name, score: p.score }))
   });
@@ -47,6 +50,8 @@ function broadcastState() {
 function startCountdown(duration) {
   clearInterval(currentTimer);
   timeLeft = duration;
+  io.emit('timer_tick', { timeLeft });
+
   currentTimer = setInterval(() => {
     if (gameState === "PAUSED") return;
 
@@ -64,25 +69,28 @@ function evaluateRound() {
   gameState = "SCOREBOARD";
   const q = getCurrentQuestion();
   
-  // Controleer wie goed heeft geantwoord
-  Object.keys(players).forEach(id => {
-    if (players[id].lastAnswer === q.answer) {
-      players[id].score += 10;
-    }
-    players[id].answered = false;
-    players[id].lastAnswer = null;
-  });
+  if (q) {
+    Object.keys(players).forEach(id => {
+      if (players[id].lastAnswer === q.answer) {
+        players[id].score += 10;
+      }
+      players[id].answered = false;
+      players[id].lastAnswer = null;
+    });
+  }
 
   io.emit('show_results', {
-    correctAnswer: q.answer,
+    correctAnswer: q ? q.answer : null,
     scores: Object.values(players).sort((a, b) => b.score - a.score)
   });
+  broadcastState();
 }
 
 io.on('connection', (socket) => {
   // Registratie als Host
   socket.on('register_host', () => {
     hostSocketId = socket.id;
+    socket.join('host_room');
     socket.emit('host_registered');
     broadcastState();
   });
@@ -107,29 +115,26 @@ io.on('connection', (socket) => {
       player.lastAnswer = answerIndex;
       socket.emit('answer_received');
 
-      // Check of iedereen heeft geantwoord
       const allDone = Object.values(players).every(p => p.answered);
-      if (allDone) {
+      if (allDone && Object.keys(players).length > 0) {
         clearInterval(currentTimer);
         evaluateRound();
       }
     }
   });
 
-  // Anti-spiek: detectie wanneer app/tabblad verlaten wordt
+  // Anti-spiek: tabblad verlaten
   socket.on('player_blurred', (data) => {
     const player = players[socket.id];
     if (player && gameState === "QUESTION") {
-      if (hostSocketId) {
-        io.to(hostSocketId).emit('cheat_warning', {
-          playerName: player.name,
-          timestamp: new Date().toLocaleTimeString('nl-NL')
-        });
-      }
+      io.to('host_room').emit('cheat_warning', {
+        playerName: player.name,
+        timestamp: new Date().toLocaleTimeString('nl-NL')
+      });
     }
   });
 
-  // Host acties: Start/Volgende vraag
+  // Host actie: Volgende vraag of start
   socket.on('next_question', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -163,21 +168,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Host acties: Pauzeknop (voor eten/drinken)
+  // Host actie: Pauzeknop
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
     if (gameState === "PAUSED") {
       gameState = "QUESTION";
       io.emit('resumed');
-    } else {
+    } else if (gameState === "QUESTION") {
       gameState = "PAUSED";
       io.emit('paused', { message: "Pauze! Even tijd voor eten en drinken." });
     }
     broadcastState();
   });
 
-  // Disconnect afhandeling
+  // Verbinding verbroken
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
       hostSocketId = null;
@@ -190,5 +195,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Quiz server actief op http://localhost:${PORT}`);
+  console.log(`Quiz server actief op poort ${PORT}`);
 });
