@@ -89,9 +89,7 @@
             wakeLock = null;
           });
         }
-      } catch (err) {
-        // Negeren als browser / OS het weigert of niet ondersteunt
-      }
+      } catch (err) {}
     }
 
     // --- Detectie verlaten quiz / spiekalarm ---
@@ -111,7 +109,6 @@
       if (document.hidden) {
         notifyLeftApp("locked");
       } else {
-        // Heractiveer wake lock direct zodra de speler weer terugkeert
         await requestWakeLock();
       }
     });
@@ -127,10 +124,26 @@
       }
     });
 
+    // Quiz gereset door de host: wis alle lokale data en ga terug naar het inlogscherm
+    socket.on("quiz_reset", () => {
+      localStorage.removeItem("quiz_player_id");
+      localStorage.removeItem("quiz_player_name");
+      playerId = null;
+      playerName = "";
+      selectedOptionIndex = null;
+      hasSubmittedCurrent = false;
+
+      document.getElementById("username").value = "";
+      document.getElementById("question-screen").classList.add("hidden");
+      document.getElementById("lobby-screen").classList.add("hidden");
+      document.getElementById("pause-screen").classList.add("hidden");
+      document.getElementById("join-screen").classList.remove("hidden");
+    });
+
     document.getElementById("join-btn").addEventListener("click", () => {
       const name = document.getElementById("username").value.trim();
       if (name) {
-        requestWakeLock(); // Vraag wake lock aan direct na gebruikersinteractie
+        requestWakeLock();
         socket.emit("init_player", { playerId: null, name });
       }
     });
@@ -170,7 +183,6 @@
       }
     });
 
-    // Weetjes voor de pauze
     const funFacts = [
       "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
       "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
