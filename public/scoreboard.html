@@ -2,59 +2,195 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <title>Familiequiz - Tussenstand & Scorebord</title>
+  <title>Familiequiz - De Grote Ontknoping</title>
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
+  <!-- Confetti library via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 </head>
-<body style="max-width: 800px; margin: 0 auto; padding: 24px;">
+<body style="max-width: 850px; margin: 0 auto; padding: 24px; min-height: 100vh;">
   <div class="card" style="max-width: 100%; text-align: center;">
     
-    <h1 style="font-size: 36px; margin-bottom: 8px;">🏆 Tussenstand 🏆</h1>
-    <p id="round-indicator" style="color: #94a3b8; margin-bottom: 24px; font-size: 18px;">Familiequiz</p>
+    <h1 style="font-size: 38px; margin-bottom: 8px;">🏆 De Einduitslag 🏆</h1>
+    <p id="round-indicator" style="color: #94a3b8; margin-bottom: 24px; font-size: 18px;">De uitslag is nog geheim tot de quizmaster op start drukt!</p>
 
-    <!-- Scorebord ranking -->
-    <ul id="scoreboard-table" style="text-align: left; font-size: 20px;"></ul>
+    <!-- Startknop voor de spannende onthulling -->
+    <div id="reveal-controls" class="hidden" style="margin-bottom: 24px;">
+      <button id="btn-start-reveal" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #ef4444); font-size: 20px; padding: 14px 28px; width: auto; box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4);">
+        🎬 Start Ontknoping (Slechtste ➔ Beste)
+      </button>
+    </div>
+
+    <!-- Container waarin de teams één voor één verschijnen -->
+    <ul id="scoreboard-table" style="text-align: left; font-size: 20px; min-height: 120px;"></ul>
+
+    <!-- Winnaar feestbanner die oplicht bij #1 -->
+    <div id="winner-banner" class="hidden" style="margin-top: 24px; padding: 24px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; color: white; animation: pulse 1s infinite alternate; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6);">
+      <h2 style="font-size: 32px; margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
+      <p id="winner-name-text" style="font-size: 26px; font-weight: bold; margin-top: 8px;">TEAM</p>
+    </div>
 
   </div>
 
+  <style>
+    @keyframes pulse {
+      0% { transform: scale(0.98); }
+      100% { transform: scale(1.02); }
+    }
+    .rank-card {
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    .rank-card.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+
   <script>
     const socket = io();
+    let finalScoresData = [];
+    let isRevealing = false;
+
+    // Feestelijk triomfgeluid bij nummer 1
+    function playVictoryFanfare() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99]; // C-E-G-C-E-G fanfare
+        notes.forEach((freq, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.12);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime + idx * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.12 + 0.6);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(audioCtx.currentTime + idx * 0.12);
+          osc.stop(audioCtx.currentTime + idx * 0.12 + 0.6);
+        });
+      } catch (e) {}
+    }
+
+    // Spannende trommel/tromgeroffel-klik
+    function playDrumHit() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch (e) {}
+    }
+
+    // Vuurwerk & Confetti explosie
+    function launchMassiveConfetti() {
+      const duration = 7 * 1000;
+      const animationEnd = Date.now() + duration;
+
+      const interval = setInterval(function() {
+        const timeLeft = animationEnd - Date.now();
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
+        confetti({
+          particleCount: 50,
+          spread: 360,
+          startVelocity: 30,
+          origin: { x: Math.random(), y: Math.random() - 0.2 }
+        });
+      }, 250);
+    }
 
     socket.on("connect", () => {
       socket.emit("register_scoreboard");
     });
 
     socket.on("state_update", (state) => {
-      document.getElementById("round-indicator").textContent = state.roundName || "Familiequiz";
-      renderScores(state.playerList);
+      if (state.gameState !== "END") {
+        document.getElementById("round-indicator").textContent = "De antwoorden en scores blijven geheim tot het einde van de quiz!";
+        document.getElementById("reveal-controls").classList.add("hidden");
+        document.getElementById("scoreboard-table").innerHTML = "";
+        document.getElementById("winner-banner").classList.add("hidden");
+      }
     });
 
-    socket.on("show_results", (data) => {
-      renderScores(data.scores);
+    // Eindsignaal met de scores ontvangen
+    socket.on("game_over", (data) => {
+      finalScoresData = data.finalScores; // Gesorteerd van hoog naar laag: [0] = #1
+      document.getElementById("round-indicator").textContent = "Alle rondes zijn voltooid! Druk hieronder om de ranglijst te onthullen.";
+      document.getElementById("reveal-controls").classList.remove("hidden");
     });
 
-    function renderScores(list) {
-      const container = document.getElementById("scoreboard-table");
-      container.innerHTML = "";
+    // Start de onthulling van laagste naar hoogste team
+    document.getElementById("btn-start-reveal").addEventListener("click", () => {
+      if (isRevealing || finalScoresData.length === 0) return;
+      isRevealing = true;
+      document.getElementById("reveal-controls").classList.add("hidden");
 
-      const sorted = [...list].sort((a, b) => b.score - a.score);
+      const table = document.getElementById("scoreboard-table");
+      table.innerHTML = "";
 
-      sorted.forEach((p, index) => {
-        const li = document.createElement("li");
-        li.style.padding = "16px";
+      // Draai de volgorde om zodat we bij het slechtste team beginnen:
+      // index finalScoresData.length - 1 (hekkensluiter) naar 0 (winnaar)
+      const reversedList = [...finalScoresData].reverse();
 
-        let medal = `#${index + 1}`;
-        if (index === 0) medal = "🥇";
-        if (index === 1) medal = "🥈";
-        if (index === 2) medal = "🥉";
+      reversedList.forEach((player, i) => {
+        const trueRank = finalScoresData.length - i; // 1 = winnaar
+        const isWinner = (trueRank === 1);
 
-        li.innerHTML = `
-          <span><b>${medal}</b> &nbsp; ${p.name}</span>
-          <b style="color: #38bdf8; font-size: 22px;">${p.score} pt</b>
-        `;
-        container.appendChild(li);
+        setTimeout(() => {
+          playDrumHit();
+
+          const li = document.createElement("li");
+          li.className = "rank-card";
+          li.style.padding = "16px";
+          li.style.borderRadius = "8px";
+          li.style.marginBottom = "8px";
+
+          let rankBadge = `#${trueRank}`;
+          if (trueRank === 1) {
+            rankBadge = "🥇 WINNAAR";
+            li.style.background = "#2563eb";
+            li.style.border = "2px solid #60a5fa";
+          } else if (trueRank === 2) {
+            rankBadge = "🥈 #2";
+            li.style.background = "#1e293b";
+          } else if (trueRank === 3) {
+            rankBadge = "🥉 #3";
+            li.style.background = "#1e293b";
+          } else {
+            li.style.background = "#0f172a";
+          }
+
+          li.innerHTML = `
+            <span><b>${rankBadge}</b> &nbsp; ${player.name}</span>
+            <b style="color: ${isWinner ? '#fde047' : '#38bdf8'}; font-size: ${isWinner ? '26px' : '20px'};">${player.score} pt</b>
+          `;
+
+          // Plaats de nieuwe onthulling bovenaan zodat de winnaar uiteindelijk als topitem schittert
+          table.prepend(li);
+          setTimeout(() => li.classList.add("show"), 50);
+
+          // Als het de absolute nummer 1 is: confetti en feest!
+          if (isWinner) {
+            playVictoryFanfare();
+            launchMassiveConfetti();
+            const banner = document.getElementById("winner-banner");
+            document.getElementById("winner-name-text").textContent = `🏆 ${player.name} WINT DE FAMILIEQUIZ! 🏆`;
+            banner.classList.remove("hidden");
+          }
+
+        }, (i + 1) * 2200); // Elke 2.2 seconden wordt het volgende team onthuld
       });
-    }
+    });
   </script>
 </body>
 </html>
