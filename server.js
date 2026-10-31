@@ -6,13 +6,11 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Quizdata inladen
+// Inladen vragen
 let rounds = [];
 try {
   rounds = JSON.parse(fs.readFileSync(path.join(__dirname, 'questions.json'), 'utf8'));
@@ -20,12 +18,11 @@ try {
   console.error("Fout bij inladen questions.json:", e);
 }
 
-// Spelstatus
-let players = {}; // socketId -> { name, score, answered, lastAnswer }
+let players = {};
 let hostSocketId = null;
 let currentRoundIndex = 0;
 let currentQuestionIndex = 0;
-let gameState = "LOBBY"; // LOBBY, QUESTION, PAUSED, SCOREBOARD, END
+let gameState = "LOBBY";
 let currentTimer = null;
 let timeLeft = 0;
 
@@ -43,7 +40,11 @@ function broadcastState() {
     roundName: rounds[currentRoundIndex]?.roundName || "Familiequiz",
     currentQuestion: (gameState === "QUESTION" || gameState === "PAUSED") ? currentQ : null,
     timeLeft,
-    playerList: Object.values(players).map(p => ({ name: p.name, score: p.score }))
+    playerList: Object.values(players).map(p => ({ 
+      name: p.name, 
+      score: p.score,
+      answered: p.answered // Host kan zien wie al heeft ingediend
+    }))
   });
 }
 
@@ -58,6 +59,7 @@ function startCountdown(duration) {
     timeLeft--;
     io.emit('timer_tick', { timeLeft });
 
+    // Als de tijd op is, sluit de vraag automatisch af
     if (timeLeft <= 0) {
       clearInterval(currentTimer);
       evaluateRound();
@@ -71,11 +73,11 @@ function evaluateRound() {
   
   if (q) {
     Object.keys(players).forEach(id => {
-      if (players[id].lastAnswer === q.answer) {
+      if (players[id].submittedAnswer === q.answer) {
         players[id].score += 10;
       }
       players[id].answered = false;
-      players[id].lastAnswer = null;
+      players[id].submittedAnswer = null;
     });
   }
 
@@ -87,44 +89,45 @@ function evaluateRound() {
 }
 
 io.on('connection', (socket) => {
-  // Registratie als Host
   socket.on('register_host', () => {
     hostSocketId = socket.id;
     socket.join('host_room');
-    socket.emit('host_registered');
     broadcastState();
   });
 
-  // Registratie als Speler
   socket.on('join_game', (name) => {
     players[socket.id] = {
       name: name.trim().slice(0, 20),
       score: 0,
       answered: false,
-      lastAnswer: null
+      submittedAnswer: null
     };
     socket.emit('joined', { name: players[socket.id].name });
     broadcastState();
   });
 
-  // Speler dient antwoord in
+  // Pas actief als een speler op "Antwoord Indienen" heeft geklikt
   socket.on('submit_answer', (answerIndex) => {
     const player = players[socket.id];
     if (player && gameState === "QUESTION" && !player.answered) {
       player.answered = true;
-      player.lastAnswer = answerIndex;
-      socket.emit('answer_received');
+      player.submittedAnswer = answerIndex;
 
-      const allDone = Object.values(players).every(p => p.answered);
-      if (allDone && Object.keys(players).length > 0) {
+      // Update naar host en spelers (zodat host ziet wie er klaar is)
+      broadcastState();
+
+      // Controleer of ALLE aangesloten spelers hebben ingediend
+      const playerList = Object.values(players);
+      const allSubmitted = playerList.length > 0 && playerList.every(p => p.answered);
+
+      if (allSubmitted) {
         clearInterval(currentTimer);
         evaluateRound();
       }
     }
   });
 
-  // Anti-spiek: tabblad verlaten
-  socket.on('player_blurred', (data) => {
+  socket.on('player_blurred', () => {
     const player = players[socket.id];
     if (player && gameState === "QUESTION") {
       io.to('host_room').emit('cheat_warning', {
@@ -134,7 +137,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Host actie: Volgende vraag of start
   socket.on('next_question', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -161,14 +163,13 @@ io.on('connection', (socket) => {
     if (q) {
       Object.keys(players).forEach(id => {
         players[id].answered = false;
-        players[id].lastAnswer = null;
+        players[id].submittedAnswer = null;
       });
       broadcastState();
-      startCountdown(q.time || 20);
+      startCountdown(q.time || 30);
     }
   });
 
-  // Host actie: Pauzeknop
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -177,18 +178,24 @@ io.on('connection', (socket) => {
       io.emit('resumed');
     } else if (gameState === "QUESTION") {
       gameState = "PAUSED";
-      io.emit('paused', { message: "Pauze! Even tijd voor eten en drinken." });
+      io.emit('paused', { message: "Pauze!" });
     }
     broadcastState();
   });
 
-  // Verbinding verbroken
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
       hostSocketId = null;
     } else if (players[socket.id]) {
       delete players[socket.id];
-      broadcastState();
+      // Check opnieuw of de overgebleven spelers toevallig allemaal al klaar zijn
+      const playerList = Object.values(players);
+      if (gameState === "QUESTION" && playerList.length > 0 && playerList.every(p => p.answered)) {
+        clearInterval(currentTimer);
+        evaluateRound();
+      } else {
+        broadcastState();
+      }
     }
   });
 });
