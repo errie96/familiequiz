@@ -18,13 +18,13 @@ try {
   console.error("Fout bij inladen questions.json:", e);
 }
 
-// Speler- & Host-state
-let players = {};
-let activeHostToken = null;  // Persistent token voor de host
-let hostSocketId = null;     // Huidige actieve socket
+// Speler- & Host-status
+let players = {}; // playerId -> { playerId, socketId, name, score, answered, submittedAnswer, connected }
+let activeHostToken = null;
+let hostSocketId = null;
 let currentRoundIndex = 0;
 let currentQuestionIndex = 0;
-let gameState = "LOBBY"; 
+let gameState = "LOBBY"; // LOBBY, QUESTION, PAUSED, SCOREBOARD, END
 let currentTimer = null;
 let timeLeft = 0;
 
@@ -96,14 +96,12 @@ function evaluateRound() {
 io.on('connection', (socket) => {
   // 1. Host registratie & herstel na F5
   socket.on('register_host', ({ token }) => {
-    // Als er nog geen token is, of het token matcht met de actieve sessie
     if (!activeHostToken || activeHostToken === token) {
       activeHostToken = token;
       hostSocketId = socket.id;
       socket.join('host_room');
       socket.emit('host_confirmed', { token: activeHostToken });
     } else {
-      // Bestaande sessie overnemen / updaten naar de nieuwe socket
       hostSocketId = socket.id;
       socket.join('host_room');
       socket.emit('host_confirmed', { token: activeHostToken });
@@ -111,13 +109,13 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 2. Scorebord registratie
+  // 2. Scoreboard registratie
   socket.on('register_scoreboard', () => {
     socket.join('scoreboard_room');
     broadcastState();
   });
 
-  // 3. Speler login / sessieherstel
+  // 3. Speler login / sessieherstel na F5
   socket.on('init_player', ({ playerId, name }) => {
     if (playerId && players[playerId]) {
       const player = players[playerId];
@@ -160,6 +158,7 @@ io.on('connection', (socket) => {
 
       broadcastState();
 
+      // Alleen wachten op verbonden/actieve spelers
       const activePlayers = Object.values(players).filter(p => p.connected);
       const allDone = activePlayers.length > 0 && activePlayers.every(p => p.answered);
 
@@ -170,10 +169,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5. Anti-spiek waarschuwing
+  // 5. Anti-spiek: onmiddellijke doormelding naar host
   socket.on('player_blurred', ({ playerId }) => {
     const player = players[playerId];
-    if (player && gameState === "QUESTION") {
+    if (player && gameState === "QUESTION" && !player.answered) {
       io.to('host_room').emit('cheat_warning', {
         playerName: player.name,
         timestamp: new Date().toLocaleTimeString('nl-NL')
@@ -181,7 +180,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 6. Host regie: Volgende vraag
+  // 6. Host: Volgende vraag
   socket.on('next_question', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -215,7 +214,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. Host regie: Pauze toggle
+  // 7. Host: Pauze aan/uit
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -229,15 +228,22 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 8. Disconnect: behoud host status bij F5
+  // 8. Disconnect: behoud sessies voor herstel
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
-      // hostSocketId niet op null forceren zodat een refresh binnen enkele seconden naadloos herstelt
+      // Host socket wordt niet gewist om F5 herstel direct te laten slagen
     } else {
       const player = Object.values(players).find(p => p.socketId === socket.id);
       if (player) {
         player.connected = false;
-        broadcastState();
+        // Als overige actieve spelers toevallig allemaal al ingediend hebben
+        const activePlayers = Object.values(players).filter(p => p.connected);
+        if (gameState === "QUESTION" && activePlayers.length > 0 && activePlayers.every(p => p.answered)) {
+          clearInterval(currentTimer);
+          evaluateRound();
+        } else {
+          broadcastState();
+        }
       }
     }
   });
@@ -245,5 +251,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Quiz server actief op poort ${PORT}`);
+  console.log(`Server gestart op http://localhost:${PORT}`);
 });
