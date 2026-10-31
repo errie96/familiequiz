@@ -5,87 +5,143 @@
   <title>Familiequiz - Host Dashboard</title>
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
+  <!-- Externe lichte library voor dynamische QR-code generatie -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
-<body style="max-width: 900px; margin: 0 auto;">
+<body style="max-width: 960px; margin: 0 auto; padding: 20px;">
   <div class="card" style="max-width: 100%;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-      <h1>Quiz Master Dashboard</h1>
+    
+    <!-- Header & Host Controls -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 20px;">
       <div>
-        <button id="btn-pause" class="btn-pause" style="width: auto; padding: 8px 16px;">☕ Pauzeer Quiz</button>
-        <button id="btn-next" class="btn-primary" style="width: auto; padding: 8px 16px;">Volgende ➡️</button>
+        <h1 style="text-align: left; margin: 0;">Quiz Master Dashboard</h1>
+        <small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 18px; margin: 0;">☕ Pauzeer</button>
+        <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
       </div>
     </div>
 
-    <!-- Live Spiekwaarschuwingen -->
+    <!-- Live Spiekwaarschuwingen Container -->
     <div id="cheat-alerts"></div>
 
-    <!-- Huidige Spelstatus -->
+    <!-- Lobby Weergave met QR Code (Verdwijnt zodra de quiz start) -->
+    <div id="lobby-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; padding: 24px; border-radius: 12px; margin-bottom: 20px;">
+      <h2>Scan om mee te spelen! 📱</h2>
+      <p style="color: #94a3b8; margin-bottom: 16px;">Richt je camera op de code of surf naar: <b id="join-url-text" style="color:#38bdf8;"></b></p>
+      <div id="qrcode" style="background: white; padding: 16px; border-radius: 8px;"></div>
+    </div>
+
+    <!-- Huidige Spelstatus & Vraag -->
     <div id="host-main-view">
-      <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
-        <span class="badge" id="host-round-title">Ronde</span>
-        <span class="badge" id="host-timer">⏱️ 0s</span>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+        <span class="badge" id="host-round-title" style="font-size: 14px; padding: 6px 12px;">Familiequiz</span>
+        <span class="badge" id="host-timer" style="font-size: 16px; padding: 6px 12px; background: #2563eb;">⏱️ 0s</span>
       </div>
 
-      <h2 id="host-question" style="font-size: 24px;">Wachten op de start...</h2>
+      <h2 id="host-question" style="font-size: 26px; min-height: 40px; margin: 15px 0;">Wachten tot iedereen binnen is...</h2>
+      
       <div id="host-media" style="text-align: center; margin: 15px 0;"></div>
-      <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
+      <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
     </div>
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
     <!-- Scorebord / Deelnemerslijst -->
-    <h3>Spelers & Scores</h3>
-    <ul id="scoreboard-list"></ul>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h3>Deelnemers & Scores (<span id="player-count">0</span>)</h3>
+    </div>
+    <ul id="scoreboard-list" style="margin-top: 10px;"></ul>
   </div>
 
   <script>
     const socket = io();
-    socket.emit("register_host");
 
-    // Knoppen bediening
-    document.getElementById("btn-next").addEventListener("click", () => {
+    // 1. Automatisch QR-code genereren op basis van het huidige domein (zonder /host.html)
+    const joinUrl = window.location.origin;
+    document.getElementById("join-url-text").textContent = joinUrl;
+    new QRCode(document.getElementById("qrcode"), {
+      text: joinUrl,
+      width: 180,
+      height: 180,
+      colorDark: "#0f172a",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.H
+    });
+
+    // 2. Registratie bij (her)verbinden
+    socket.on("connect", () => {
+      document.getElementById("connection-status").textContent = "● Verbonden als Host";
+      document.getElementById("connection-status").style.color = "#4ade80";
+      socket.emit("register_host");
+    });
+
+    socket.on("disconnect", () => {
+      document.getElementById("connection-status").textContent = "○ Verbinding verbroken...";
+      document.getElementById("connection-status").style.color = "#ef4444";
+    });
+
+    // 3. Knoppen acties
+    const btnNext = document.getElementById("btn-next");
+    const btnPause = document.getElementById("btn-pause");
+
+    btnNext.addEventListener("click", () => {
       socket.emit("next_question");
     });
-    document.getElementById("btn-pause").addEventListener("click", () => {
+
+    btnPause.addEventListener("click", () => {
       socket.emit("toggle_pause");
     });
 
-    // Spiekwaarschuwing tonen
+    // 4. Cheat alarm tonen
     socket.on("cheat_warning", (data) => {
       const container = document.getElementById("cheat-alerts");
       const alert = document.createElement("div");
       alert.className = "alert-box";
       alert.innerHTML = `⚠️ <b>Spiekalarm!</b> ${data.playerName} verliet de browser om ${data.timestamp}`;
       container.prepend(alert);
-      setTimeout(() => alert.remove(), 7000);
+      setTimeout(() => alert.remove(), 8000);
     });
 
-    // Sync State
+    // 5. State synchronisatie
     socket.on("state_update", (state) => {
       document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
       
       const mediaBox = document.getElementById("host-media");
       const optionsBox = document.getElementById("host-options");
-      mediaBox.innerHTML = "";
-      optionsBox.innerHTML = "";
+      const lobbyBox = document.getElementById("lobby-container");
 
-      if (state.gameState === "PAUSED") {
-        document.getElementById("host-question").textContent = "PAUZE (Eten / Drinken)";
-        document.getElementById("btn-pause").textContent = "▶️ Hervat Quiz";
-        return;
+      // Verberg QR-code zodra het spel actief is
+      if (state.gameState === "LOBBY") {
+        lobbyBox.classList.remove("hidden");
+        btnNext.textContent = "Start Quiz 🚀";
       } else {
-        document.getElementById("btn-pause").textContent = "☕ Pauzeer Quiz";
+        lobbyBox.classList.add("hidden");
+        btnNext.textContent = "Volgende ➡️";
       }
 
+      // Pauze weergave
+      if (state.gameState === "PAUSED") {
+        document.getElementById("host-question").textContent = "☕ PAUZE (Eet smakelijk / even bijtanken)";
+        btnPause.textContent = "▶️ Hervat Quiz";
+        btnPause.style.background = "#22c55e";
+        return;
+      } else {
+        btnPause.textContent = "☕ Pauzeer";
+        btnPause.style.background = "#f59e0b";
+      }
+
+      // Vraag weergave
       if (state.gameState === "QUESTION" && state.currentQuestion) {
         document.getElementById("host-question").textContent = state.currentQuestion.question;
+        mediaBox.innerHTML = "";
+        optionsBox.innerHTML = "";
 
-        // Afbeelding (bijv. Locatieronde)
         if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
-          mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height:300px; border-radius:8px;">`;
+          mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height: 280px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">`;
         }
 
-        // Geluid (Hitster ronde)
         if (state.currentQuestion.type === "audio" && state.currentQuestion.audioUrl) {
           mediaBox.innerHTML = `<audio controls autoplay src="${state.currentQuestion.audioUrl}"></audio>`;
         }
@@ -93,13 +149,13 @@
         state.currentQuestion.options.forEach((opt, idx) => {
           const div = document.createElement("div");
           div.className = "btn-option";
-          div.style.padding = "12px";
+          div.style.padding = "14px";
+          div.style.borderRadius = "8px";
           div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
           optionsBox.appendChild(div);
         });
       }
 
-      // Update spelerslijst
       renderScoreboard(state.playerList);
     });
 
@@ -108,16 +164,19 @@
     });
 
     socket.on("show_results", (data) => {
-      document.getElementById("host-question").textContent = `Het juiste antwoord was optie: ${['A', 'B', 'C', 'D'][data.correctAnswer]}`;
+      if (data.correctAnswer !== null) {
+        document.getElementById("host-question").textContent = `Juiste antwoord: Optie ${['A', 'B', 'C', 'D'][data.correctAnswer]}! ✅`;
+      }
       renderScoreboard(data.scores);
     });
 
     function renderScoreboard(list) {
+      document.getElementById("player-count").textContent = list.length;
       const scoreList = document.getElementById("scoreboard-list");
       scoreList.innerHTML = "";
-      list.forEach(p => {
+      list.forEach((p, index) => {
         const li = document.createElement("li");
-        li.innerHTML = `<span>${p.name}</span><b>${p.score} pt</b>`;
+        li.innerHTML = `<span><b>#${index + 1}</b> ${p.name}</span><b style="color: #38bdf8;">${p.score} pt</b>`;
         scoreList.appendChild(li);
       });
     }
