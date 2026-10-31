@@ -78,7 +78,23 @@
     let hasSubmittedCurrent = false;
     let isPausedState = false;
 
-    // Lokale cooldown tegen dubbele triggers binnen 3 seconden
+    // --- Screen Wake Lock API integratie ---
+    let wakeLock = null;
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => {
+            wakeLock = null;
+          });
+        }
+      } catch (err) {
+        // Negeren als browser / OS het weigert of niet ondersteunt
+      }
+    }
+
+    // --- Detectie verlaten quiz / spiekalarm ---
     let lastNotifyTime = 0;
 
     function notifyLeftApp(reason) {
@@ -91,32 +107,30 @@
       socket.emit("player_blurred", { playerId, reason });
     }
 
-    // Onderscheid tussen scherm vergrendelen en app-wissel
-    document.addEventListener("visibilitychange", () => {
+    document.addEventListener("visibilitychange", async () => {
       if (document.hidden) {
-        // Op mobiele toestellen triggert schermvergrendeling direct visibilitychange zonder pagehide/blur overlap
         notifyLeftApp("locked");
+      } else {
+        // Heractiveer wake lock direct zodra de speler weer terugkeert
+        await requestWakeLock();
       }
     });
 
-    window.addEventListener("pagehide", () => {
-      notifyLeftApp("app_switch");
-    });
+    window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
+    window.addEventListener("blur", () => notifyLeftApp("app_switch"));
 
-    window.addEventListener("blur", () => {
-      notifyLeftApp("app_switch");
-    });
-
-    // Automatisch herstellen na F5
+    // --- Sessie herstel & Aanmelden ---
     socket.on("connect", () => {
       if (playerId && playerName) {
         socket.emit("init_player", { playerId, name: playerName });
+        requestWakeLock();
       }
     });
 
     document.getElementById("join-btn").addEventListener("click", () => {
       const name = document.getElementById("username").value.trim();
       if (name) {
+        requestWakeLock(); // Vraag wake lock aan direct na gebruikersinteractie
         socket.emit("init_player", { playerId: null, name });
       }
     });
@@ -134,6 +148,7 @@
       playerName = data.name;
       hasSubmittedCurrent = data.answered;
       showLobby();
+      requestWakeLock();
     });
 
     function showLobby() {
@@ -142,7 +157,7 @@
       document.getElementById("lobby-screen").classList.remove("hidden");
     }
 
-    // Indienen
+    // --- Antwoord Indienen ---
     const submitBtn = document.getElementById("submit-btn");
     submitBtn.addEventListener("click", () => {
       if (selectedOptionIndex !== null && !hasSubmittedCurrent) {
@@ -155,7 +170,7 @@
       }
     });
 
-    // Willekeurige weetjes voor op het pauzescherm
+    // Weetjes voor de pauze
     const funFacts = [
       "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
       "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
@@ -164,7 +179,7 @@
       "Tactische tip: de koploper voelt nu de meeste druk!"
     ];
 
-    // State synchronisatie
+    // --- State synchronisatie ---
     socket.on("state_update", (state) => {
       if (!playerId) return;
 
