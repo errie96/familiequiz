@@ -10,7 +10,7 @@
 <body style="max-width: 900px; margin: 0 auto; padding: 20px;">
   <div class="card" style="max-width: 100%;">
     
-    <!-- Bediening -->
+    <!-- Bedieningsbalk -->
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 20px;">
       <div>
         <h1 style="text-align: left; margin: 0;">Quiz Master Regie</h1>
@@ -22,7 +22,7 @@
       </div>
     </div>
 
-    <!-- Live Spiekwaarschuwingen met Alarm -->
+    <!-- Live Meldingen Container (slechts 1 per gebeurtenis) -->
     <div id="cheat-alerts"></div>
 
     <!-- QR Code & Deelnemen -->
@@ -32,7 +32,14 @@
       <div id="qrcode" style="background: white; padding: 12px; border-radius: 8px;"></div>
     </div>
 
-    <!-- Vraagweergave -->
+    <!-- Pauzescherm Weergave voor Host -->
+    <div id="host-pause-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; text-align: center; margin-bottom: 20px; border: 2px dashed #f59e0b;">
+      <span style="font-size: 44px;">☕ 🍕</span>
+      <h2 style="color: #f59e0b; margin: 10px 0;">PAUZE IS ACTIEF</h2>
+      <p style="color: #94a3b8;">Alle telefoons staan op het pauzescherm. Spiek- en vergrendelingsmeldingen zijn tijdelijk uitgeschakeld.</p>
+    </div>
+
+    <!-- Huidige Vraagweergave -->
     <div id="host-main-view">
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
         <span class="badge" id="host-round-title">Familiequiz</span>
@@ -46,10 +53,10 @@
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
-    <!-- Deelnemersstatus (Geen scores) -->
+    <!-- Deelnemerslijst met Live Ingediend Status -->
     <div>
       <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
-      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Het scorebord draait apart op <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Scorebord bekijken: <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
       <ul id="players-status-list"></ul>
     </div>
 
@@ -76,25 +83,27 @@
       colorLight: "#ffffff"
     });
 
-    // 3. Audio alarmtoon voor spiekdetectie
-    function playAlarmSound() {
+    // 3. Audio Alarm
+    function playAlarmSound(isLocked) {
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.type = isLocked ? "sine" : "sawtooth";
+        const startFreq = isLocked ? 350 : 500;
+        const endFreq = isLocked ? 200 : 900;
+        osc.frequency.setValueAtTime(startFreq, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(endFreq, audioCtx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.3);
+        osc.stop(audioCtx.currentTime + 0.25);
       } catch (e) {}
     }
 
-    // 4. Verbinding & F5 herstel
+    // 4. Verbinding & Sessieherstel
     socket.on("connect", () => {
       document.getElementById("connection-status").textContent = "● Verbonden als Host";
       document.getElementById("connection-status").style.color = "#4ade80";
@@ -119,32 +128,44 @@
     btnNext.addEventListener("click", () => socket.emit("next_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
 
-    // 6. Direct spiekalarm
+    // 6. Enkele duidelijke melding (Onderscheid tussen Vergrendeld en Andere App)
     socket.on("cheat_warning", (data) => {
-      playAlarmSound();
+      const isLocked = data.reason === "locked";
+      playAlarmSound(isLocked);
 
       const container = document.getElementById("cheat-alerts");
       const alert = document.createElement("div");
       alert.className = "alert-box";
-      alert.style.backgroundColor = "#dc2626";
-      alert.style.border = "2px solid #f87171";
-      alert.innerHTML = `🚨 <b>SPIEKALARM:</b> <u>${data.playerName}</u> verliet zojuist de quiz om ${data.timestamp}!`;
+
+      if (isLocked) {
+        alert.style.backgroundColor = "#d97706"; // Amber oranje
+        alert.style.border = "2px solid #fbbf24";
+        alert.innerHTML = `🔒 <b>TELEFOON VERGRENDELD:</b> <u>${data.playerName}</u> vergrendelde het scherm om ${data.timestamp}`;
+      } else {
+        alert.style.backgroundColor = "#dc2626"; // Rood
+        alert.style.border = "2px solid #f87171";
+        alert.innerHTML = `🚨 <b>ANDERE APP GEOPEND:</b> <u>${data.playerName}</u> verliet de quiz om ${data.timestamp}!`;
+      }
+
       container.prepend(alert);
 
+      // Verdwijnt automatisch na 7 seconden
       setTimeout(() => {
-        alert.style.transition = "opacity 0.5s ease";
+        alert.style.transition = "opacity 0.4s ease";
         alert.style.opacity = "0";
-        setTimeout(() => alert.remove(), 500);
-      }, 9000);
+        setTimeout(() => alert.remove(), 400);
+      }, 7000);
     });
 
-    // 7. State sync
+    // 7. State Synchronisatie
     socket.on("state_update", (state) => {
       document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
 
       const mediaBox = document.getElementById("host-media");
       const optionsBox = document.getElementById("host-options");
       const lobbyBox = document.getElementById("lobby-container");
+      const pauseView = document.getElementById("host-pause-view");
+      const mainView = document.getElementById("host-main-view");
 
       if (state.gameState === "LOBBY") {
         lobbyBox.classList.remove("hidden");
@@ -155,11 +176,15 @@
       }
 
       if (state.gameState === "PAUSED") {
-        document.getElementById("host-question").textContent = "☕ PAUZE (Eten / Drinken)";
+        pauseView.classList.remove("hidden");
+        mainView.classList.add("hidden");
         btnPause.textContent = "▶️ Hervat Quiz";
         btnPause.style.background = "#22c55e";
+        renderPlayerStatuses(state.playerList, state.gameState);
         return;
       } else {
+        pauseView.classList.add("hidden");
+        mainView.classList.remove("hidden");
         btnPause.textContent = "☕ Pauzeer";
         btnPause.style.background = "#f59e0b";
       }
@@ -213,6 +238,8 @@
           statusBadge = p.answered 
             ? `<span style="color:#4ade80; font-weight:bold;">✓ Ingediend</span>` 
             : `<span style="color:#f59e0b;">⏳ Bezig met kiezen</span>`;
+        } else if (gameState === "PAUSED") {
+          statusBadge = `<span style="color:#f59e0b;">☕ Pauze</span>`;
         } else {
           statusBadge = `<span style="color:#38bdf8;">Klaar</span>`;
         }
