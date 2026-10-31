@@ -94,7 +94,7 @@ function evaluateRound() {
 }
 
 io.on('connection', (socket) => {
-  // 1. Host registratie & F5 herstel
+  // 1. Host registratie & herstel na F5
   socket.on('register_host', ({ token }) => {
     if (!activeHostToken || activeHostToken === token) {
       activeHostToken = token;
@@ -155,6 +155,7 @@ io.on('connection', (socket) => {
 
       broadcastState();
 
+      // Alleen wachten op verbonden/actieve spelers
       const activePlayers = Object.values(players).filter(p => p.connected);
       const allDone = activePlayers.length > 0 && activePlayers.every(p => p.answered);
 
@@ -165,15 +166,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5. Anti-spiek & telefoondetectie: actief gedurende het hele spel, BEHALVE tijdens pauze
+  // 5. Anti-spiek: doormelding naar host (alleen actief buiten pauze, met debounce)
   socket.on('player_blurred', ({ playerId, reason }) => {
-    if (gameState === "PAUSED") return; // Tijdens pauze geen meldingen
+    if (gameState === "PAUSED") return;
 
     const player = players[playerId];
     if (!player) return;
 
     const now = Date.now();
-    // Anti-dubbel debounce: minimaal 3.5 seconden tussen twee meldingen van dezelfde persoon
     if (player.lastAlertTime && (now - player.lastAlertTime) < 3500) {
       return;
     }
@@ -181,7 +181,7 @@ io.on('connection', (socket) => {
 
     io.to('host_room').emit('cheat_warning', {
       playerName: player.name,
-      reason: reason || 'app_switch', // 'locked' of 'app_switch'
+      reason: reason || 'app_switch',
       timestamp: new Date().toLocaleTimeString('nl-NL')
     });
   });
@@ -220,7 +220,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. Host: Pauze toggle
+  // 7. Host: Pauze aan/uit
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -234,7 +234,28 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 8. Disconnect
+  // 8. Host: Geheel nieuwe quiz starten (reset)
+  socket.on('reset_quiz', () => {
+    if (socket.id !== hostSocketId) return;
+
+    clearInterval(currentTimer);
+    timeLeft = 0;
+
+    gameState = "LOBBY";
+    currentRoundIndex = 0;
+    currentQuestionIndex = 0;
+
+    Object.values(players).forEach(p => {
+      p.score = 0;
+      p.answered = false;
+      p.submittedAnswer = null;
+    });
+
+    io.emit('quiz_reset');
+    broadcastState();
+  });
+
+  // 9. Disconnect
   socket.on('disconnect', () => {
     if (socket.id !== hostSocketId) {
       const player = Object.values(players).find(p => p.socketId === socket.id);
