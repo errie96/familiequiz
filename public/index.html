@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Familiequiz - Speler</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="card">
+    <!-- Stap 1: Meedoen -->
+    <div id="join-screen">
+      <h1>Familiequiz 🏆</h1>
+      <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
+      <input type="text" id="username" placeholder="Bijv. Mark of Team Blauw" maxlength="20">
+      <button class="btn-primary" id="join-btn">Klaar voor de start</button>
+    </div>
+
+    <!-- Stap 2: Lobby / Wachten -->
+    <div id="lobby-screen" class="hidden">
+      <h2>Welkom, <span id="display-name"></span>!</h2>
+      <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de host de volgende vraag start...</p>
+    </div>
+
+    <!-- Stap 3: Vraag beantwoord / Vraag actief -->
+    <div id="question-screen" class="hidden">
+      <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+        <span class="badge" id="player-round-badge">Ronde</span>
+        <span class="badge" id="player-timer-badge">⏱️ --s</span>
+      </div>
+      <h3 id="player-question-text">Vraag laadt...</h3>
+      
+      <div id="media-container"></div>
+      <div id="options-container"></div>
+      <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8;">Antwoord vastgelegd! Even wachten op de rest...</p>
+    </div>
+
+    <!-- Stap 4: Pauze Scherm -->
+    <div id="pause-screen" class="hidden" style="text-align: center;">
+      <h2>☕ Pauze!</h2>
+      <p>Even tijd voor een hapje, drankje of het buffet.</p>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let myName = "";
+
+    // 1. Anti-spiek detectie (Page Visibility API + Blur)
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        socket.emit("player_blurred", { type: "visibility_hidden" });
+      }
+    });
+    window.addEventListener("blur", () => {
+      socket.emit("player_blurred", { type: "window_blur" });
+    });
+
+    // 2. Join flow
+    document.getElementById("join-btn").addEventListener("click", () => {
+      const name = document.getElementById("username").value;
+      if (name) {
+        socket.emit("join_game", name);
+      }
+    });
+
+    socket.on("joined", (data) => {
+      myName = data.name;
+      document.getElementById("display-name").textContent = myName;
+      document.getElementById("join-screen").classList.add("hidden");
+      document.getElementById("lobby-screen").classList.remove("hidden");
+    });
+
+    // 3. State & Vragen ontvangen
+    socket.on("state_update", (state) => {
+      if (!myName) return;
+
+      if (state.gameState === "PAUSED") {
+        document.getElementById("question-screen").classList.add("hidden");
+        document.getElementById("lobby-screen").classList.add("hidden");
+        document.getElementById("pause-screen").classList.remove("hidden");
+        return;
+      } else {
+        document.getElementById("pause-screen").classList.add("hidden");
+      }
+
+      if (state.gameState === "QUESTION" && state.currentQuestion) {
+        document.getElementById("lobby-screen").classList.add("hidden");
+        document.getElementById("question-screen").classList.remove("hidden");
+        document.getElementById("feedback-text").classList.add("hidden");
+
+        document.getElementById("player-round-badge").textContent = state.roundName;
+        document.getElementById("player-question-text").textContent = state.currentQuestion.question;
+
+        // Media afhandelen
+        const mediaContainer = document.getElementById("media-container");
+        mediaContainer.innerHTML = "";
+        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
+          mediaContainer.innerHTML = `<img src="${state.currentQuestion.imageUrl}" class="media-img" />`;
+        }
+
+        // Opties tonen
+        const optionsContainer = document.getElementById("options-container");
+        optionsContainer.innerHTML = "";
+        state.currentQuestion.options.forEach((opt, idx) => {
+          const btn = document.createElement("button");
+          btn.className = "btn-option";
+          btn.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
+          btn.onclick = () => {
+            socket.emit("submit_answer", idx);
+            btn.style.background = "#2563eb";
+            Array.from(optionsContainer.children).forEach(b => b.disabled = true);
+            document.getElementById("feedback-text").classList.remove("hidden");
+          };
+          optionsContainer.appendChild(btn);
+        });
+      } else if (state.gameState === "SCOREBOARD" || state.gameState === "LOBBY") {
+        document.getElementById("question-screen").classList.add("hidden");
+        document.getElementById("lobby-screen").classList.remove("hidden");
+      }
+    });
+
+    socket.on("timer_tick", (data) => {
+      document.getElementById("player-timer-badge").textContent = `⏱️ ${data.timeLeft}s`;
+    });
+  </script>
+</body>
+</html>
