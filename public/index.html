@@ -24,11 +24,10 @@
       <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de ronde start...</p>
     </div>
 
-    <!-- 3. Vraag Beantwoorden -->
+    <!-- 3. Vraag Beantwoorden (ZONDER timer) -->
     <div id="question-screen" class="hidden">
       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span class="badge" id="player-round-badge">Ronde</span>
-        <span class="badge" id="player-timer-badge">⏱️ --s</span>
       </div>
       <h3 id="player-question-text">Vraag laadt...</h3>
 
@@ -40,11 +39,11 @@
       </button>
 
       <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
-        ✅ Ingediend! Wachten tot iedereen heeft ingediend...
+        ✅ Ingediend! Wachten tot iedereen klaar is...
       </p>
     </div>
 
-    <!-- 4. Gezellig Pauzescherm -->
+    <!-- 4. Pauzescherm -->
     <div id="pause-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
       <div style="font-size: 54px; animation: bounce 2s infinite;">☕ 🍕 🍷</div>
       <h2 style="font-size: 26px; margin: 12px 0; color: #f59e0b;">Tijd voor Pauze!</h2>
@@ -59,6 +58,13 @@
         </p>
       </div>
       <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de host pauze beëindigt.</small>
+    </div>
+
+    <!-- 5. Einde Quiz Scherm -->
+    <div id="end-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
+      <div style="font-size: 54px;">🏁 🏆</div>
+      <h2 style="font-size: 26px; margin: 12px 0; color: #38bdf8;">De quiz is afgelopen!</h2>
+      <p style="color: #cbd5e1;">Kijk nu naar het grote scherm voor de juiste antwoorden en de ontknoping van de winnaar!</p>
     </div>
 
   </div>
@@ -76,27 +82,23 @@
     let playerName = localStorage.getItem("quiz_player_name") || "";
     let selectedOptionIndex = null;
     let hasSubmittedCurrent = false;
-    let isPausedState = false;
+    let currentGameState = "LOBBY";
 
-    // --- Screen Wake Lock API integratie ---
+    // Wake Lock
     let wakeLock = null;
-
     async function requestWakeLock() {
       try {
         if ('wakeLock' in navigator) {
           wakeLock = await navigator.wakeLock.request('screen');
-          wakeLock.addEventListener('release', () => {
-            wakeLock = null;
-          });
+          wakeLock.addEventListener('release', () => { wakeLock = null; });
         }
       } catch (err) {}
     }
 
-    // --- Detectie verlaten quiz / spiekalarm ---
+    // Spiekdetectie: alleen actief als de quiz daadwerkelijk bezig is (niet in LOBBY of PAUSED)
     let lastNotifyTime = 0;
-
     function notifyLeftApp(reason) {
-      if (!playerId || isPausedState) return;
+      if (!playerId || currentGameState === "LOBBY" || currentGameState === "PAUSED") return;
 
       const now = Date.now();
       if (now - lastNotifyTime < 3000) return;
@@ -116,7 +118,7 @@
     window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
     window.addEventListener("blur", () => notifyLeftApp("app_switch"));
 
-    // --- Sessie herstel & Aanmelden ---
+    // Connect & Sessieherstel
     socket.on("connect", () => {
       if (playerId && playerName) {
         socket.emit("init_player", { playerId, name: playerName });
@@ -124,7 +126,6 @@
       }
     });
 
-    // Quiz gereset door de host: wis alle lokale data en ga terug naar het inlogscherm
     socket.on("quiz_reset", () => {
       localStorage.removeItem("quiz_player_id");
       localStorage.removeItem("quiz_player_name");
@@ -137,6 +138,7 @@
       document.getElementById("question-screen").classList.add("hidden");
       document.getElementById("lobby-screen").classList.add("hidden");
       document.getElementById("pause-screen").classList.add("hidden");
+      document.getElementById("end-screen").classList.add("hidden");
       document.getElementById("join-screen").classList.remove("hidden");
     });
 
@@ -170,7 +172,7 @@
       document.getElementById("lobby-screen").classList.remove("hidden");
     }
 
-    // --- Antwoord Indienen ---
+    // Indienen
     const submitBtn = document.getElementById("submit-btn");
     submitBtn.addEventListener("click", () => {
       if (selectedOptionIndex !== null && !hasSubmittedCurrent) {
@@ -186,18 +188,25 @@
     const funFacts = [
       "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
       "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
-      "Wist je dat de familiequizzen statistisch gezien voor 80% gezelligheid en 20% fanatiek kibbelen zorgen?",
-      "Neem gerust nog een drankje; de quizmaster houdt toch alles bij.",
-      "Tactische tip: de koploper voelt nu de meeste druk!"
+      "Neem gerust nog een drankje; de quizmaster houdt de antwoorden geheim tot het einde!",
+      "Tactische tip: niemand weet nog wie er voor staat..."
     ];
 
-    // --- State synchronisatie ---
+    // State synchronisatie
     socket.on("state_update", (state) => {
       if (!playerId) return;
 
-      isPausedState = (state.gameState === "PAUSED");
+      currentGameState = state.gameState;
 
-      if (isPausedState) {
+      if (state.gameState === "END") {
+        document.getElementById("question-screen").classList.add("hidden");
+        document.getElementById("lobby-screen").classList.add("hidden");
+        document.getElementById("pause-screen").classList.add("hidden");
+        document.getElementById("end-screen").classList.remove("hidden");
+        return;
+      }
+
+      if (state.gameState === "PAUSED") {
         document.getElementById("question-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.add("hidden");
         document.getElementById("pause-screen").classList.remove("hidden");
@@ -248,16 +257,12 @@
           optionsContainer.appendChild(btn);
         });
 
-      } else if (state.gameState === "SCOREBOARD" || state.gameState === "LOBBY") {
+      } else if (state.gameState === "WAITING_NEXT" || state.gameState === "LOBBY") {
         selectedOptionIndex = null;
         hasSubmittedCurrent = false;
         document.getElementById("question-screen").classList.add("hidden");
         document.getElementById("lobby-screen").classList.remove("hidden");
       }
-    });
-
-    socket.on("timer_tick", (data) => {
-      document.getElementById("player-timer-badge").textContent = `⏱️ ${data.timeLeft}s`;
     });
   </script>
 </body>
