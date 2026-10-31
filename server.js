@@ -155,7 +155,6 @@ io.on('connection', (socket) => {
 
       broadcastState();
 
-      // Alleen wachten op verbonden/actieve spelers
       const activePlayers = Object.values(players).filter(p => p.connected);
       const allDone = activePlayers.length > 0 && activePlayers.every(p => p.answered);
 
@@ -234,7 +233,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 8. Host: Geheel nieuwe quiz starten (reset)
+  // 8. Host: Geheel nieuwe quiz starten (volledige reset inclusief spelersgeheugen)
   socket.on('reset_quiz', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -245,11 +244,8 @@ io.on('connection', (socket) => {
     currentRoundIndex = 0;
     currentQuestionIndex = 0;
 
-    Object.values(players).forEach(p => {
-      p.score = 0;
-      p.answered = false;
-      p.submittedAnswer = null;
-    });
+    // Spelerslijst helemaal leeggooien
+    players = {};
 
     io.emit('quiz_reset');
     broadcastState();
