@@ -7,7 +7,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
-<body style="max-width: 900px; margin: 0 auto; padding: 20px;">
+<body style="max-width: 960px; margin: 0 auto; padding: 20px;">
   <div class="card" style="max-width: 100%;">
     
     <!-- Bedieningsbalk -->
@@ -40,7 +40,7 @@
       <p style="color: #94a3b8;">Alle telefoons staan op het pauzescherm. Meldingen zijn tijdelijk uitgeschakeld.</p>
     </div>
 
-    <!-- Huidige Vraagweergave (ZONDER timer) -->
+    <!-- Huidige Vraagweergave -->
     <div id="host-main-view">
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
         <span class="badge" id="host-round-title">Familiequiz</span>
@@ -52,15 +52,18 @@
       <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
     </div>
 
-    <!-- Eindoverzicht / Antwoorden onthulling -->
+    <!-- Eindoverzicht: Alle vragen + Antwoorden per Team -->
     <div id="host-end-view" class="hidden" style="margin-top: 20px;">
-      <h2 style="color: #38bdf8; text-align: center;">🏆 Einduitslag & Juiste Antwoorden 🏆</h2>
-      <div id="final-answers-list" style="margin-top: 16px;"></div>
+      <h2 style="color: #38bdf8; text-align: center; margin-bottom: 8px;">🏁 Quiz Afgelopen! 🏁</h2>
+      <p style="text-align: center; color: #cbd5e1; margin-bottom: 20px;">
+        Bekijk hieronder alle antwoorden per team, of open <a href="/scoreboard.html" target="_blank" style="color: #f59e0b; font-weight: bold; text-decoration: underline;">/scoreboard.html</a> op het grote scherm voor de spannende ontknoping van onder naar boven!
+      </p>
+      <div id="final-answers-list"></div>
     </div>
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
-    <!-- Deelnemerslijst met Live Ingediend Status (Geen scores) -->
+    <!-- Deelnemerslijst met Live Status -->
     <div>
       <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
       <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Scorebord bekijken: <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
@@ -168,7 +171,7 @@
       }, 7000);
     });
 
-    // Melding als iedereen heeft ingediend (zonder antwoord te tonen!)
+    // Iedereen ingediend
     socket.on("all_submitted", () => {
       document.getElementById("submission-status-badge").textContent = "✅ Iedereen heeft ingediend!";
       document.getElementById("submission-status-badge").style.background = "#22c55e";
@@ -252,14 +255,14 @@
       renderPlayerStatuses(state.playerList, state.gameState);
     });
 
-    // Eindoverzicht: toon alle vragen en het juiste antwoord
+    // Uitslagenoverzicht inclusief keuzes per team
     socket.on("game_over", (data) => {
       const container = document.getElementById("final-answers-list");
       container.innerHTML = "";
 
       data.overview.forEach((round) => {
         const roundTitle = document.createElement("h3");
-        roundTitle.style.marginTop = "20px";
+        roundTitle.style.marginTop = "24px";
         roundTitle.style.color = "#f59e0b";
         roundTitle.textContent = round.roundName;
         container.appendChild(roundTitle);
@@ -267,16 +270,39 @@
         round.questions.forEach((q, idx) => {
           const card = document.createElement("div");
           card.style.background = "#0f172a";
-          card.style.padding = "12px";
+          card.style.padding = "16px";
           card.style.borderRadius = "8px";
-          card.style.marginTop = "8px";
+          card.style.marginTop = "12px";
+          card.style.border = "1px solid #334155";
 
-          const correctLetter = ['A', 'B', 'C', 'D'][q.correctAnswer];
+          const letters = ['A', 'B', 'C', 'D'];
+          const correctLetter = letters[q.correctAnswer];
           const correctText = q.options[q.correctAnswer];
 
+          // Bouw antwoorden van elk team
+          let playerAnswersHtml = q.playerResponses.map(resp => {
+            const letter = resp.chosen !== null ? letters[resp.chosen] : "-";
+            const optText = resp.chosen !== null ? q.options[resp.chosen] : "Geen antwoord";
+            if (resp.isCorrect) {
+              return `<li style="padding: 6px 0; border-bottom: 1px dashed #1e293b; color: #4ade80;">
+                <b>${resp.playerName}</b>: [${letter}] ${optText} &nbsp;<b>✓ (+10 pt)</b>
+              </li>`;
+            } else {
+              return `<li style="padding: 6px 0; border-bottom: 1px dashed #1e293b; color: #f87171;">
+                <b>${resp.playerName}</b>: [${letter}] ${optText} &nbsp;<b>✗</b>
+              </li>`;
+            }
+          }).join("");
+
           card.innerHTML = `
-            <div><b>Vraag ${idx + 1}:</b> ${q.question}</div>
-            <div style="color: #4ade80; margin-top: 6px;">👉 <b>Juiste antwoord:</b> [${correctLetter}] ${correctText}</div>
+            <div style="font-size: 17px; margin-bottom: 6px;"><b>Vraag ${idx + 1}:</b> ${q.question}</div>
+            <div style="color: #38bdf8; margin-bottom: 12px;">👉 <b>Juiste antwoord:</b> [${correctLetter}] ${correctText}</div>
+            <div style="background: #1e293b; padding: 10px 14px; border-radius: 6px;">
+              <small style="color: #94a3b8; font-weight: bold; text-transform: uppercase;">Antwoorden per team:</small>
+              <ul style="margin-top: 6px; list-style: none;">
+                ${playerAnswersHtml}
+              </ul>
+            </div>
           `;
           container.appendChild(card);
         });
