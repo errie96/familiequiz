@@ -1,269 +1,64 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Familiequiz - Speler</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="/socket.io/socket.io.js"></script>
-</head>
-<body>
-  <div class="card">
-    
-    <!-- 1. Inloggen -->
-    <div id="join-screen">
-      <h1>Familiequiz 🏆</h1>
-      <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
-      <input type="text" id="username" placeholder="Bijv. Mark of Team Rood" maxlength="20">
-      <button class="btn-primary" id="join-btn">Klaar voor de start</button>
-    </div>
+<small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
+</div>
+<div style="display: flex; gap: 10px;">
+        <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Herstart Quiz</button>
+<button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 18px; margin: 0;">☕ Pauzeer</button>
+<button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
+</div>
+</div>
 
-    <!-- 2. Wachtkamer / Lobby -->
-    <div id="lobby-screen" class="hidden">
-      <h2>Welkom, <span id="display-name"></span>!</h2>
-      <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de ronde start...</p>
-    </div>
+    <!-- Live Meldingen Container (slechts 1 per gebeurtenis) -->
+    <!-- Live Meldingen Container -->
+<div id="cheat-alerts"></div>
 
-    <!-- 3. Vraag Beantwoorden (ZONDER timer) -->
-    <div id="question-screen" class="hidden">
-      <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-        <span class="badge" id="player-round-badge">Ronde</span>
-      </div>
-      <h3 id="player-question-text">Vraag laadt...</h3>
+<!-- QR Code & Deelnemen -->
+@@ -124,11 +125,17 @@ <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
+// 5. Knoppen
+const btnNext = document.getElementById("btn-next");
+const btnPause = document.getElementById("btn-pause");
+    const btnReset = document.getElementById("btn-reset");
 
-      <div id="media-container"></div>
-      <div id="options-container"></div>
-
-      <button id="submit-btn" class="btn-primary hidden" style="margin-top: 16px; background: #22c55e;">
-        Antwoord Indienen 📤
-      </button>
-
-      <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
-        ✅ Ingediend! Wachten tot iedereen klaar is...
-      </p>
-    </div>
-
-    <!-- 4. Pauzescherm -->
-    <div id="pause-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
-      <div style="font-size: 54px; animation: bounce 2s infinite;">☕ 🍕 🍷</div>
-      <h2 style="font-size: 26px; margin: 12px 0; color: #f59e0b;">Tijd voor Pauze!</h2>
-      <p style="color: #cbd5e1; font-size: 16px; line-height: 1.5;">
-        Even de glazen bijvullen, wat lekkers pakken en bijkletsen.
-      </p>
-
-      <div style="background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 20px; border: 1px dashed #475569;">
-        <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
-        <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;">
-          "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond."
-        </p>
-      </div>
-      <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de host pauze beëindigt.</small>
-    </div>
-
-    <!-- 5. Einde Quiz Scherm -->
-    <div id="end-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
-      <div style="font-size: 54px;">🏁 🏆</div>
-      <h2 style="font-size: 26px; margin: 12px 0; color: #38bdf8;">De quiz is afgelopen!</h2>
-      <p style="color: #cbd5e1;">Kijk nu naar het grote scherm voor de juiste antwoorden en de ontknoping van de winnaar!</p>
-    </div>
-
-  </div>
-
-  <style>
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
-    }
-  </style>
-
-  <script>
-    const socket = io();
-    let playerId = localStorage.getItem("quiz_player_id") || null;
-    let playerName = localStorage.getItem("quiz_player_name") || "";
-    let selectedOptionIndex = null;
-    let hasSubmittedCurrent = false;
-    let currentGameState = "LOBBY";
-
-    // Wake Lock
-    let wakeLock = null;
-    async function requestWakeLock() {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-          wakeLock.addEventListener('release', () => { wakeLock = null; });
-        }
-      } catch (err) {}
-    }
-
-    // Spiekdetectie: alleen actief als de quiz daadwerkelijk bezig is (niet in LOBBY of PAUSED)
-    let lastNotifyTime = 0;
-    function notifyLeftApp(reason) {
-      if (!playerId || currentGameState === "LOBBY" || currentGameState === "PAUSED") return;
-
-      const now = Date.now();
-      if (now - lastNotifyTime < 3000) return;
-      lastNotifyTime = now;
-
-      socket.emit("player_blurred", { playerId, reason });
-    }
-
-    document.addEventListener("visibilitychange", async () => {
-      if (document.hidden) {
-        notifyLeftApp("locked");
-      } else {
-        await requestWakeLock();
+btnNext.addEventListener("click", () => socket.emit("next_question"));
+btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
+    btnReset.addEventListener("click", () => {
+      if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden op 0 gezet en we gaan terug naar de lobby.")) {
+        socket.emit("reset_quiz");
       }
     });
 
-    window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
-    window.addEventListener("blur", () => notifyLeftApp("app_switch"));
+    // 6. Enkele duidelijke melding (Onderscheid tussen Vergrendeld en Andere App)
+    // 6. Meldingen
+socket.on("cheat_warning", (data) => {
+const isLocked = data.reason === "locked";
+playAlarmSound(isLocked);
+@@ -138,18 +145,17 @@ <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
+alert.className = "alert-box";
 
-    // Connect & Sessieherstel
-    socket.on("connect", () => {
-      if (playerId && playerName) {
-        socket.emit("init_player", { playerId, name: playerName });
-        requestWakeLock();
-      }
-    });
+if (isLocked) {
+        alert.style.backgroundColor = "#d97706"; // Amber oranje
+        alert.style.backgroundColor = "#d97706";
+alert.style.border = "2px solid #fbbf24";
+alert.innerHTML = `🔒 <b>TELEFOON VERGRENDELD:</b> <u>${data.playerName}</u> vergrendelde het scherm om ${data.timestamp}`;
+} else {
+        alert.style.backgroundColor = "#dc2626"; // Rood
+        alert.style.backgroundColor = "#dc2626";
+alert.style.border = "2px solid #f87171";
+alert.innerHTML = `🚨 <b>ANDERE APP GEOPEND:</b> <u>${data.playerName}</u> verliet de quiz om ${data.timestamp}!`;
+}
 
-    socket.on("quiz_reset", () => {
-      localStorage.removeItem("quiz_player_id");
-      localStorage.removeItem("quiz_player_name");
-      playerId = null;
-      playerName = "";
-      selectedOptionIndex = null;
-      hasSubmittedCurrent = false;
+container.prepend(alert);
 
-      document.getElementById("username").value = "";
-      document.getElementById("question-screen").classList.add("hidden");
-      document.getElementById("lobby-screen").classList.add("hidden");
-      document.getElementById("pause-screen").classList.add("hidden");
-      document.getElementById("end-screen").classList.add("hidden");
-      document.getElementById("join-screen").classList.remove("hidden");
-    });
-
-    document.getElementById("join-btn").addEventListener("click", () => {
-      const name = document.getElementById("username").value.trim();
-      if (name) {
-        requestWakeLock();
-        socket.emit("init_player", { playerId: null, name });
-      }
-    });
-
-    socket.on("joined", (data) => {
-      playerId = data.playerId;
-      playerName = data.name;
-      localStorage.setItem("quiz_player_id", playerId);
-      localStorage.setItem("quiz_player_name", playerName);
-      showLobby();
-    });
-
-    socket.on("session_restored", (data) => {
-      playerId = data.playerId;
-      playerName = data.name;
-      hasSubmittedCurrent = data.answered;
-      showLobby();
-      requestWakeLock();
-    });
-
-    function showLobby() {
-      document.getElementById("display-name").textContent = playerName;
-      document.getElementById("join-screen").classList.add("hidden");
-      document.getElementById("lobby-screen").classList.remove("hidden");
-    }
-
-    // Indienen
-    const submitBtn = document.getElementById("submit-btn");
-    submitBtn.addEventListener("click", () => {
-      if (selectedOptionIndex !== null && !hasSubmittedCurrent) {
-        hasSubmittedCurrent = true;
-        socket.emit("submit_answer", { playerId, answerIndex: selectedOptionIndex });
-        submitBtn.classList.add("hidden");
-        const options = document.getElementById("options-container").children;
-        Array.from(options).forEach(b => b.disabled = true);
-        document.getElementById("feedback-text").classList.remove("hidden");
-      }
-    });
-
-    const funFacts = [
-      "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
-      "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
-      "Neem gerust nog een drankje; de quizmaster houdt de antwoorden geheim tot het einde!",
-      "Tactische tip: niemand weet nog wie er voor staat..."
-    ];
-
-    // State synchronisatie
-    socket.on("state_update", (state) => {
-      if (!playerId) return;
-
-      currentGameState = state.gameState;
-
-      if (state.gameState === "END") {
-        document.getElementById("question-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("pause-screen").classList.add("hidden");
-        document.getElementById("end-screen").classList.remove("hidden");
-        return;
-      }
-
-      if (state.gameState === "PAUSED") {
-        document.getElementById("question-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("pause-screen").classList.remove("hidden");
-        document.getElementById("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
-        return;
-      } else {
-        document.getElementById("pause-screen").classList.add("hidden");
-      }
-
-      if (state.gameState === "QUESTION" && state.currentQuestion) {
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("question-screen").classList.remove("hidden");
-
-        document.getElementById("player-round-badge").textContent = state.roundName;
-        document.getElementById("player-question-text").textContent = state.currentQuestion.question;
-
-        const me = state.playerList.find(p => p.playerId === playerId);
-        if (me && me.answered) {
-          hasSubmittedCurrent = true;
-          submitBtn.classList.add("hidden");
-          document.getElementById("feedback-text").classList.remove("hidden");
-        } else {
-          hasSubmittedCurrent = false;
-          document.getElementById("feedback-text").classList.add("hidden");
-        }
-
-        const mediaContainer = document.getElementById("media-container");
-        mediaContainer.innerHTML = "";
-        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
-          mediaContainer.innerHTML = `<img src="${state.currentQuestion.imageUrl}" class="media-img" />`;
-        }
-
-        const optionsContainer = document.getElementById("options-container");
-        optionsContainer.innerHTML = "";
-        state.currentQuestion.options.forEach((opt, idx) => {
-          const btn = document.createElement("button");
-          btn.className = "btn-option";
-          btn.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
-          if (hasSubmittedCurrent) btn.disabled = true;
-
-          btn.onclick = () => {
-            if (hasSubmittedCurrent) return;
-            selectedOptionIndex = idx;
-            Array.from(optionsContainer.children).forEach(b => b.style.background = "#334155");
-            btn.style.background = "#2563eb";
-            submitBtn.classList.remove("hidden");
-          };
-          optionsContainer.appendChild(btn);
-        });
-
-      } else if (state.gameState === "WAITING_NEXT" || state.gameState === "LOBBY") {
-        selectedOptionIndex = null;
-        hasSubmittedCurrent = false;
-        document.getElementById("question-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.remove("hidden");
-      }
-    });
-  </script>
-</body>
-</html>
+      // Verdwijnt automatisch na 7 seconden
+setTimeout(() => {
+alert.style.transition = "opacity 0.4s ease";
+alert.style.opacity = "0";
+@@ -170,6 +176,9 @@ <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
+if (state.gameState === "LOBBY") {
+lobbyBox.classList.remove("hidden");
+btnNext.textContent = "Start Quiz 🚀";
+        document.getElementById("host-question").textContent = "Wachten op de start...";
+        mediaBox.innerHTML = "";
+        optionsBox.innerHTML = "";
+} else {
+lobbyBox.classList.add("hidden");
+btnNext.textContent = "Volgende Vraag ➡️";
