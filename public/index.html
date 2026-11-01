@@ -678,22 +678,20 @@
           return noop;
         }
         box.append(el("p", "bigtxt", v.wager !== null ? `Inzet: ${v.wager}` : ""), el("h3", "", v.question));
+        box.append(el("p", "note", `Schat een getal${v.unit ? " (in " + v.unit + ")" : ""}. Het team dat er het dichtstbij zit wint de inzet!`));
         const canAnswer = v.isBase && v.status === "question" && !v.answered;
-        let selected = v.answered ? v.given : null;
-        const opts = el("div");
-        const buttons = v.options.map((opt, i) => {
-          const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
-          b.disabled = !canAnswer;
-          b.onclick = () => { selected = i; paint(); };
-          opts.append(b);
-          return b;
+        const gi = el("input"); gi.type = "text"; gi.inputMode = "decimal"; gi.placeholder = "Jullie schatting";
+        gi.disabled = !canAnswer;
+        if (v.answered) gi.value = String(v.given).replace(".", ",");
+        const err = el("p", "bad hidden"); err.style.textAlign = "center";
+        const send = submitBtn("Antwoord indienen 📤", () => {
+          const n = Number(String(gi.value).replace(",", ".").replace(/[^0-9.\-]/g, ""));
+          if (gi.value.trim() === "" || !Number.isFinite(n)) { err.textContent = "Vul een getal in."; err.classList.remove("hidden"); return; }
+          socket.emit("submit_answer", { stepId: v.id, value: n }, (res) => { if (!res || !res.ok) { err.textContent = "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
         });
-        const send = submitBtn("Antwoord indienen 📤", () => { if (selected !== null) socket.emit("submit_answer", { stepId: v.id, value: selected }, () => {}); });
-        function paint() { buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; }); send.classList.toggle("hidden", !canAnswer || selected === null); }
-        paint();
-        box.append(opts, send);
-        if (v.result) box.append(el("p", "bigtxt " + (v.result.ok ? "good" : "bad"), v.result.ok ? `✔ Goed! +${v.result.delta} punten` : `✘ Fout! ${v.result.delta} punten`));
-        else if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is…"));
+        send.classList.toggle("hidden", !canAnswer);
+        box.append(gi, send, err);
+        if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is…"));
         else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in."));
         return noop;
       }

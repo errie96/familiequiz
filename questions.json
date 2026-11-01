@@ -1361,15 +1361,10 @@
   }
  ],
  "final": {
-  "category": "Geschiedenis",
-  "question": "In welk jaar viel de Berlijnse Muur?",
-  "options": [
-   "1987",
-   "1989",
-   "1991",
-   "1993"
-  ],
-  "answer": 1,
-  "explanation": "De Muur viel op 9 november 1989."
+  "category": "Schatting",
+  "question": "Hoe lang is de Afsluitdijk?",
+  "unit": "kilometer",
+  "answer": 32,
+  "explanation": "De Afsluitdijk is 32 kilometer lang."
  }
 }

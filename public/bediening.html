@@ -54,10 +54,10 @@
       <div class="row">
         <button id="btn-prev" class="btn-option" style="text-align:center;">⬅️ Vorige</button>
         <button id="btn-pause" class="btn-pause">☕ Pauze</button>
-        <button id="btn-standings" class="btn-option" style="text-align:center; background:#0ea5e9;">📊 Stand</button>
+        <button id="btn-standings" class="btn-option hidden" style="text-align:center; background:#0ea5e9;">📊 Stand</button>
       </div>
       <div class="row">
-        <button id="btn-review" class="btn-option" style="text-align:center;">🔍 Nakijken (deze ronde)</button>
+        <button id="btn-review" class="btn-option hidden" style="text-align:center;">🔍 Nakijken (alles)</button>
         <button id="btn-time" class="btn-option hidden" style="text-align:center;">⏱️ +10 sec</button>
       </div>
     </div>
@@ -159,19 +159,17 @@
 
     // ---------------- Spiekmeldingen (blijven staan tot de speler terug is) ----------------
     socket.on("cheat_beep", (a) => {
-      const isLocked = a.reason === "locked";
-      QuizFX.alarm(isLocked);
-      if (navigator.vibrate) navigator.vibrate(isLocked ? 150 : [150, 80, 150]);
+      QuizFX.alarm(false);
+      if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
     });
     function renderAlerts(list) {
       const box = $("cheat-alerts");
       box.replaceChildren();
       (list || []).forEach((a) => {
         const d = el("div", "alert-box");
-        const isLocked = a.reason === "locked";
-        d.style.backgroundColor = isLocked ? "#d97706" : "#dc2626";
-        d.style.border = isLocked ? "2px solid #fbbf24" : "2px solid #f87171";
-        d.append(isLocked ? "🔒 Scherm vergrendeld: " : "🚨 Andere app: ", Object.assign(el("u"), { textContent: `${a.teamName} · ${a.label}` }), ` sinds ${a.timestamp} (tik om te verbergen)`);
+        d.style.backgroundColor = "#dc2626";
+        d.style.fontSize = "12px"; d.style.padding = "6px 10px"; d.style.margin = "0 0 4px";
+        d.append("⚠️ ", Object.assign(el("u"), { textContent: `${a.teamName} · ${a.label}` }), ` : scherm vergrendeld of app verlaten (${a.timestamp}, tik om te verbergen)`);
         d.onclick = () => socket.emit("alert_dismiss", { key: a.key });
         box.appendChild(d);
       });
@@ -184,7 +182,7 @@
     $("btn-pause").onclick = () => socket.emit("toggle_pause");
     $("btn-standings").onclick = () => socket.emit("toggle_standings");
     $("btn-prev").onclick = () => socket.emit("prev_step");
-    $("btn-review").onclick = () => socket.emit("review_open", { scope: S && S.phase === "END" ? "all" : null });
+    $("btn-review").onclick = () => socket.emit("review_open");
     $("btn-time").onclick = () => socket.emit("add_time");
     $("rv-prev").onclick = () => socket.emit("review_nav", { dir: -1 });
     $("rv-next").onclick = () => socket.emit("review_nav", { dir: 1 });
@@ -330,13 +328,10 @@
 
       if (p.type === "final") {
         box.append(el("h3", "", "Slotvraag"));
-        if (p.status !== "wager") {
-          box.append(el("p", "", p.question));
-          p.options.forEach((o, i) => { const r = el("div", "opt" + (i === p.answer ? " right" : "")); r.append(el("span", "", `${L(i)}: ${o}`), el("span", "", i === p.answer ? "✅" : "")); box.append(r); });
-        }
+        box.append(el("p", "", p.question), el("p", "", `Goede antwoord: ${p.answer}${p.unit ? " " + p.unit : ""}`));
         p.teams.forEach((t) => {
           const row = el("div", "line");
-          row.append(el("span", "", t.name), el("span", "muted", `inzet ${t.wager ?? "–"} / max ${t.max}${t.answer !== null ? " · antwoord " + L(t.answer) : ""}`));
+          row.append(el("span", "", t.name), el("span", "muted", `inzet ${t.wager ?? "–"} / max ${t.max}${t.answer !== null ? " · gok " + t.answer : ""}`));
           box.append(row);
         });
       }
@@ -406,9 +401,8 @@
       $("btn-pause").disabled = state.phase !== "PLAY";
       $("btn-prev").disabled = state.phase !== "PLAY";
       $("btn-standings").textContent = state.showStandings ? "↩ Terug" : "📊 Stand";
-      $("btn-standings").disabled = state.phase === "LOBBY";
-      $("btn-review").textContent = state.phase === "END" ? "🔍 Nakijken (alles)" : "🔍 Nakijken (deze ronde)";
-      $("btn-review").disabled = state.phase === "LOBBY";
+      $("btn-standings").classList.toggle("hidden", state.phase !== "END");
+      $("btn-review").classList.toggle("hidden", state.phase !== "END");
       $("btn-time").classList.toggle("hidden", !(state.step && state.step.timer));
       $("status-line").textContent = state.phase === "LOBBY" ? `${state.teams.length} team(s) aangemeld`
         : state.phase === "END" ? "De quiz is afgelopen"

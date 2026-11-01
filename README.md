@@ -16,13 +16,13 @@ Teams spelen op hun telefoon, de vragen staan op de tv en de quizmaster bedient 
 
 ## Verloop
 Testvragen (tellen niet) → "Hier begint de echte quiz" → ronde 1 t/m 8 → joker inzetten → slotvraag → ontknoping → nakijken.
-Na elke ronde komt een rondeuitslag; met **Nakijken** zie je per team het antwoord met groen vinkje of rood kruis.
+Tijdens het spel zijn er **geen uitslagen** te zien. Pas als alle rondes klaar zijn volgen de ontknoping, het overzicht per ronde en **Nakijken**: per team het antwoord met groen vinkje of rood kruis.
 
 ## Punten
 Elke ronde is evenveel waard (`roundPoints`, standaard 100), ongeacht het aantal vragen of de grootte van het team.
 Een team scoort dus een percentage van het maximum. Per ronde te overschrijven met `"points"` in questions.json.
 - **Joker**: één per team, na ronde 8. De basistelefoon kiest een ronde; die ronde telt dubbel.
-- **Slotvraag**: inzet 0 tot je totaal. Goed = inzet erbij, fout = inzet kwijt.
+- **Slotvraag**: een open vraag waarop elk team een getal schat (`answer`, optioneel `unit` en `tolerance`). Eerst zet je 0 tot je totaal in. Het team dat het dichtstbij zit (bij gelijkspel allemaal; met `tolerance` iedereen binnen die marge) krijgt de inzet erbij, alle andere teams zijn hun inzet kwijt.
 - **Foto blur** (`blurPoints`): hoe eerder goed, hoe meer punten. **Prijzen** (`pricePoints`): dichtstbij krijgt het meest.
 
 ## Rondes (questions.json)
@@ -33,7 +33,7 @@ Een team scoort dus een percentage van het maximum. Per ronde te overschrijven m
 | `memory` | `items` = wat op het bord stond; het hele team typt mee, quizmaster keurt bij |
 | `hitster` | `songs` met `title`, `artist`, `year`, optioneel `audio` en `start: true` (startkaarten) |
 | `price` | `items` met `now` en `ago` (prijs nu en `agoYears` jaar geleden) |
-| `draw` | `words` (met optioneel `alt` voor andere goede spellingen); teams moeten uit minstens 2 spelers bestaan |
+| `draw` | de tekenaar tekent op de eigen telefoon, de streken verschijnen live bij de teamgenoten; `words` (met optioneel `alt` voor andere goede spellingen); teams moeten uit minstens 2 spelers bestaan |
 | `thirty` | `cards`: lijsten van 5 woorden |
 | `logo` | foto's met een deel afgedekt (`hide`, standaard 0.5) |
 

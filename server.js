@@ -272,14 +272,22 @@ const finalStep = () => steps.find((s) => s.kind === 'final') || null;
 function totalBeforeFinal(team) {
   return rounds.reduce((sum, r) => sum + roundScore(team, r) * jokerFactor(team, r), 0);
 }
+// Slotvraag (open getal): het team dat het dichtstbij zit wint (gelijkspel: allemaal); met "tolerance" iedereen binnen die marge
+function finalWinners(step) {
+  const s = ss(step);
+  const d = Object.entries(s.answers).filter(([id, v]) => teams[id] && Number.isFinite(v)).map(([id, v]) => [id, Math.abs(v - step.answer)]);
+  if (!d.length) return new Set();
+  if (step.tolerance > 0) return new Set(d.filter((x) => x[1] <= step.tolerance).map((x) => x[0]));
+  const best = Math.min(...d.map((x) => x[1]));
+  return new Set(d.filter((x) => x[1] <= best + 1e-9).map((x) => x[0]));
+}
 function finalDelta(team) {
   const f = finalStep();
   if (!f) return 0;
   const s = ss(f);
   if (s.status !== 'revealed') return 0;
   const wager = s.wagers[team.teamId] || 0;
-  const a = s.answers[team.teamId];
-  return a !== undefined && a === f.answer ? wager : -wager;
+  return finalWinners(f).has(team.teamId) ? wager : -wager;
 }
 const scoreOf = (team) => totalBeforeFinal(team) + finalDelta(team);
 
@@ -652,6 +660,20 @@ function reviewPages(scope) {
       }
     }
   }
+  const f = finalStep();
+  if (scope === 'all' && f && ss(f).status === 'revealed') {
+    const fs2 = ss(f);
+    const win = finalWinners(f);
+    pages.push({
+      title: `Slotvraag: ${f.question}`, subtitle: `Goede antwoord: ${f.answer}${f.unit ? ' ' + f.unit : ''}`,
+      columns: ['Team', 'Inzet', 'Gok', 'Verschil', 'Punten'],
+      rows: teamList.map((t) => {
+        const a = fs2.answers[t.teamId];
+        const d = finalDelta(t);
+        return [t.name, String(fs2.wagers[t.teamId] || 0), a === undefined ? '–' : String(a), a === undefined ? '–' : String(Math.abs(a - f.answer)), { t: (d >= 0 ? '+' : '') + d, ok: win.has(t.teamId) }];
+      })
+    });
+  }
   return pages;
 }
 
@@ -742,7 +764,7 @@ function publicStep(step) {
       return {
         ...base, variant: step.variant, test: step.test, category: step.category, question: step.question, options: step.options, media: step.media,
         status: s.status, blurStep: s.blurStep, blurMax: settings.blurPoints.length - 1, blurPoints: step.variant === 'blur' ? settings.blurPoints : null, hide: step.hide,
-        answer: showAnswer ? step.answer : null, results: showAnswer ? mcResultTeams(step) : null, explanation: showAnswer ? step.explanation : null,
+        answer: showAnswer ? step.answer : null, results: null, explanation: showAnswer ? step.explanation : null,
         teams: teamChips(step), timer: s.status === 'open' ? timerInfo('mc') : null
       };
     }
@@ -761,16 +783,13 @@ function publicStep(step) {
         teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, cards: ensureTimeline(t).length, answered: hasAnswered(t, step), connected: teamConnected(t) })) };
       if (s.status === 'revealed') {
         out.song = { title: song.title, artist: song.artist, year: song.year };
-        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, ok: s.results && s.results[t.teamId] ? s.results[t.teamId].ok : null }));
       }
       return out;
     }
     case 'price': {
       const out = { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, teams: teamChips(step) };
       if (s.status === 'revealed') {
-        const aw = priceAwards(step);
         out.truth = { now: step.now, ago: step.ago };
-        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, now: aw[t.teamId] && aw[t.teamId].now, ago: aw[t.teamId] && aw[t.teamId].ago }));
       }
       return out;
     }
@@ -805,13 +824,9 @@ function publicStep(step) {
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined })) };
     case 'final': {
-      const out = { ...base, status: s.status, category: step.category, wagered: Object.keys(s.wagers).filter((id) => teams[id]).length, teamCount: Object.keys(teams).length, teams: teamChips(step) };
-      if (s.status !== 'wager') { out.question = step.question; out.options = step.options; out.media = step.media; }
-      if (s.status === 'revealed') {
-        out.answer = step.answer;
-        out.explanation = step.explanation;
-        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] || 0, ok: s.answers[t.teamId] === step.answer, answered: s.answers[t.teamId] !== undefined, delta: finalDelta(t) }));
-      }
+      const out = { ...base, status: s.status, category: step.category, unit: step.unit, teams: teamChips(step) };
+      if (s.status !== 'wager') { out.question = step.question; out.media = step.media; }
+      if (s.status === 'revealed') { out.answer = step.answer; out.explanation = step.explanation; }
       return out;
     }
     default:
@@ -864,7 +879,7 @@ function hostPanel(step) {
       return { type: 'joker', teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, round: t.jokerRound ? roundById[t.jokerRound].title : null })) };
     case 'final':
       return {
-        type: 'final', status: s.status, answer: step.answer, options: step.options, question: step.question,
+        type: 'final', status: s.status, answer: step.answer, unit: step.unit, question: step.question,
         teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] ?? null, max: Math.max(0, totalBeforeFinal(t)), answer: s.answers[t.teamId] ?? null }))
       };
     default:
@@ -955,7 +970,7 @@ function broadcastState() {
       round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'final' ? 'Slotvraag' : 'Familiequiz',
       progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
     },
-    standings: showStandings || phase === 'END' ? ranking() : null,
+    standings: phase === 'END' ? ranking() : null,
     alerts: Object.values(alerts),
     end: phase === 'END' ? { reveal, endView, scores: reveal !== 'idle' ? ranking() : null, breakdown: reveal === 'done' ? breakdown() : null } : null
   };
@@ -989,8 +1004,8 @@ function broadcastState() {
     if (!t) return;
     const isBase = t.baseDeviceId === d.deviceId;
     io.to(d.socketId).emit('state_update', {
-      phase, paused, showStandings, reviewing: !!review,
-      standings: showStandings ? ranking() : null,
+      phase, paused, showStandings: false, reviewing: !!review,
+      standings: null,
       roundName: common.header.round,
       timer: null,
       view: phase === 'PLAY' ? phoneView(step, t, d, isBase) : phase === 'END' ? { type: 'end' } : { type: 'lobby' },
@@ -1063,9 +1078,8 @@ function phoneView(step, team, device, isBase) {
       const a = s.answers[id];
       return {
         ...base, status: s.status, category: step.category, maxWager: Math.max(0, totalBeforeFinal(team)), wager: s.wagers[id] ?? null,
-        question: s.status !== 'wager' ? step.question : null, options: s.status !== 'wager' ? step.options : null,
-        answered: a !== undefined, given: a !== undefined ? a : null,
-        result: s.status === 'revealed' ? { ok: a === step.answer, delta: finalDelta(team) } : null
+        question: s.status !== 'wager' ? step.question : null, unit: step.unit,
+        answered: a !== undefined, given: a !== undefined ? a : null
       };
     }
   }
@@ -1285,7 +1299,7 @@ io.on('connection', (socket) => {
     const c = baseContext(sock, 'final');
     if (!c || c.s.status !== 'question') return reply({ ok: false, reason: 'not_open' });
     if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
-    if (!Number.isInteger(value) || value < 0 || value >= c.step.options.length) return reply({ ok: false, reason: 'invalid' });
+    if (!Number.isFinite(value) || Math.abs(value) > 1e12) return reply({ ok: false, reason: 'invalid' });
     if (c.s.answers[c.team.teamId] !== undefined) return reply({ ok: true, already: true });
     c.s.answers[c.team.teamId] = value;
     reply({ ok: true });
@@ -1438,7 +1452,7 @@ io.on('connection', (socket) => {
     if (Number.isFinite(t) && device.lastBackT && t < device.lastBackT) return; // te laat aangekomen bericht
     alerts[device.deviceId] = {
       key: device.deviceId, teamName: team.name, label: device.label,
-      reason: reason === 'locked' ? 'locked' : 'app_switch',
+      reason: 'away',
       timestamp: new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' })
     };
     io.to('remote_room').emit('cheat_beep', alerts[device.deviceId]);
@@ -1475,7 +1489,7 @@ io.on('connection', (socket) => {
     sync();
   });
   socket.on('toggle_standings', () => {
-    if (!isRemote(socket) || phase === 'LOBBY') return;
+    if (!isRemote(socket) || phase !== 'END') return;
     showStandings = !showStandings;
     sync();
   });
@@ -1501,11 +1515,9 @@ io.on('connection', (socket) => {
   });
 
   // ---------- Bediening: nakijken en einduitslag ----------
-  socket.on('review_open', ({ scope } = {}) => {
-    if (!isRemote(socket) || phase === 'LOBBY') return;
-    const step = cur();
-    const s = scope === 'all' || roundById[scope] ? scope : step && roundById[step.round] ? step.round : 'all';
-    review = { scope: s, page: 0 };
+  socket.on('review_open', () => {
+    if (!isRemote(socket) || phase !== 'END') return;
+    review = { scope: 'all', page: 0 };
     sync();
   });
   socket.on('review_nav', ({ dir } = {}) => {

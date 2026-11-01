@@ -23,10 +23,8 @@
     html, body { height: 100%; }
     body.tv { display: block; padding: 0; overflow: hidden; cursor: none; }
     #audio-banner { margin-left: auto; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(11px, 1.2vw, 22px); padding: 0.3em 1em; border-radius: 999px; }
-    #tv-alerts { position: fixed; left: 3vw; right: 3vw; bottom: 1vw; display: flex; flex-direction: column; gap: 0.8vw; z-index: 45; }
-    .tv-alert { color: #fff; font-weight: bold; font-size: clamp(16px, 2.6vw, 48px); padding: 0.5em 1em; border-radius: 14px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,0.5); animation: shake 0.4s; }
-    .tv-alert.app { background: #dc2626; border: 3px solid #f87171; }
-    .tv-alert.locked { background: #d97706; border: 3px solid #fbbf24; }
+    #tv-alerts { position: fixed; left: 1.5vw; bottom: 1vw; display: flex; flex-wrap: wrap; gap: 0.5vw; z-index: 45; max-width: 70vw; }
+    .tv-alert { background: #dc2626; color: #fff; font-weight: bold; font-size: clamp(11px, 1.15vw, 22px); padding: 0.3em 0.9em; border-radius: 999px; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
     #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 1.1vh; background: #1e293b; z-index: 40; }
     #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.3s; }
     #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; flex-wrap: wrap; }
@@ -241,12 +239,10 @@
       const keys = new Set();
       (list || []).forEach((a) => {
         keys.add(a.key);
-        const d = el("div", "tv-alert " + (a.reason === "locked" ? "locked" : "app"));
-        d.textContent = a.reason === "locked"
-          ? `🔒 ${a.label} (${a.teamName}) heeft het scherm vergrendeld`
-          : `🚨 ${a.label} (${a.teamName}) heeft de app verlaten`;
+        const d = el("div", "tv-alert");
+        d.textContent = `⚠️ ${a.label} (${a.teamName}): scherm vergrendeld of app verlaten`;
         box.appendChild(d);
-        if (!shownAlerts.has(a.key)) QuizFX.alarm(a.reason === "locked");
+        if (!shownAlerts.has(a.key)) QuizFX.alarm(false);
       });
       shownAlerts = keys;
     }
@@ -392,16 +388,10 @@
       const box = $("song-teams");
       box.replaceChildren();
       s.teams.forEach((t) => {
-        const r = rev && s.results ? s.results.find((x) => x.name === t.name) : null;
         const c = el("span", "tchip");
-        if (rev) {
-          c.style.background = r && r.ok ? "#15803d" : "#7f1d1d";
-          c.textContent = `${r && r.ok ? "✔" : "✘"} ${t.name}`;
-        } else {
-          if (t.answered) c.classList.add("done");
-          if (!t.connected) c.classList.add("off");
-          c.textContent = `${t.answered ? "✓ " : ""}${t.name} · ${t.cards} kaarten`;
-        }
+        if (t.answered) c.classList.add("done");
+        if (!t.connected) c.classList.add("off");
+        c.textContent = `${t.answered ? "✓ " : ""}${t.name}`;
         box.appendChild(c);
       });
     }
@@ -420,20 +410,6 @@
         head.append(el("span", "tchip", `Nu: ${QuizFX.euro(s.truth.now)}`), el("span", "tchip", `${s.agoYears} jaar geleden: ${QuizFX.euro(s.truth.ago)}`));
         head.style.fontWeight = "bold";
         box.append(head);
-        const page = {
-          columns: ["Team", "Schatting nu", "Punten", `Schatting ${s.agoYears} jaar geleden`, "Punten"],
-          rows: s.results.map((r) => [
-            r.name,
-            r.now ? { t: QuizFX.euro(r.now.v), ok: r.now.rank === 0 ? true : null } : { t: "–", ok: false },
-            r.now ? "+" + r.now.pts : "0",
-            r.ago ? { t: QuizFX.euro(r.ago.v), ok: r.ago.rank === 0 ? true : null } : { t: "–", ok: false },
-            r.ago ? "+" + r.ago.pts : "0"
-          ])
-        };
-        const t = el("div");
-        t.style.marginTop = "2vh";
-        QuizFX.renderTable(t, page);
-        box.append(t);
       }
     }
 
@@ -528,33 +504,26 @@
       $("final-title").textContent = `Slotvraag: ${s.category}`;
       const q = $("final-q");
       q.replaceChildren();
-      const teamsBox = $("final-teams");
       $("final-result").replaceChildren();
+      const teamsBox = $("final-teams");
+      teamsBox.replaceChildren();
+      s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
       if (s.status === "wager") {
-        $("final-sub").textContent = "Hoeveel punten zetten jullie in? Goed = je inzet erbij. Fout = je inzet kwijt!";
+        $("final-sub").textContent = "Hoeveel punten zetten jullie in? Het team dat het dichtstbij zit, krijgt de inzet erbij. Alle anderen zijn hun inzet kwijt!";
+        return;
+      }
+      $("final-sub").textContent = s.status === "revealed" ? (s.explanation ? `💡 ${s.explanation}` : "") : "Elk team schat een getal. Wie er het dichtstbij zit, wint!";
+      const h = el("h1", "tv-q", s.question);
+      h.style.textAlign = "center";
+      q.append(h);
+      if (s.status === "revealed") {
+        const a = el("div", "bigtimer", `${s.answer}${s.unit ? " " + s.unit : ""}`);
+        a.style.color = "#4ade80";
+        q.append(a);
         teamsBox.replaceChildren();
-        s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
-      } else {
-        $("final-sub").textContent = "";
-        const h = el("h1", "tv-q", s.question);
-        h.style.textAlign = "center";
-        q.append(h);
-        const o = el("div");
-        q.append(o);
-        lettersGrid(o, s.options, s.status === "revealed" ? s.answer : null);
-        if (s.status === "revealed") {
-          teamsBox.replaceChildren();
-          s.results.forEach((r) => {
-            const c = el("span", "tchip");
-            c.style.background = r.ok ? "#15803d" : "#7f1d1d";
-            c.textContent = `${r.ok ? "✔" : "✘"} ${r.name}: ${r.delta >= 0 ? "+" : ""}${r.delta}`;
-            teamsBox.append(c);
-          });
-          if (s.explanation) $("final-sub").textContent = `💡 ${s.explanation}`;
-        } else {
-          teamsBox.replaceChildren();
-          s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
-        }
+        q.append(el("p", "tv-sub", "De uitslag zie je aan het einde van de quiz."));
+      } else if (s.unit) {
+        q.append(el("p", "tv-sub", `Antwoord in: ${s.unit}`));
       }
     }
 
