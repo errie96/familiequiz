@@ -20,6 +20,7 @@
       </div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Reset</button>
+        <button id="btn-standings" class="btn-option" style="width: auto; padding: 10px 16px; margin: 0; background: #0ea5e9;">📊 Tussenstand</button>
         <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 16px; margin: 0;">☕ Pauzeer</button>
         <button id="btn-prev" class="btn-option" style="width: auto; padding: 10px 16px; margin: 0; background: #475569;">⬅️ Vorige</button>
         <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
@@ -41,6 +42,13 @@
       <span style="font-size: 44px;">☕ 🍕</span>
       <h2 style="color: #f59e0b; margin: 10px 0;">PAUZE IS ACTIEF</h2>
       <p style="color: #94a3b8;">Alle telefoons staan op pauze. Meldingen zijn tijdelijk uitgeschakeld.</p>
+    </div>
+
+    <!-- 2b. Tussenstand -->
+    <div id="host-standings-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #0ea5e9;">
+      <h2 style="color: #38bdf8; margin-bottom: 4px;">📊 Tussenstand</h2>
+      <p id="standings-subtitle" style="text-align:center; color:#94a3b8; margin-bottom: 14px;"></p>
+      <ul id="standings-list" style="max-width: 650px; margin: 0 auto; font-size: 22px;"></ul>
     </div>
 
     <!-- 3. Huidige vraag (tijdens het spelen) -->
@@ -91,6 +99,7 @@
       <h2 id="review-question-text" style="font-size: 26px; margin: 15px 0;">Vraagtekst...</h2>
       <div id="review-media" style="text-align: center; margin: 15px 0;"></div>
       <div id="review-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px;"></div>
+      <p id="review-summary" style="margin-top: 14px; text-align: center; color: #94a3b8;"></p>
 
       <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <button id="btn-review-prev" class="btn-option" style="width: auto; padding: 10px 18px; margin: 0; background: #334155;">⬅️ Vorige Vraag</button>
@@ -179,10 +188,12 @@
     const btnNext = $("btn-next");
     const btnPrev = $("btn-prev");
     const btnPause = $("btn-pause");
+    const btnStandings = $("btn-standings");
 
     btnNext.addEventListener("click", () => socket.emit("next_question"));
     btnPrev.addEventListener("click", () => socket.emit("prev_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
+    btnStandings.addEventListener("click", () => socket.emit("toggle_standings"));
     $("btn-reset").addEventListener("click", () => {
       if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden gewist en we keren terug naar de startpagina.")) {
         socket.emit("reset_quiz");
@@ -326,13 +337,15 @@
       const gs = state.gameState;
       const inPlay = gs === "QUESTION" || gs === "WAITING_NEXT";
 
-      ["lobby-container", "host-pause-view", "host-main-view", "host-review-view", "host-end-view"]
+      ["lobby-container", "host-pause-view", "host-standings-view", "host-main-view", "host-review-view", "host-end-view"]
         .forEach((id) => $(id).classList.add("hidden"));
 
       // Knoppen
       btnNext.disabled = !(gs === "LOBBY" || inPlay);
       btnPrev.disabled = !(inPlay && state.questionNumber > 1);
       btnPause.disabled = !(inPlay || gs === "PAUSED");
+      btnStandings.disabled = !(inPlay || gs === "STANDINGS");
+      btnStandings.textContent = gs === "STANDINGS" ? "↩️ Terug naar quiz" : "📊 Tussenstand";
       btnPause.textContent = gs === "PAUSED" ? "▶️ Hervat Quiz" : "☕ Pauzeer";
       btnPause.style.background = gs === "PAUSED" ? "#22c55e" : "#f59e0b";
       if (gs === "LOBBY") {
@@ -369,6 +382,24 @@
         resetReveal();
       } else if (gs === "PAUSED") {
         $("host-pause-view").classList.remove("hidden");
+      } else if (gs === "STANDINGS") {
+        $("host-standings-view").classList.remove("hidden");
+        $("standings-subtitle").textContent = state.standingsAfter > 0
+          ? `Na vraag ${state.standingsAfter} van ${state.totalQuestions}`
+          : "Er is nog geen vraag afgerond";
+        const list = $("standings-list");
+        list.replaceChildren();
+        (state.standings || []).forEach((row) => {
+          const li = document.createElement("li");
+          const left = document.createElement("span");
+          const medal = row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : `#${row.rank}`;
+          left.textContent = `${medal}  ${row.name}`;
+          const pts = document.createElement("b");
+          pts.style.color = "#38bdf8";
+          pts.textContent = `${row.score} pt`;
+          li.append(left, pts);
+          list.appendChild(li);
+        });
       } else if (inPlay) {
         $("host-main-view").classList.remove("hidden");
         const q = state.currentQuestion;
@@ -442,8 +473,28 @@
               mark.textContent = "✅ JUIST";
               div.append(document.createTextNode("\u00a0 "), mark);
             }
+            // Welke teams kozen deze optie?
+            const chosen = (rq.playerAnswers || []).filter((a) => a.answerIndex === idx);
+            if (chosen.length) {
+              const wrap = document.createElement("div");
+              wrap.style.cssText = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; font-weight: normal;";
+              chosen.forEach((a) => {
+                const chip = document.createElement("span");
+                chip.textContent = a.name;
+                chip.style.cssText = "background: rgba(0,0,0,0.35); padding: 2px 10px; border-radius: 999px; font-size: 14px;";
+                wrap.appendChild(chip);
+              });
+              div.appendChild(wrap);
+            }
             rOptions.appendChild(div);
           });
+
+          const answers = rq.playerAnswers || [];
+          const right = answers.filter((a) => a.answerIndex === rq.answer).length;
+          const none = answers.filter((a) => a.answerIndex === null).map((a) => a.name);
+          let summary = `✅ ${right} van ${answers.length} goed`;
+          if (none.length) summary += `  ·  Geen antwoord: ${none.join(", ")}`;
+          $("review-summary").textContent = summary;
         }
       }
 
