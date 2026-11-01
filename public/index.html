@@ -9,22 +9,23 @@
 </head>
 <body>
   <div class="card">
-    
+
     <!-- 1. Inloggen -->
     <div id="join-screen">
       <h1>Familiequiz 🏆</h1>
       <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
       <input type="text" id="username" placeholder="Bijv. Mark of Team Rood" maxlength="20">
+      <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-bottom:12px;"></p>
       <button class="btn-primary" id="join-btn">Klaar voor de start</button>
     </div>
 
-    <!-- 2. Wachtkamer / Lobby -->
+    <!-- 2. Wachtkamer / tussen de vragen -->
     <div id="lobby-screen" class="hidden">
       <h2>Welkom, <span id="display-name"></span>!</h2>
-      <p style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de ronde start...</p>
+      <p id="lobby-message" style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de quiz start...</p>
     </div>
 
-    <!-- 3. Vraag Beantwoorden (ZONDER timer) -->
+    <!-- 3. Vraag beantwoorden -->
     <div id="question-screen" class="hidden">
       <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <span class="badge" id="player-round-badge">Ronde</span>
@@ -37,6 +38,10 @@
       <button id="submit-btn" class="btn-primary hidden" style="margin-top: 16px; background: #22c55e;">
         Antwoord Indienen 📤
       </button>
+
+      <p id="submit-error" class="hidden" style="text-align:center; margin-top:15px; color:#f87171; font-weight:bold;">
+        Indienen is niet gelukt. Probeer het opnieuw.
+      </p>
 
       <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
         ✅ Ingediend! Wachten tot iedereen klaar is...
@@ -60,7 +65,7 @@
       <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de host pauze beëindigt.</small>
     </div>
 
-    <!-- 5. Einde Quiz Scherm -->
+    <!-- 5. Einde quiz -->
     <div id="end-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
       <div style="font-size: 54px;">🏁 🏆</div>
       <h2 style="font-size: 26px; margin: 12px 0; color: #38bdf8;">De quiz is afgelopen!</h2>
@@ -78,33 +83,39 @@
 
   <script>
     const socket = io();
+    const $ = (id) => document.getElementById(id);
+
     let playerId = localStorage.getItem("quiz_player_id") || null;
     let playerName = localStorage.getItem("quiz_player_name") || "";
     let selectedOptionIndex = null;
     let hasSubmittedCurrent = false;
     let currentGameState = "LOBBY";
+    let renderedQuestionId = null; // id van de vraag die nu getekend staat
+
+    const SCREENS = ["join-screen", "lobby-screen", "question-screen", "pause-screen", "end-screen"];
+    function showScreen(id) {
+      SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id));
+    }
 
     // Wake Lock
     let wakeLock = null;
     async function requestWakeLock() {
       try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-          wakeLock.addEventListener('release', () => { wakeLock = null; });
+        if ("wakeLock" in navigator) {
+          wakeLock = await navigator.wakeLock.request("screen");
+          wakeLock.addEventListener("release", () => { wakeLock = null; });
         }
       } catch (err) {}
     }
 
-    // Spiekdetectie: alleen actief als de quiz daadwerkelijk bezig is (niet in LOBBY of PAUSED)
+    // Spiekdetectie: alleen tijdens een open vraag
     let lastNotifyTime = 0;
     function notifyLeftApp(reason) {
-      if (!playerId || currentGameState === "LOBBY" || currentGameState === "PAUSED") return;
-
+      if (!playerId || currentGameState !== "QUESTION") return;
       const now = Date.now();
       if (now - lastNotifyTime < 3000) return;
       lastNotifyTime = now;
-
-      socket.emit("player_blurred", { playerId, reason });
+      socket.emit("player_blurred", { reason });
     }
 
     document.addEventListener("visibilitychange", async () => {
@@ -114,11 +125,10 @@
         await requestWakeLock();
       }
     });
-
     window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
     window.addEventListener("blur", () => notifyLeftApp("app_switch"));
 
-    // Connect & Sessieherstel
+    // Verbinden en sessieherstel
     socket.on("connect", () => {
       if (playerId && playerName) {
         socket.emit("init_player", { playerId, name: playerName });
@@ -126,28 +136,39 @@
       }
     });
 
-    socket.on("quiz_reset", () => {
+    function clearIdentity() {
       localStorage.removeItem("quiz_player_id");
       localStorage.removeItem("quiz_player_name");
       playerId = null;
       playerName = "";
       selectedOptionIndex = null;
       hasSubmittedCurrent = false;
+      renderedQuestionId = null;
+    }
 
-      document.getElementById("username").value = "";
-      document.getElementById("question-screen").classList.add("hidden");
-      document.getElementById("lobby-screen").classList.add("hidden");
-      document.getElementById("pause-screen").classList.add("hidden");
-      document.getElementById("end-screen").classList.add("hidden");
-      document.getElementById("join-screen").classList.remove("hidden");
+    socket.on("quiz_reset", () => {
+      clearIdentity();
+      $("username").value = "";
+      $("join-error").classList.add("hidden");
+      showScreen("join-screen");
     });
 
-    document.getElementById("join-btn").addEventListener("click", () => {
-      const name = document.getElementById("username").value.trim();
-      if (name) {
-        requestWakeLock();
-        socket.emit("init_player", { playerId: null, name });
-      }
+    // Inloggen
+    function join() {
+      const name = $("username").value.trim();
+      if (!name) return;
+      $("join-error").classList.add("hidden");
+      requestWakeLock();
+      socket.emit("init_player", { playerId: null, name });
+    }
+    $("join-btn").addEventListener("click", join);
+    $("username").addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+
+    socket.on("join_error", (data) => {
+      clearIdentity();
+      $("join-error").textContent = data.message;
+      $("join-error").classList.remove("hidden");
+      showScreen("join-screen");
     });
 
     socket.on("joined", (data) => {
@@ -161,28 +182,41 @@
     socket.on("session_restored", (data) => {
       playerId = data.playerId;
       playerName = data.name;
-      hasSubmittedCurrent = data.answered;
       showLobby();
       requestWakeLock();
     });
 
     function showLobby() {
-      document.getElementById("display-name").textContent = playerName;
-      document.getElementById("join-screen").classList.add("hidden");
-      document.getElementById("lobby-screen").classList.remove("hidden");
+      $("display-name").textContent = playerName;
+      showScreen("lobby-screen");
     }
 
-    // Indienen
-    const submitBtn = document.getElementById("submit-btn");
+    // Antwoord indienen
+    const submitBtn = $("submit-btn");
+
+    function applyAnsweredState(answered) {
+      hasSubmittedCurrent = answered;
+      Array.from($("options-container").children).forEach((b) => { b.disabled = answered; });
+      submitBtn.classList.toggle("hidden", answered || selectedOptionIndex === null);
+      $("feedback-text").classList.toggle("hidden", !answered);
+      if (answered) $("submit-error").classList.add("hidden");
+    }
+
     submitBtn.addEventListener("click", () => {
-      if (selectedOptionIndex !== null && !hasSubmittedCurrent) {
-        hasSubmittedCurrent = true;
-        socket.emit("submit_answer", { playerId, answerIndex: selectedOptionIndex });
-        submitBtn.classList.add("hidden");
-        const options = document.getElementById("options-container").children;
-        Array.from(options).forEach(b => b.disabled = true);
-        document.getElementById("feedback-text").classList.remove("hidden");
-      }
+      if (selectedOptionIndex === null || hasSubmittedCurrent) return;
+      submitBtn.disabled = true;
+      socket.emit(
+        "submit_answer",
+        { questionId: renderedQuestionId, answerIndex: selectedOptionIndex },
+        (res) => {
+          submitBtn.disabled = false;
+          if (res && res.ok) {
+            applyAnsweredState(true);
+          } else {
+            $("submit-error").classList.remove("hidden");
+          }
+        }
+      );
     });
 
     const funFacts = [
@@ -192,77 +226,85 @@
       "Tactische tip: niemand weet nog wie er voor staat..."
     ];
 
+    // De vraag wordt maar één keer getekend, zodat je keuze niet verdwijnt
+    // als een ander speler indient.
+    function renderQuestion(state) {
+      const q = state.currentQuestion;
+      renderedQuestionId = q.id;
+      selectedOptionIndex = null;
+      hasSubmittedCurrent = false;
+
+      $("player-round-badge").textContent = state.roundName;
+      $("player-question-text").textContent = q.question;
+      $("submit-error").classList.add("hidden");
+
+      const media = $("media-container");
+      media.replaceChildren();
+      if (q.type === "location" && q.imageUrl) {
+        const img = document.createElement("img");
+        img.src = q.imageUrl;
+        img.className = "media-img";
+        media.appendChild(img);
+      }
+
+      const optionsContainer = $("options-container");
+      optionsContainer.replaceChildren();
+      q.options.forEach((opt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "btn-option";
+        btn.textContent = `${["A", "B", "C", "D"][idx] || idx + 1}: ${opt}`;
+        btn.onclick = () => {
+          if (hasSubmittedCurrent) return;
+          selectedOptionIndex = idx;
+          Array.from(optionsContainer.children).forEach((b) => { b.style.background = ""; });
+          btn.style.background = "#2563eb";
+          submitBtn.classList.remove("hidden");
+        };
+        optionsContainer.appendChild(btn);
+      });
+    }
+
     // State synchronisatie
     socket.on("state_update", (state) => {
       if (!playerId) return;
 
+      const previousState = currentGameState;
       currentGameState = state.gameState;
 
-      if (state.gameState === "END") {
-        document.getElementById("question-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("pause-screen").classList.add("hidden");
-        document.getElementById("end-screen").classList.remove("hidden");
+      if (state.gameState === "END" || state.gameState === "REVIEW") {
+        renderedQuestionId = null;
+        showScreen("end-screen");
         return;
       }
 
       if (state.gameState === "PAUSED") {
-        document.getElementById("question-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("pause-screen").classList.remove("hidden");
-        document.getElementById("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
+        showScreen("pause-screen");
+        if (previousState !== "PAUSED") {
+          $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
+        }
         return;
-      } else {
-        document.getElementById("pause-screen").classList.add("hidden");
       }
 
       if (state.gameState === "QUESTION" && state.currentQuestion) {
-        document.getElementById("lobby-screen").classList.add("hidden");
-        document.getElementById("question-screen").classList.remove("hidden");
-
-        document.getElementById("player-round-badge").textContent = state.roundName;
-        document.getElementById("player-question-text").textContent = state.currentQuestion.question;
-
-        const me = state.playerList.find(p => p.playerId === playerId);
-        if (me && me.answered) {
-          hasSubmittedCurrent = true;
-          submitBtn.classList.add("hidden");
-          document.getElementById("feedback-text").classList.remove("hidden");
-        } else {
-          hasSubmittedCurrent = false;
-          document.getElementById("feedback-text").classList.add("hidden");
+        showScreen("question-screen");
+        if (renderedQuestionId !== state.currentQuestion.id) {
+          renderQuestion(state);
         }
-
-        const mediaContainer = document.getElementById("media-container");
-        mediaContainer.innerHTML = "";
-        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
-          mediaContainer.innerHTML = `<img src="${state.currentQuestion.imageUrl}" class="media-img" />`;
-        }
-
-        const optionsContainer = document.getElementById("options-container");
-        optionsContainer.innerHTML = "";
-        state.currentQuestion.options.forEach((opt, idx) => {
-          const btn = document.createElement("button");
-          btn.className = "btn-option";
-          btn.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
-          if (hasSubmittedCurrent) btn.disabled = true;
-
-          btn.onclick = () => {
-            if (hasSubmittedCurrent) return;
-            selectedOptionIndex = idx;
-            Array.from(optionsContainer.children).forEach(b => b.style.background = "#334155");
-            btn.style.background = "#2563eb";
-            submitBtn.classList.remove("hidden");
-          };
-          optionsContainer.appendChild(btn);
-        });
-
-      } else if (state.gameState === "WAITING_NEXT" || state.gameState === "LOBBY") {
-        selectedOptionIndex = null;
-        hasSubmittedCurrent = false;
-        document.getElementById("question-screen").classList.add("hidden");
-        document.getElementById("lobby-screen").classList.remove("hidden");
+        applyAnsweredState(!!(state.me && state.me.answered));
+        return;
       }
+
+      // LOBBY of WAITING_NEXT
+      renderedQuestionId = null;
+      selectedOptionIndex = null;
+      hasSubmittedCurrent = false;
+      showScreen("lobby-screen");
+      $("lobby-message").textContent =
+        state.gameState === "WAITING_NEXT"
+          ? (state.me && state.me.answered
+              ? "✅ Ingediend! Wachten op de volgende vraag..."
+              : "Wachten op de volgende vraag...")
+          : "Wachten tot de quizmaster de quiz start...";
     });
   </script>
 </body>
