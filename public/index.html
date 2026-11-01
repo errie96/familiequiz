@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
-  <script src="qtypes.js"></script>
+  <script src="rounds-ui.js"></script>
 </head>
 <body>
   <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
@@ -55,7 +55,7 @@
       <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px;"></p>
     </div>
 
-    <!-- 2. Wachtkamer / tussen de vragen -->
+    <!-- 2. Wachtkamer -->
     <div id="lobby-screen" class="hidden">
       <h2 id="team-title">Team</h2>
       <p id="role-text" style="text-align:center; color:#cbd5e1; margin-bottom:10px;"></p>
@@ -67,44 +67,23 @@
       <p id="lobby-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px; font-size:14px;"></p>
     </div>
 
-    <!-- 3. Vraag beantwoorden -->
-    <div id="question-screen" class="hidden">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
+    <!-- 3. De quiz zelf: elk rondetype tekent zich in #play-root -->
+    <div id="play-screen" class="hidden">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:6px; flex-wrap:wrap;">
         <span class="badge" id="player-round-badge">Ronde</span>
+        <span class="badge hidden" id="player-count-badge" style="background:#3b82f6;"></span>
+        <span class="badge hidden" id="player-practice-badge" style="background:#7c3aed;">Oefenvraag, telt niet mee</span>
         <span class="badge" id="player-team-badge" style="background:#2563eb;"></span>
         <span class="badge hidden" id="timer-badge">⏱</span>
       </div>
-      <h3 id="player-question-text">Vraag laadt...</h3>
-
-      <div id="media-container"></div>
-      <div id="options-container"></div>
-
-      <button id="joker-btn" class="btn-option hidden" style="text-align:center; background:#7c3aed;"></button>
-
-      <button id="submit-btn" class="btn-primary hidden" style="margin-top: 16px; background: #22c55e;">
-        Antwoord Indienen 📤
-      </button>
-
-      <p id="member-note" class="hidden" style="text-align:center; margin-top:15px; color:#94a3b8;">
-        Overleg met je team. De basistelefoon dient het antwoord in.
-      </p>
-      <p id="joker-note" class="hidden" style="text-align:center; margin-top:10px; color:#c4b5fd; font-weight:bold;">🃏 Joker ingezet: dubbele punten!</p>
-
-      <p id="submit-error" class="hidden" style="text-align:center; margin-top:15px; color:#f87171; font-weight:bold;"></p>
-
-      <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
-        ✅ Ingediend! Wachten tot iedereen klaar is...
-      </p>
+      <div id="play-root"></div>
     </div>
 
-    <!-- 4. Pauzescherm -->
+    <!-- 4. Pauze -->
     <div id="pause-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
       <div style="font-size: 54px; animation: bounce 2s infinite;">☕ 🍕 🍷</div>
       <h2 style="font-size: 26px; margin: 12px 0; color: #f59e0b;">Tijd voor Pauze!</h2>
-      <p style="color: #cbd5e1; font-size: 16px; line-height: 1.5;">
-        Even de glazen bijvullen, wat lekkers pakken en bijkletsen.
-      </p>
-
+      <p style="color: #cbd5e1; font-size: 16px; line-height: 1.5;">Even de glazen bijvullen, wat lekkers pakken en bijkletsen.</p>
       <div style="background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 20px; border: 1px dashed #475569;">
         <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
         <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;"></p>
@@ -123,36 +102,24 @@
     <div id="end-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
       <div style="font-size: 54px;">🏁 🏆</div>
       <h2 style="font-size: 26px; margin: 12px 0; color: #38bdf8;">De quiz is afgelopen!</h2>
-      <p style="color: #cbd5e1;">Kijk nu naar het grote scherm voor de juiste antwoorden en de ontknoping van de winnaar!</p>
+      <p style="color: #cbd5e1;">Kijk nu naar het grote scherm voor de ontknoping van de winnaar!</p>
     </div>
-
   </div>
 
-  <style>
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
-    }
-  </style>
+  <style>@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }</style>
 
   <script>
     const socket = io();
     const $ = (id) => document.getElementById(id);
 
     let deviceId = localStorage.getItem("quiz_device_id") || null;
-    let me = null;                  // eigen teaminfo uit de laatste state_update
+    let me = null;
     let lastState = null;
     let currentGameState = "LOBBY";
-    let renderedQuestionId = null;  // id van de vraag die nu getekend staat
-    let view = null;                // { setSelected, setLocked } van het huidige vraagtype
-    let selected = null;
-    let jokerOn = false;
-    let hasSubmitted = false;
+    let inItemStep = false;
 
-    const SCREENS = ["join-screen", "lobby-screen", "question-screen", "pause-screen", "standings-screen", "end-screen"];
-    function showScreen(id) {
-      SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id));
-    }
+    const SCREENS = ["join-screen", "lobby-screen", "play-screen", "pause-screen", "standings-screen", "end-screen"];
+    function showScreen(id) { SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id)); }
 
     // ---------------- Wake Lock ----------------
     let wakeLock = null;
@@ -166,73 +133,63 @@
     }
 
     // ---------------- Spiekdetectie ----------------
-    // Actief zolang een vraag open staat, ook na het indienen
-    // (niet tijdens lobby, pauze, tussenstand of uitslag)
-    let lastNotifyTime = 0;
+    // Meldt zich bij het verlaten van de app. De melding blijft op tv en bediening staan
+    // totdat deze telefoon weer naar de quiz kijkt (player_returned).
+    let awayReported = false;
     function notifyLeftApp(reason) {
-      if (!deviceId || (currentGameState !== "QUESTION" && currentGameState !== "WAITING_NEXT")) return;
-      const now = Date.now();
-      if (now - lastNotifyTime < 3000) return;
-      lastNotifyTime = now;
+      if (!deviceId || currentGameState !== "PLAY" || !inItemStep) return;
+      awayReported = true;
       socket.emit("player_blurred", { reason });
+    }
+    function notifyReturned() {
+      if (!awayReported || document.hidden) return;
+      awayReported = false;
+      socket.emit("player_returned");
     }
     document.addEventListener("visibilitychange", async () => {
       if (document.hidden) notifyLeftApp("locked");
-      else await requestWakeLock();
+      else { notifyReturned(); await requestWakeLock(); }
     });
     window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
     window.addEventListener("blur", () => notifyLeftApp("app_switch"));
+    window.addEventListener("focus", notifyReturned);
+    window.addEventListener("pageshow", notifyReturned);
 
     // ---------------- Identiteit ----------------
-    function saveIdentity(id) {
-      deviceId = id;
-      localStorage.setItem("quiz_device_id", id);
-    }
+    function saveIdentity(id) { deviceId = id; localStorage.setItem("quiz_device_id", id); }
     function clearIdentity() {
       localStorage.removeItem("quiz_device_id");
-      deviceId = null;
-      me = null;
-      renderedQuestionId = null;
-      view = null;
-      selected = null;
-      jokerOn = false;
-      hasSubmitted = false;
+      deviceId = null; me = null; awayReported = false;
+      $("play-root")._key = null;
       QuizFX.countdown("phone", null, () => {});
     }
 
     socket.on("connect", () => {
       if (deviceId) {
-        socket.emit("hello", { deviceId });
+        socket.emit("hello", { deviceId, visible: !document.hidden && document.hasFocus() });
         requestWakeLock();
-      } else {
-        showJoin();
-      }
+      } else showJoin();
     });
     socket.on("need_join", () => { clearIdentity(); showJoin(); });
     socket.on("session", (data) => saveIdentity(data.deviceId));
     socket.on("kicked", () => { clearIdentity(); showJoin("Je team is verwijderd door de quizmaster."); });
     socket.on("quiz_reset", () => { clearIdentity(); showJoin(); });
+    socket.on("step_event_in", (d) => { if (Rounds._incoming) Rounds._incoming(d); });
 
     // ---------------- Team maken / aansluiten ----------------
     let pollHandle = null;
-
     function showJoinError(message) {
       $("join-error").textContent = message || "";
       $("join-error").classList.toggle("hidden", !message);
     }
-
     function showJoin(message) {
       showScreen("join-screen");
       updateSteps();
       selectTab(!$("join-existing").classList.contains("hidden") ? "join" : "new");
-      showJoinError(message); // na selectTab, want die wist de melding
+      showJoinError(message);
     }
-
-    // Eerst de eigen naam, pas daarna kun je een team kiezen
     const myName = () => $("my-name").value.trim();
-    function updateSteps() {
-      $("join-steps").classList.toggle("hidden", !myName());
-    }
+    function updateSteps() { $("join-steps").classList.toggle("hidden", !myName()); }
     $("my-name").addEventListener("input", () => {
       updateSteps();
       showJoinError("");
@@ -241,7 +198,6 @@
         if (!pollHandle) pollHandle = setInterval(refreshTeams, 3000);
       }
     });
-
     function selectTab(which) {
       const isNew = which === "new";
       $("join-new").classList.toggle("hidden", !isNew);
@@ -252,10 +208,7 @@
       showJoinError("");
       clearInterval(pollHandle);
       pollHandle = null;
-      if (!isNew && myName()) {
-        refreshTeams();
-        pollHandle = setInterval(refreshTeams, 3000);
-      }
+      if (!isNew && myName()) { refreshTeams(); pollHandle = setInterval(refreshTeams, 3000); }
     }
     $("tab-new").addEventListener("click", () => selectTab("new"));
     $("tab-join").addEventListener("click", () => selectTab("join"));
@@ -276,7 +229,6 @@
         });
       });
     }
-
     function onJoined(res) {
       if (!res || !res.ok) return showJoinError((res && res.message) || "Dat lukte niet. Probeer het opnieuw.");
       clearInterval(pollHandle);
@@ -285,7 +237,6 @@
       showScreen("lobby-screen");
       requestWakeLock();
     }
-
     function createTeam() {
       const teamName = $("team-name").value.trim();
       if (!teamName) return showJoinError("Vul een teamnaam in.");
@@ -299,15 +250,13 @@
     $("btn-create").addEventListener("click", createTeam);
     $("team-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createTeam(); });
 
-    // ---------------- Teamkaart (lobby) ----------------
+    // ---------------- Teamkaart (wachtkamer) ----------------
     function renderTeamCard() {
       $("team-title").textContent = me.teamName;
       const pending = !!me.proposal;
-      $("role-text").textContent =
-        me.role === "base"
-          ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in."
-          : `De basistelefoon (${me.baseLabel}) dient de antwoorden in.`;
-
+      $("role-text").textContent = me.role === "base"
+        ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in."
+        : `De basistelefoon (${me.baseLabel}) dient de antwoorden in.`;
       const list = $("member-list");
       list.replaceChildren();
       me.members.forEach((m) => {
@@ -316,10 +265,7 @@
         const name = document.createElement("span");
         name.textContent = (m.memberId === me.memberId ? `${m.label} (jij)` : m.label) + (m.role === "base" ? " ⭐ basis" : "");
         const right = document.createElement("span");
-        right.style.display = "flex";
-        right.style.gap = "8px";
-        right.style.alignItems = "center";
-
+        right.style.cssText = "display:flex; gap:8px; align-items:center;";
         if (m.role !== "base" && m.connected && !pending) {
           const btn = document.createElement("button");
           btn.className = "btn-option";
@@ -332,19 +278,15 @@
         status.textContent = m.connected ? "●" : "○ offline";
         status.style.color = m.connected ? "#4ade80" : "#94a3b8";
         right.appendChild(status);
-
         li.append(name, right);
         list.appendChild(li);
       });
       $("member-actions").classList.toggle("hidden", me.role === "base");
       renderProposal();
     }
-
-    // De basistelefoon kiest het hele team: iemand stelt voor, iedereen moet akkoord gaan
     function renderProposal() {
       const p = me && me.proposal;
-      const banner = $("base-banner");
-      banner.classList.toggle("hidden", !p || !$("join-screen").classList.contains("hidden"));
+      $("base-banner").classList.toggle("hidden", !p || !$("join-screen").classList.contains("hidden"));
       if (!p) return;
       const count = `${p.approved} van ${p.needed} akkoord`;
       let text;
@@ -356,7 +298,6 @@
       $("btn-base-yes").classList.toggle("hidden", p.youApproved);
       $("btn-base-no").textContent = p.youAreProposer ? "Voorstel intrekken" : "Niet akkoord";
     }
-
     function proposeBase(memberId) {
       socket.emit("propose_base", { memberId }, (res) => {
         if (res && res.ok) return $("lobby-error").classList.add("hidden");
@@ -367,7 +308,6 @@
     $("btn-base-yes").addEventListener("click", () => socket.emit("respond_base", { approve: true }, () => {}));
     $("btn-base-no").addEventListener("click", () => socket.emit("respond_base", { approve: false }, () => {}));
 
-    // Korte meldingen van de server (bijv. "Anna is nu de basistelefoon")
     let toastTimer = null;
     socket.on("team_notice", (data) => {
       const t = $("toast");
@@ -376,98 +316,11 @@
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => t.classList.add("hidden"), 6000);
     });
-
     $("btn-leave").addEventListener("click", () => {
       if (!confirm("Weet je zeker dat je dit team wilt verlaten?")) return;
       socket.emit("leave_team", null, (res) => {
-        if (res && res.ok) {
-          clearIdentity();
-          showJoin();
-        } else {
-          $("lobby-error").textContent = (res && res.message) || "Dat lukte niet.";
-          $("lobby-error").classList.remove("hidden");
-        }
-      });
-    });
-
-    // ---------------- Vraag ----------------
-    const submitBtn = $("submit-btn");
-    const jokerBtn = $("joker-btn");
-
-    function renderQuestion(state) {
-      const q = state.currentQuestion;
-      renderedQuestionId = q.id;
-      selected = null;
-      jokerOn = false;
-      hasSubmitted = false;
-
-      $("player-round-badge").textContent = state.roundName;
-      $("player-question-text").textContent = q.question;
-      $("submit-error").classList.add("hidden");
-      QuizFX.renderMedia($("media-container"), q.media);
-
-      view = QuizQ.renderPlayer(q, $("options-container"), (value) => {
-        if (hasSubmitted || me.role !== "base") return;
-        selected = value;
-        view.setSelected(value);
-        updateQuestionUi();
-      });
-    }
-
-    // Past knoppen en teksten aan op de status van het team
-    function updateQuestionUi() {
-      const answered = !!me.answered;
-      const isBase = me.role === "base";
-      hasSubmitted = answered;
-      $("player-team-badge").textContent = me.teamName;
-
-      view.setLocked(answered || !isBase);
-      view.setSelected(answered ? me.givenAnswer : selected);
-
-      const jokersOn = lastState.settings.jokersPerTeam > 0;
-      if (jokersOn && isBase && !answered && me.jokersLeft > 0) {
-        jokerBtn.classList.remove("hidden");
-        jokerBtn.textContent = jokerOn
-          ? "🃏 Joker actief (2× punten) · tik om te annuleren"
-          : `🃏 Joker inzetten (2× punten) · nog ${me.jokersLeft}`;
-      } else {
-        jokerBtn.classList.add("hidden");
-      }
-      $("joker-note").classList.toggle("hidden", !(answered && me.jokerActive));
-
-      submitBtn.classList.toggle("hidden", answered || !isBase || selected === null);
-      $("member-note").classList.toggle("hidden", isBase || answered);
-      $("feedback-text").classList.toggle("hidden", !answered);
-      if (answered) $("submit-error").classList.add("hidden");
-    }
-
-    jokerBtn.addEventListener("click", () => {
-      jokerOn = !jokerOn;
-      updateQuestionUi();
-    });
-
-    const errorText = {
-      not_open: "De vraag is niet meer open.",
-      not_base: "Alleen de basistelefoon kan indienen.",
-      no_joker: "Jullie hebben geen jokers meer.",
-      wrong_question: "De vraag is net gewisseld. Kies opnieuw.",
-      invalid: "Dat antwoord is niet geldig."
-    };
-
-    submitBtn.addEventListener("click", () => {
-      if (selected === null || hasSubmitted) return;
-      submitBtn.disabled = true;
-      socket.emit("submit_answer", { questionId: renderedQuestionId, answer: selected, joker: jokerOn }, (res) => {
-        submitBtn.disabled = false;
-        if (res && res.ok) {
-          me.answered = true;
-          me.givenAnswer = selected;
-          me.jokerActive = jokerOn;
-          updateQuestionUi();
-        } else {
-          $("submit-error").textContent = errorText[res && res.reason] || "Indienen is niet gelukt. Probeer het opnieuw.";
-          $("submit-error").classList.remove("hidden");
-        }
+        if (res && res.ok) { clearIdentity(); showJoin(); }
+        else { $("lobby-error").textContent = (res && res.message) || "Dat lukte niet."; $("lobby-error").classList.remove("hidden"); }
       });
     });
 
@@ -478,33 +331,50 @@
       "Tactische tip: niemand weet nog wie er voor staat..."
     ];
 
-    // ---------------- State synchronisatie ----------------
+    // ---------------- Quiz tekenen ----------------
+    function renderPlay(state) {
+      const meta = state.meta || {};
+      const v = state.view;
+      $("player-round-badge").textContent = meta.roundName || "Familiequiz";
+      $("player-team-badge").textContent = me.teamName;
+      $("player-count-badge").classList.toggle("hidden", !(meta.kind === "item" && meta.itemTotal && meta.rtype !== "draw" && meta.rtype !== "thirty" && meta.rtype !== "memory"));
+      $("player-count-badge").textContent = `${meta.itemNo} van ${meta.itemTotal}`;
+      $("player-practice-badge").classList.toggle("hidden", !meta.practice);
+
+      const ctx = {
+        me,
+        submit: (payload, cb) => socket.emit("step_submit", { sid: v.sid, payload }, cb),
+        event: (type, data) => socket.emit("step_event", { sid: v.sid, type, data }),
+        fetch: (cb) => socket.emit("step_fetch", { sid: v.sid }, cb)
+      };
+      const renderer = Rounds[v.rtype];
+      if (renderer && renderer.phone) renderer.phone($("play-root"), v, ctx);
+    }
+
     socket.on("state_update", (state) => {
       if (!deviceId || !state.me) return;
       me = state.me;
       lastState = state;
       const previousState = currentGameState;
       currentGameState = state.gameState;
+      inItemStep = !!(state.meta && state.meta.kind === "item");
+      if (!inItemStep || state.gameState !== "PLAY") awayReported = false;
       renderTeamCard();
 
-      if (state.gameState !== "QUESTION") {
-        QuizFX.countdown("phone", null, () => { $("timer-badge").classList.add("hidden"); });
-      }
+      QuizFX.countdown("phone", state.gameState === "PLAY" ? state.timer : null, (info) => {
+        const badge = $("timer-badge");
+        if (!info) return badge.classList.add("hidden");
+        badge.classList.remove("hidden");
+        badge.textContent = `⏱ ${info.secs}s`;
+        badge.style.background = info.secs <= 5 && info.running ? "#dc2626" : "#475569";
+      });
 
-      if (state.gameState === "END" || state.gameState === "REVIEW") {
-        renderedQuestionId = null;
-        showScreen("end-screen");
-        return;
-      }
-
+      if (state.gameState === "END") { showScreen("end-screen"); return; }
       if (state.gameState === "PAUSED") {
         showScreen("pause-screen");
-        if (previousState !== "PAUSED") {
-          $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
-        }
+        if (previousState !== "PAUSED") $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
         return;
       }
-
       if (state.gameState === "STANDINGS") {
         showScreen("standings-screen");
         const list = $("standings-list");
@@ -522,34 +392,14 @@
         });
         return;
       }
-
-      if (state.gameState === "QUESTION" && state.currentQuestion) {
-        showScreen("question-screen");
-        if (renderedQuestionId !== state.currentQuestion.id) renderQuestion(state);
-        updateQuestionUi();
-        QuizFX.countdown("phone", state.timer, (info) => {
-          const badge = $("timer-badge");
-          if (!info) return badge.classList.add("hidden");
-          badge.classList.remove("hidden");
-          badge.textContent = `⏱ ${info.secs}s`;
-          badge.style.background = info.secs <= 5 && info.running ? "#dc2626" : "#475569";
-        });
+      if (state.gameState === "PLAY" && state.view) {
+        showScreen("play-screen");
+        renderPlay(state);
         return;
       }
-
-      // LOBBY of WAITING_NEXT
-      renderedQuestionId = null;
-      selected = null;
-      jokerOn = false;
-      hasSubmitted = false;
       showScreen("lobby-screen");
       $("lobby-error").classList.add("hidden");
-      $("lobby-message").textContent =
-        state.gameState === "WAITING_NEXT"
-          ? (me.answered
-              ? "✅ Jullie team heeft ingediend! Wachten op de volgende vraag..."
-              : "Wachten op de volgende vraag...")
-          : "Wachten tot de quizmaster de quiz start...";
+      $("lobby-message").textContent = "Wachten tot de quizmaster de quiz start...";
     });
   </script>
 </body>

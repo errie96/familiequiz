@@ -7,46 +7,35 @@
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
-  <script src="qtypes.js"></script>
+  <script src="rounds-ui.js"></script>
   <script>
     // Eerst de lokale kopie uit public/vendor/ (npm run vendor), anders het CDN
     function loadLib(local, cdn) {
       const s = document.createElement("script");
       s.src = local;
-      s.onerror = () => {
-        const c = document.createElement("script");
-        c.src = cdn;
-        document.head.appendChild(c);
-      };
+      s.onerror = () => { const c = document.createElement("script"); c.src = cdn; document.head.appendChild(c); };
       document.head.appendChild(s);
     }
     loadLib("vendor/qrcode.min.js", "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js");
     loadLib("vendor/confetti.browser.min.js", "https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js");
   </script>
   <style>
-    /* Gemaakt voor een tv: alles schaalt mee met de breedte van het scherm */
     html, body { height: 100%; }
     body.tv { display: block; padding: 0; overflow: hidden; cursor: none; }
-    #audio-banner { position: fixed; top: 2vh; right: 3vw; background: #f59e0b; color: #0f172a;
-                    font-weight: bold; font-size: clamp(12px, 1.4vw, 26px); padding: 0.4em 1.2em; border-radius: 999px; z-index: 50; }
-    /* Spiekmeldingen onderin beeld, voor iedereen zichtbaar */
+    #audio-banner { position: fixed; top: 2vh; right: 3vw; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(12px, 1.4vw, 26px); padding: 0.4em 1.2em; border-radius: 999px; z-index: 50; }
+    /* Spiekmeldingen blijven onderin staan totdat de speler weer naar de quiz kijkt */
     #tv-alerts { position: fixed; left: 3vw; right: 3vw; bottom: 1.5vw; display: flex; flex-direction: column; gap: 0.8vw; z-index: 45; }
-    .tv-alert { color: #fff; font-weight: bold; font-size: clamp(16px, 2.6vw, 48px); padding: 0.5em 1em; border-radius: 14px; text-align: center;
-                box-shadow: 0 6px 24px rgba(0,0,0,0.5); animation: shake 0.4s; }
+    .tv-alert { color: #fff; font-weight: bold; font-size: clamp(16px, 2.6vw, 48px); padding: 0.5em 1em; border-radius: 14px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+    .tv-alert.fresh { animation: shake 0.4s; }
     .tv-alert.app { background: #dc2626; border: 3px solid #f87171; }
     .tv-alert.locked { background: #d97706; border: 3px solid #fbbf24; }
     #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 1.1vh; background: #1e293b; z-index: 40; }
     #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.3s; }
-    #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; }
+    #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; flex-wrap: wrap; }
     .pill { background: #334155; border-radius: 999px; padding: 0.3em 1.2em; font-size: clamp(14px, 1.9vw, 36px); font-weight: bold; }
-    main { padding: 1vh 4vw 14vh; }
-    .view { display: block; }
+    main { padding: 1vh 4vw 16vh; height: calc(100% - 9vh); overflow: hidden; }
     .tv-title { font-size: clamp(36px, 6vw, 110px); margin-bottom: 2vh; }
-    .tv-q { font-size: clamp(26px, 4.4vw, 84px); line-height: 1.2; margin: 1vh 0 3vh; }
     .tv-sub { color: #94a3b8; font-size: clamp(16px, 2.2vw, 40px); text-align: center; margin: 1vh 0; }
-    #tv-media { text-align: center; margin-bottom: 2vh; }
-    #tv-media img, #review-media img { max-height: 32vh; border-radius: 12px; }
-    #tv-media audio, #review-media audio { width: 40vw; }
     .chips-row { display: flex; flex-wrap: wrap; gap: 1vw; justify-content: center; margin-top: 3vh; }
     .tchip { background: #334155; border-radius: 999px; padding: 0.3em 1.1em; font-size: clamp(14px, 2vw, 38px); }
     .tchip.done { background: #15803d; }
@@ -58,11 +47,11 @@
     .big-list li { padding: 0.35em 0.8em; }
     #v-pause, #end-wait { text-align: center; padding-top: 12vh; }
     .huge { font-size: clamp(60px, 12vw, 220px); }
-    #review-q { font-size: clamp(24px, 3.6vw, 68px); text-align: center; margin: 1vh 0 2vh; }
-    #review-summary { text-align: center; color: #94a3b8; font-size: clamp(16px, 2.2vw, 40px); margin-top: 2vh; }
-    #review-explanation { text-align: center; color: #fde68a; font-size: clamp(16px, 2.2vw, 40px); margin-top: 1vh; }
-    #winner-banner { margin-top: 3vh; padding: 2vw; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 16px; color: #fff;
-                     animation: pulse 1s infinite alternate; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6); text-align: center; }
+    #winner-banner { margin-top: 3vh; padding: 2vw; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 16px; color: #fff; animation: pulse 1s infinite alternate; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6); text-align: center; }
+    table.bd { width: 100%; border-collapse: collapse; font-size: clamp(14px, 1.9vw, 36px); }
+    table.bd th, table.bd td { padding: 0.35em 0.6em; border-bottom: 1px solid #334155; text-align: center; }
+    table.bd td:first-child, table.bd th:first-child { text-align: left; }
+    table.bd .jk { background: #7c3aed; border-radius: 8px; }
   </style>
 </head>
 <body class="tv">
@@ -74,13 +63,13 @@
   <header id="tv-top">
     <span class="pill" id="tv-round">Familiequiz</span>
     <span class="pill hidden" id="tv-qnum" style="background:#3b82f6;"></span>
+    <span class="pill hidden" id="tv-practice" style="background:#7c3aed;">Oefenvraag: telt niet mee</span>
     <span class="pill hidden" id="tv-progress"></span>
     <span class="pill hidden" id="tv-timer"></span>
   </header>
 
   <main>
-    <!-- Lobby -->
-    <section id="v-lobby" class="view">
+    <section id="v-lobby">
       <h1 class="tv-title">Familiequiz 🏆</h1>
       <div class="lobby-grid">
         <div style="text-align:center;">
@@ -96,64 +85,51 @@
       </div>
     </section>
 
-    <!-- Vraag -->
-    <section id="v-question" class="view hidden">
-      <h1 id="tv-question" class="tv-q"></h1>
-      <div id="tv-media"></div>
-      <div id="tv-options"></div>
+    <section id="v-play" class="hidden">
+      <div id="play-root"></div>
       <div id="tv-teams" class="chips-row"></div>
     </section>
 
-    <!-- Pauze -->
-    <section id="v-pause" class="view hidden">
+    <section id="v-pause" class="hidden">
       <div class="huge">☕ 🍕 🍷</div>
       <h1 class="tv-title" style="color:#f59e0b;">Pauze!</h1>
       <p class="tv-sub">Even bijkletsen en de glazen bijvullen.</p>
     </section>
 
-    <!-- Tussenstand -->
-    <section id="v-standings" class="view hidden">
+    <section id="v-standings" class="hidden">
       <h1 class="tv-title" style="color:#38bdf8;">📊 Tussenstand</h1>
-      <p id="standings-subtitle" class="tv-sub"></p>
       <ul id="standings-list" class="big-list"></ul>
     </section>
 
-    <!-- Einde: ontknoping -->
-    <section id="v-end" class="view hidden">
+    <section id="v-end" class="hidden">
       <div id="end-wait">
         <div class="huge">🏁</div>
         <h1 class="tv-title">De quiz is afgelopen!</h1>
         <p class="tv-sub">De ontknoping begint zo...</p>
       </div>
       <div id="end-reveal" class="hidden">
-        <h1 class="tv-title" style="color:#f59e0b; text-align:center;">🏆 De Einduitslag 🏆</h1>
-        <ul id="tv-scoreboard" class="big-list"></ul>
-        <div id="winner-banner" class="hidden">
-          <h2 style="font-size: clamp(28px, 4.5vw, 84px); margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
-          <p id="winner-name-text" style="font-size: clamp(22px, 3.4vw, 64px); font-weight: bold; margin-top: 0.4em;"></p>
+        <div id="end-board">
+          <h1 class="tv-title" style="color:#f59e0b; text-align:center;">🏆 De Einduitslag 🏆</h1>
+          <ul id="tv-scoreboard" class="big-list"></ul>
+          <div id="winner-banner" class="hidden">
+            <h2 style="font-size: clamp(28px, 4.5vw, 84px); margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
+            <p id="winner-name-text" style="font-size: clamp(22px, 3.4vw, 64px); font-weight: bold; margin-top: 0.4em;"></p>
+          </div>
+        </div>
+        <div id="end-breakdown" class="hidden">
+          <h1 class="tv-title" style="color:#38bdf8; text-align:center;">📋 Punten per ronde</h1>
+          <div id="bd-table"></div>
         </div>
       </div>
-    </section>
-
-    <!-- Nakijken -->
-    <section id="v-review" class="view hidden">
-      <h1 id="review-q"></h1>
-      <div id="review-media" style="text-align:center; margin-bottom:2vh;"></div>
-      <div id="review-options"></div>
-      <p id="review-summary"></p>
-      <p id="review-explanation"></p>
     </section>
   </main>
 
   <script>
     const socket = io();
     const $ = (id) => document.getElementById(id);
-    const VIEWS = ["v-lobby", "v-question", "v-pause", "v-standings", "v-end", "v-review"];
-    function showView(id) {
-      VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id));
-    }
+    const VIEWS = ["v-lobby", "v-play", "v-pause", "v-standings", "v-end"];
+    const showView = (id) => VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id));
 
-    // ---------- Geluid: de browser wil eerst één klik of toetsdruk ----------
     let audioUnlocked = false;
     function unlock() {
       if (audioUnlocked) return;
@@ -163,87 +139,70 @@
       document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
     }
     ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, unlock));
-
-    // ---------- Verbinding ----------
     socket.on("connect", () => socket.emit("register_tv"));
-
-    // ---------- Spiekmeldingen (onderin beeld) ----------
-    socket.on("cheat_warning", (data) => {
-      const isLocked = data.reason === "locked";
-      const box = document.createElement("div");
-      box.className = "tv-alert " + (isLocked ? "locked" : "app");
-      box.textContent = isLocked
-        ? `🔒 ${data.teamName} · ${data.label}: scherm vergrendeld`
-        : `🚨 ${data.teamName} · ${data.label} heeft een andere app geopend`;
-      const holder = $("tv-alerts");
-      holder.appendChild(box);
-      while (holder.children.length > 3) holder.firstChild.remove();
-      setTimeout(() => {
-        box.style.transition = "opacity 0.5s";
-        box.style.opacity = "0";
-        setTimeout(() => box.remove(), 500);
-      }, 15000);
-    });
 
     // ---------- QR-code ----------
     async function showJoinUrl() {
       let url = window.location.origin;
       if (["localhost", "127.0.0.1", "[::1]", "::1"].includes(window.location.hostname)) {
-        try {
-          const res = await fetch("/api/join-url");
-          if (res.ok) url = (await res.json()).url || url;
-        } catch (e) {}
+        try { const res = await fetch("/api/join-url"); if (res.ok) url = (await res.json()).url || url; } catch (e) {}
       }
       $("join-url").textContent = url;
       const size = Math.round(window.innerWidth * 0.2);
       let tries = 0;
       (function draw() {
-        if (typeof QRCode === "undefined") {
-          if (tries++ < 40) setTimeout(draw, 250); // het script laadt misschien nog
-          return;
-        }
+        if (typeof QRCode === "undefined") { if (tries++ < 40) setTimeout(draw, 250); return; }
         $("qrcode").replaceChildren();
         new QRCode($("qrcode"), { text: url, width: size, height: size, colorDark: "#0f172a", colorLight: "#ffffff" });
       })();
     }
     showJoinUrl();
 
-    // ---------- Hulpfuncties ----------
-    const allAudio = () => Array.from(document.querySelectorAll("audio"));
-
-    function teamChips(box, teamList, showStatus) {
-      box.replaceChildren();
-      teamList.forEach((t) => {
-        const chip = document.createElement("span");
-        chip.className = "tchip" + (showStatus && t.answered ? " done" : "") + (!t.connected ? " off" : "");
-        chip.textContent = (showStatus && t.answered ? "✓ " : "") + t.name;
-        box.appendChild(chip);
+    // ---------- Spiekmeldingen: blijven staan totdat de speler terug is ----------
+    let shownAway = new Set();
+    function renderAway(list) {
+      const holder = $("tv-alerts");
+      holder.replaceChildren();
+      const now = new Set();
+      list.forEach((a) => {
+        now.add(a.deviceId);
+        const box = document.createElement("div");
+        box.className = "tv-alert " + (a.reason === "locked" ? "locked" : "app") + (shownAway.has(a.deviceId) ? "" : " fresh");
+        box.textContent = a.reason === "locked" ? `🔒 ${a.teamName} · ${a.label}: scherm vergrendeld` : `🚨 ${a.teamName} · ${a.label} heeft de quiz verlaten`;
+        holder.appendChild(box);
       });
+      shownAway = now;
     }
 
     // ---------- Ontknoping ----------
-    let revealAnimating = false;
-    let revealShown = false;
-    let prevReveal = null;
-    let cancelReveal = null;
-
+    let revealAnimating = false, revealShown = false, prevReveal = null, cancelReveal = null;
     function resetReveal() {
       if (cancelReveal) cancelReveal();
-      cancelReveal = null;
-      revealAnimating = false;
-      revealShown = false;
-      prevReveal = null;
+      cancelReveal = null; revealAnimating = false; revealShown = false; prevReveal = null;
       $("tv-scoreboard").replaceChildren();
       $("winner-banner").classList.add("hidden");
     }
+    const revealOptions = (onFinish) => ({ table: $("tv-scoreboard"), banner: $("winner-banner"), winnerText: $("winner-name-text"), onFinish });
 
-    function revealOptions(onFinish) {
-      return {
-        table: $("tv-scoreboard"),
-        banner: $("winner-banner"),
-        winnerText: $("winner-name-text"),
-        onFinish
-      };
+    function renderBreakdown(bd) {
+      const box = $("bd-table");
+      box.replaceChildren();
+      const t = document.createElement("table");
+      t.className = "bd";
+      const head = document.createElement("tr");
+      ["Team", ...bd.rounds.map((n) => n.replace(/^Ronde \d+:\s*/, "")), ...(bd.hasFinal ? ["Slotvraag"] : []), "Totaal"].forEach((h) => { const th = document.createElement("th"); th.textContent = h; head.appendChild(th); });
+      t.appendChild(head);
+      bd.rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        const add = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); };
+        add(`#${r.rank} ${r.name}`);
+        r.rounds.forEach((x) => add(x.joker ? `${x.pts} ×2 🃏` : String(x.pts), x.joker ? "jk" : ""));
+        if (bd.hasFinal) add(r.final > 0 ? `+${r.final}` : String(r.final));
+        add(String(r.total));
+        tr.lastChild.style.fontWeight = "bold";
+        t.appendChild(tr);
+      });
+      box.appendChild(t);
     }
 
     function handleEnd(state) {
@@ -251,22 +210,17 @@
       const rs = state.revealState;
       $("end-wait").classList.toggle("hidden", rs !== "idle");
       $("end-reveal").classList.toggle("hidden", rs === "idle");
+      const showBd = !!state.breakdown;
+      $("end-board").classList.toggle("hidden", showBd);
+      $("end-breakdown").classList.toggle("hidden", !showBd);
+      if (showBd) renderBreakdown(state.breakdown);
 
-      if (revealAnimating) {
-        prevReveal = rs;
-        return;
-      }
+      if (revealAnimating) { prevReveal = rs; return; }
       if (rs === "running" && state.finalScores) {
         if (prevReveal === "idle") {
-          // De bediening drukte net op start: laat de ontknoping zien
           revealAnimating = true;
-          cancelReveal = QuizFX.runReveal(state.finalScores, revealOptions(() => {
-            revealAnimating = false;
-            revealShown = true;
-            socket.emit("reveal_done");
-          }));
+          cancelReveal = QuizFX.runReveal(state.finalScores, revealOptions(() => { revealAnimating = false; revealShown = true; socket.emit("reveal_done"); }));
         } else {
-          // Pagina is tijdens de ontknoping ververst: meteen de uitslag tonen
           QuizFX.runReveal(state.finalScores, { ...revealOptions(null), instant: true });
           revealShown = true;
           socket.emit("reveal_done");
@@ -283,27 +237,24 @@
     }
 
     // ---------- Weergave ----------
-    let renderedQuestionId = null;
-    let renderedReviewId = null;
-    let wasPaused = false;
-    let audioWasPlaying = false;
+    let wasPaused = false, audioWasPlaying = false;
+    const allAudio = () => Array.from(document.querySelectorAll("audio"));
 
     socket.on("state_update", (state) => {
       const gs = state.gameState;
-      const inPlay = gs === "QUESTION" || gs === "WAITING_NEXT";
+      const meta = state.meta || {};
+      const playing = gs === "PLAY";
+      const isItem = playing && meta.kind === "item";
 
-      $("tv-round").textContent = state.roundName || "Familiequiz";
-      const showCounters = inPlay || gs === "PAUSED" || gs === "STANDINGS";
-      $("tv-qnum").classList.toggle("hidden", !showCounters);
-      $("tv-qnum").textContent = `Vraag ${state.questionNumber} van ${state.totalQuestions}`;
-      $("tv-progress").classList.toggle("hidden", !inPlay);
-      $("tv-progress").textContent = gs === "WAITING_NEXT"
-        ? "✅ Alle teams hebben geantwoord"
-        : `${state.answeredCount} van ${state.activeCount} teams`;
-      $("tv-progress").style.background = gs === "WAITING_NEXT" ? "#15803d" : "#334155";
+      $("tv-round").textContent = meta.roundName || "Familiequiz";
+      $("tv-qnum").classList.toggle("hidden", !(isItem && meta.itemTotal && !["draw", "thirty", "memory"].includes(meta.rtype)));
+      $("tv-qnum").textContent = `Vraag ${meta.itemNo} van ${meta.itemTotal}`;
+      $("tv-practice").classList.toggle("hidden", !(isItem && meta.practice));
+      const p = state.progress;
+      $("tv-progress").classList.toggle("hidden", !(isItem && p && (p.text || p.total)));
+      if (p) $("tv-progress").textContent = p.text || `${p.done} van ${p.total} teams`;
 
-      // Aftelklok bovenin
-      QuizFX.countdown("tv", gs === "QUESTION" ? state.timer : null, (info) => {
+      QuizFX.countdown("tv", playing ? state.timer : null, (info) => {
         $("tv-timerbar").classList.toggle("hidden", !info);
         $("tv-timer").classList.toggle("hidden", !info);
         if (!info) return;
@@ -312,77 +263,63 @@
         $("tv-timerfill").style.background = info.secs <= 5 && info.running ? "#ef4444" : "#22c55e";
       });
 
-      // Geluid: pauzeren bij pauze en tussenstand, hervatten daarna, stoppen buiten de vragen
       if (gs === "PAUSED") {
         if (!wasPaused) audioWasPlaying = allAudio().some((a) => !a.paused && !a.ended);
         allAudio().forEach((a) => a.pause());
-      } else if (wasPaused && audioWasPlaying && inPlay) {
+      } else if (wasPaused && audioWasPlaying && playing) {
         allAudio().forEach((a) => a.play().catch(() => {}));
-      } else if (!inPlay && gs !== "REVIEW") {
-        allAudio().forEach((a) => a.pause());
-      }
+      } else if (!playing) allAudio().forEach((a) => a.pause());
       wasPaused = gs === "PAUSED";
 
-      if (!inPlay) $("tv-alerts").replaceChildren();
+      renderAway(state.away || []);
 
       if (gs === "LOBBY") {
         showView("v-lobby");
-        teamChips($("lobby-teams"), state.teamList || [], false);
+        const chips = $("lobby-teams");
+        chips.replaceChildren();
+        (state.teamList || []).forEach((t) => {
+          const c = document.createElement("span");
+          c.className = "tchip" + (!t.connected ? " off" : "");
+          c.textContent = t.name;
+          chips.appendChild(c);
+        });
         $("lobby-empty").classList.toggle("hidden", (state.teamList || []).length > 0);
-        renderedQuestionId = null;
-        renderedReviewId = null;
+        $("play-root")._key = null;
         resetReveal();
       } else if (gs === "PAUSED") {
         showView("v-pause");
       } else if (gs === "STANDINGS") {
         showView("v-standings");
-        $("standings-subtitle").textContent = state.standingsAfter > 0
-          ? `Na vraag ${state.standingsAfter} van ${state.totalQuestions}`
-          : "Er is nog geen vraag afgerond";
         const list = $("standings-list");
         list.replaceChildren();
         (state.standings || []).forEach((row) => {
           const li = document.createElement("li");
           const left = document.createElement("span");
-          const medal = row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : `#${row.rank}`;
-          left.textContent = `${medal}  ${row.name}`;
+          left.textContent = `${row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : "#" + row.rank}  ${row.name}`;
           const pts = document.createElement("b");
           pts.style.color = "#38bdf8";
           pts.textContent = `${row.score} pt`;
           li.append(left, pts);
           list.appendChild(li);
         });
-      } else if (inPlay) {
-        showView("v-question");
-        const q = state.currentQuestion;
-        if (q && renderedQuestionId !== q.id) {
-          // Eén keer tekenen per vraag, anders start het nummer steeds opnieuw
-          renderedQuestionId = q.id;
-          $("tv-question").textContent = q.question;
-          const media = QuizFX.renderMedia($("tv-media"), q.media, { autoplay: true });
-          if (media && media.tagName === "AUDIO" && !audioUnlocked) media.play().catch(() => {});
-          QuizQ.renderTV(q, $("tv-options"));
+      } else if (playing && state.view) {
+        showView("v-play");
+        const r = Rounds[state.view.rtype];
+        const render = r && (r.tv || r.phone);
+        if (render) render($("play-root"), state.view, {});
+        // Teamchips tonen wie al geantwoord heeft
+        const chips = $("tv-teams");
+        chips.replaceChildren();
+        if (isItem && ["mc", "logo", "blur", "prices", "final"].includes(meta.rtype) && state.view.phase === "open") {
+          (state.teamList || []).forEach((t) => {
+            const c = document.createElement("span");
+            c.className = "tchip" + (t.answered ? " done" : "") + (!t.connected ? " off" : "");
+            c.textContent = (t.answered ? "✓ " : "") + t.name;
+            chips.appendChild(c);
+          });
         }
-        teamChips($("tv-teams"), state.teamList || [], true);
       } else if (gs === "END") {
         handleEnd(state);
-      } else if (gs === "REVIEW" && state.reviewQuestion) {
-        showView("v-review");
-        const rq = state.reviewQuestion;
-        $("tv-round").textContent = `${rq.roundName}  ·  Vraag ${state.reviewProgress.current} van ${state.reviewProgress.total}`;
-        if (renderedReviewId !== rq.id) {
-          renderedReviewId = rq.id;
-          $("review-q").textContent = rq.question;
-          QuizFX.renderMedia($("review-media"), rq.media, { autoplay: true });
-          QuizQ.renderReview(rq, rq, $("review-options"));
-          $("review-explanation").textContent = rq.explanation ? `💡 ${rq.explanation}` : "";
-        }
-        let summary = `✅ ${rq.correctCount} van ${rq.totalTeams} teams goed`;
-        const none = rq.teamAnswers.filter((a) => a.value === null).map((a) => a.name);
-        if (none.length) summary += `  ·  Geen antwoord: ${none.join(", ")}`;
-        if (rq.voided === "void") summary = "🚫 Deze vraag is vervallen en telt niet mee";
-        if (rq.voided === "all_correct") summary = "✅ Deze vraag is voor iedereen goed gerekend";
-        $("review-summary").textContent = summary;
       }
     });
   </script>

@@ -1,54 +1,1232 @@
-[
+{
+ "rounds": [
   {
-    "round": 1,
-    "roundName": "Ronde 1: Nieuws & Algemeen",
-    "questions": [
-      {
-        "id": "q1",
-        "type": "multiple_choice",
-        "question": "Welk evenement hield Nederland begin dit jaar dagenlang in spanning?",
-        "options": ["Koningsdag in Emmen", "De Boerenprotesten", "Het Songfestivaldebacle", "Het recordwarme voorjaar"],
-        "answer": 2,
-        "time": 20
-      }
-    ]
+   "id": "test",
+   "type": "mc",
+   "name": "Testvragen",
+   "counts": false,
+   "intro": {
+    "emoji": "🧪",
+    "title": "Eerst een paar testvragen",
+    "text": "We beginnen met drie hele makkelijke vragen om te kijken of alles werkt: de telefoons, het grote scherm en de antwoorden. Deze vragen tellen niet mee voor de uitslag. Iedereen kan ze beantwoorden!"
+   },
+   "items": [
+    {
+     "id": "t1",
+     "question": "Welke kleur heeft een banaan als hij rijp is?",
+     "options": [
+      "Blauw",
+      "Geel",
+      "Paars",
+      "Zwart"
+     ],
+     "answer": 1
+    },
+    {
+     "id": "t2",
+     "question": "Hoeveel dagen heeft een week?",
+     "options": [
+      "5",
+      "6",
+      "7",
+      "8"
+     ],
+     "answer": 2
+    },
+    {
+     "id": "t3",
+     "question": "Welk dier zegt 'boe'?",
+     "options": [
+      "Een koe",
+      "Een kat",
+      "Een eend",
+      "Een schaap"
+     ],
+     "answer": 0
+    }
+   ],
+   "outro": {
+    "emoji": "🏁",
+    "title": "Hier begint de echte quiz!",
+    "text": "Alles werkt? Dan gaan we nu echt beginnen. Vanaf nu tellen de punten mee. Veel succes!"
+   }
   },
   {
-    "round": 2,
-    "roundName": "Ronde 2: Hitster Muziekronde",
-    "questions": [
-      {
-        "id": "q2",
-        "type": "audio",
-        "question": "Uit welk jaar komt dit nummer?",
-        "audioUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/6e/82/3b/6e823b53-41ea-bfcf-7711-2e861d8a0d4c/mzaf_15024479585918342261.plus.aac.p.m4a",
-        "options": ["1996", "1999", "2003", "2008"],
-        "answer": 1,
-        "time": 25
-      }
-    ]
+   "id": "r1",
+   "type": "mc",
+   "name": "Ronde 1: Meerkeuze",
+   "reveal": "after_category",
+   "intro": {
+    "emoji": "❓",
+    "title": "Ronde 1: Meerkeuzevragen",
+    "text": "Vijf onderwerpen: algemene kennis, nieuws van 2026, lokaal nieuws uit Drenthe, sport en social media & memes. Na elk onderwerp kijken we samen na."
+   },
+   "items": [
+    {
+     "id": "ak1",
+     "question": "Wat is de hoofdstad van Australië?",
+     "options": [
+      "Sydney",
+      "Canberra",
+      "Melbourne",
+      "Perth"
+     ],
+     "answer": 1,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak2",
+     "question": "Hoeveel planeten heeft ons zonnestelsel?",
+     "options": [
+      "7",
+      "8",
+      "9",
+      "10"
+     ],
+     "answer": 1,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak3",
+     "question": "Wie schilderde De Nachtwacht?",
+     "options": [
+      "Vermeer",
+      "Van Gogh",
+      "Rembrandt",
+      "Mondriaan"
+     ],
+     "answer": 2,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak4",
+     "question": "Wat is het chemische symbool van goud?",
+     "options": [
+      "Go",
+      "Gd",
+      "Au",
+      "Ag"
+     ],
+     "answer": 2,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak5",
+     "question": "Welk land heeft de meeste inwoners?",
+     "options": [
+      "India",
+      "Verenigde Staten",
+      "Indonesië",
+      "Brazilië"
+     ],
+     "answer": 0,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak6",
+     "question": "Hoeveel snaren heeft een gewone gitaar?",
+     "options": [
+      "4",
+      "5",
+      "6",
+      "7"
+     ],
+     "answer": 2,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak7",
+     "question": "Wat is de langste rivier van Europa?",
+     "options": [
+      "Donau",
+      "Rijn",
+      "Wolga",
+      "Seine"
+     ],
+     "answer": 2,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak8",
+     "question": "In welk jaar viel de Berlijnse Muur?",
+     "options": [
+      "1985",
+      "1989",
+      "1991",
+      "1993"
+     ],
+     "answer": 1,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak9",
+     "question": "Wat is het grootste orgaan van het menselijk lichaam?",
+     "options": [
+      "De lever",
+      "De hersenen",
+      "De huid",
+      "De longen"
+     ],
+     "answer": 2,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "ak10",
+     "question": "Welke taal heeft de meeste moedertaalsprekers?",
+     "options": [
+      "Engels",
+      "Spaans",
+      "Hindi",
+      "Mandarijn-Chinees"
+     ],
+     "answer": 3,
+     "category": "Algemene kennis"
+    },
+    {
+     "id": "nw1",
+     "question": "Welk land werd in 2026 wereldkampioen voetbal?",
+     "options": [
+      "Argentinië",
+      "Frankrijk",
+      "Spanje",
+      "Brazilië"
+     ],
+     "answer": 2,
+     "category": "Nieuws 2026",
+     "explanation": "Spanje won de finale op 19 juli 2026 na verlenging met 1-0."
+    },
+    {
+     "id": "nw2",
+     "question": "Tegen welk land won Spanje de WK-finale van 2026 (1-0 na verlenging)?",
+     "options": [
+      "Frankrijk",
+      "Argentinië",
+      "Engeland",
+      "Portugal"
+     ],
+     "answer": 1,
+     "category": "Nieuws 2026"
+    },
+    {
+     "id": "nw3",
+     "question": "In welke drie landen werd het WK voetbal 2026 gespeeld?",
+     "options": [
+      "Verenigde Staten, Canada en Mexico",
+      "Spanje, Portugal en Marokko",
+      "Brazilië, Argentinië en Chili",
+      "Qatar, Saoedi-Arabië en de VAE"
+     ],
+     "answer": 0,
+     "category": "Nieuws 2026"
+    },
+    {
+     "id": "nw4",
+     "question": "In welk land werden in 2026 de Olympische Winterspelen gehouden?",
+     "options": [
+      "Zwitserland",
+      "Italië",
+      "Oostenrijk",
+      "Frankrijk"
+     ],
+     "answer": 1,
+     "category": "Nieuws 2026",
+     "explanation": "Milaan en Cortina d'Ampezzo."
+    },
+    {
+     "id": "nw5",
+     "question": "Welke stad was in 2026 gastheer van het Eurovisie Songfestival?",
+     "options": [
+      "Wenen",
+      "Stockholm",
+      "Basel",
+      "Malmö"
+     ],
+     "answer": 0,
+     "category": "Nieuws 2026"
+    },
+    {
+     "id": "lk1",
+     "question": "Welk spoorproject kwam in juni 2026 dichterbij doordat de provincie Drenthe 50 miljoen euro inbracht?",
+     "options": [
+      "De Hanzelijn",
+      "De Nedersaksenlijn",
+      "De Zuiderzeelijn",
+      "De Wunderline"
+     ],
+     "answer": 1,
+     "category": "Lokaal nieuws Drenthe 2026"
+    },
+    {
+     "id": "lk2",
+     "question": "Waarom werd in juli 2026 het treinverkeer bij Meppel/Koekange even stilgelegd?",
+     "options": [
+      "Om kittens en een moederkat van het spoor te redden",
+      "Door een omgevallen boom",
+      "Door een verdwaalde koe",
+      "Voor een filmopname"
+     ],
+     "answer": 0,
+     "category": "Lokaal nieuws Drenthe 2026"
+    },
+    {
+     "id": "lk3",
+     "question": "Waartegen trokken boeren in augustus 2026 massaal met trekkers door Drenthe?",
+     "options": [
+      "Het stikstofbeleid",
+      "Windmolens",
+      "De wolf",
+      "Hogere dieselprijzen"
+     ],
+     "answer": 0,
+     "category": "Lokaal nieuws Drenthe 2026"
+    },
+    {
+     "id": "lk4",
+     "question": "Welk horlogemerk was in 2026 titelsponsor van de TT Assen?",
+     "options": [
+      "Rolex",
+      "Swatch",
+      "Tissot",
+      "Omega"
+     ],
+     "answer": 2,
+     "category": "Lokaal nieuws Drenthe 2026"
+    },
+    {
+     "id": "sp1",
+     "question": "Welke stad organiseerde in 2024 de Olympische Zomerspelen?",
+     "options": [
+      "Tokio",
+      "Los Angeles",
+      "Parijs",
+      "Londen"
+     ],
+     "answer": 2,
+     "category": "Sport"
+    },
+    {
+     "id": "sp2",
+     "question": "Welk land won het WK voetbal in 2022?",
+     "options": [
+      "Frankrijk",
+      "Argentinië",
+      "Kroatië",
+      "Brazilië"
+     ],
+     "answer": 1,
+     "category": "Sport"
+    },
+    {
+     "id": "sp3",
+     "question": "Hoeveel ringen staan er in het Olympische logo?",
+     "options": [
+      "4",
+      "5",
+      "6",
+      "7"
+     ],
+     "answer": 1,
+     "category": "Sport"
+    },
+    {
+     "id": "sp4",
+     "question": "Hoe lang is een marathon (afgerond)?",
+     "options": [
+      "32 km",
+      "40 km",
+      "42 km",
+      "50 km"
+     ],
+     "answer": 2,
+     "category": "Sport"
+    },
+    {
+     "id": "sp5",
+     "question": "Welke kleur heeft de trui van de leider in de Tour de France?",
+     "options": [
+      "Groen",
+      "Geel",
+      "Rood",
+      "Roze"
+     ],
+     "answer": 1,
+     "category": "Sport"
+    },
+    {
+     "id": "sp6",
+     "question": "Bij welke sport gebruik je een puck?",
+     "options": [
+      "Hockey op gras",
+      "IJshockey",
+      "Curling",
+      "Polo"
+     ],
+     "answer": 1,
+     "category": "Sport"
+    },
+    {
+     "id": "sp7",
+     "question": "Hoeveel punten is een try waard in rugby union?",
+     "options": [
+      "3",
+      "4",
+      "5",
+      "7"
+     ],
+     "answer": 2,
+     "category": "Sport"
+    },
+    {
+     "id": "sp8",
+     "question": "Welke Nederlandse coureur werd in 2021 wereldkampioen Formule 1?",
+     "options": [
+      "Nyck de Vries",
+      "Max Verstappen",
+      "Robert Doornbos",
+      "Jos Verstappen"
+     ],
+     "answer": 1,
+     "category": "Sport"
+    },
+    {
+     "id": "sp9",
+     "question": "Op welk circuit wordt de TT in Nederland gereden?",
+     "options": [
+      "Zandvoort",
+      "Assen",
+      "Zolder",
+      "Spa"
+     ],
+     "answer": 1,
+     "category": "Sport"
+    },
+    {
+     "id": "sp10",
+     "question": "In welke sport win je de Wimbledon-trofee?",
+     "options": [
+      "Golf",
+      "Cricket",
+      "Tennis",
+      "Badminton"
+     ],
+     "answer": 2,
+     "category": "Sport"
+    },
+    {
+     "id": "sm1",
+     "question": "Welk nummer was het eerste YouTube-filmpje met een miljard views?",
+     "options": [
+      "Gangnam Style",
+      "Despacito",
+      "Baby",
+      "Harlem Shake"
+     ],
+     "answer": 0,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm2",
+     "question": "Welk hondenras staat op de 'Doge'-meme?",
+     "options": [
+      "Husky",
+      "Shiba Inu",
+      "Corgi",
+      "Labrador"
+     ],
+     "answer": 1,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm3",
+     "question": "Welke zanger zit achter de 'Rickroll'?",
+     "options": [
+      "Rick Astley",
+      "Rick Ross",
+      "Ricky Martin",
+      "Rick Springfield"
+     ],
+     "answer": 0,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm4",
+     "question": "Hoe heet Twitter sinds 2023?",
+     "options": [
+      "Threads",
+      "Bluesky",
+      "X",
+      "Chirp"
+     ],
+     "answer": 2,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm5",
+     "question": "Welk bedrijf is eigenaar van Instagram en WhatsApp?",
+     "options": [
+      "Google",
+      "Meta",
+      "Microsoft",
+      "Snap"
+     ],
+     "answer": 1,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm6",
+     "question": "Uit welk land komt TikTok oorspronkelijk (moederbedrijf ByteDance)?",
+     "options": [
+      "Zuid-Korea",
+      "Japan",
+      "China",
+      "Singapore"
+     ],
+     "answer": 2,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm7",
+     "question": "Hoeveel tekens mocht een tweet oorspronkelijk maximaal bevatten?",
+     "options": [
+      "100",
+      "140",
+      "200",
+      "280"
+     ],
+     "answer": 1,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm8",
+     "question": "Voor welk doel was de Ice Bucket Challenge uit 2014?",
+     "options": [
+      "ALS",
+      "Klimaat",
+      "Kanker bij kinderen",
+      "Hongersnood"
+     ],
+     "answer": 0,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm9",
+     "question": "Wat betekent de afkorting FOMO?",
+     "options": [
+      "Fear Of Missing Out",
+      "Friends Of My Own",
+      "Find Out More Online",
+      "Full On Mobile Overload"
+     ],
+     "answer": 0,
+     "category": "Social media & memes"
+    },
+    {
+     "id": "sm10",
+     "question": "Wat betekent de afkorting POV in video's op social media?",
+     "options": [
+      "Point of view",
+      "Picture of video",
+      "Post on video",
+      "Play or view"
+     ],
+     "answer": 0,
+     "category": "Social media & memes"
+    }
+   ]
   },
   {
-    "round": 3,
-    "roundName": "Ronde 3: Typisch Drenthe",
-    "questions": [
-      {
-        "id": "q3",
-        "type": "multiple_choice",
-        "question": "Wat betekent de Drentse uitdrukking 'Moi' NIET?",
-        "options": ["Hallo", "Tot ziens", "Goedemorgen", "Schiet eens op"],
-        "answer": 3,
-        "time": 20
-      },
-      {
-        "id": "q4",
-        "type": "location",
-        "question": "Welke bekende Drentse locatie zien we hier?",
-        "imageUrl": "https://images.unsplash.com/photo-1596401057633-54a8fe8ef647?w=800",
-        "options": ["Hunebedcentrum Borger", "TT Circuit Assen", "Drents Museum", "Kamp Westerbork"],
-        "answer": 0,
-        "time": 20
-      }
+   "id": "r2",
+   "type": "blur",
+   "name": "Ronde 2: Foto blur",
+   "levelPoints": [
+    10,
+    8,
+    6,
+    4,
+    2,
+    1
+   ],
+   "intro": {
+    "emoji": "🔍",
+    "title": "Ronde 2: Foto blur",
+    "text": "Een plaatje wordt steeds scherper. Hoe eerder jullie het goede antwoord geven, hoe meer punten. Een fout antwoord levert niets op en je kunt niet opnieuw. Eerst een testvraag."
+   },
+   "items": [
+    {
+     "id": "b01",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/01.jpg"
+     },
+     "question": "Wat zie je hier?",
+     "options": [
+      "Eiffeltoren",
+      "Domtoren",
+      "Atomium",
+      "Big Ben"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b02",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/02.jpg"
+     },
+     "question": "Wat zie je hier?",
+     "options": [
+      "Een hunebed",
+      "Stonehenge",
+      "Een grafheuvel",
+      "Een windmolen"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b03",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/03.jpg"
+     },
+     "question": "Welk dier is dit?",
+     "options": [
+      "Tijger",
+      "Leeuw",
+      "Jaguar",
+      "Luipaard"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b04",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/04.jpg"
+     },
+     "question": "Welke Nederlandse stad is dit?",
+     "options": [
+      "Groningen",
+      "Utrecht",
+      "Maastricht",
+      "Zwolle"
+     ],
+     "answer": 1
+    },
+    {
+     "id": "b05",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/05.jpg"
+     },
+     "question": "Welk gebouw is dit?",
+     "options": [
+      "Colosseum",
+      "Parthenon",
+      "Pantheon",
+      "Sagrada Familia"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b06",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/06.jpg"
+     },
+     "question": "Wat voor voertuig is dit?",
+     "options": [
+      "Tractor",
+      "Bulldozer",
+      "Trein",
+      "Tram"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b07",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/07.jpg"
+     },
+     "question": "Welk eten is dit?",
+     "options": [
+      "Stroopwafel",
+      "Poffertjes",
+      "Pannenkoek",
+      "Oliebol"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b08",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/08.jpg"
+     },
+     "question": "Welk beroemd bruggetje is dit?",
+     "options": [
+      "Tower Bridge",
+      "Golden Gate Bridge",
+      "Rialtobrug",
+      "Erasmusbrug"
+     ],
+     "answer": 1
+    },
+    {
+     "id": "b09",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/09.jpg"
+     },
+     "question": "Welke beroemdheid is dit?",
+     "options": [
+      "Johan Cruijff",
+      "Marco van Basten",
+      "Ruud Gullit",
+      "Dennis Bergkamp"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "b10",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/10.jpg"
+     },
+     "question": "Welk Drents dorp/gebouw is dit?",
+     "options": [
+      "Hunebedcentrum Borger",
+      "TT Circuit Assen",
+      "Drents Museum",
+      "Kamp Westerbork"
+     ],
+     "answer": 0
+    }
+   ],
+   "practice": [
+    {
+     "id": "t1",
+     "media": {
+      "kind": "image",
+      "src": "images/blur/test.jpg"
+     },
+     "question": "Wat zie je hier?",
+     "options": [
+      "Een banaan",
+      "Een appel",
+      "Een peer",
+      "Een citroen"
+     ],
+     "answer": 0
+    }
+   ]
+  },
+  {
+   "id": "r3",
+   "type": "memory",
+   "name": "Ronde 3: Geheugen",
+   "intro": {
+    "emoji": "🧠",
+    "title": "Ronde 3: Geheugen",
+    "text": "Vorig jaar hebben we iets op een bord geschreven. Schrijf zoveel mogelijk op wat je nog weet. De quizmaster keurt jullie antwoorden goed of fout."
+   },
+   "items": [
+    {
+     "id": "m1",
+     "prompt": "Wat stond er vorig jaar op het bord?",
+     "total": 10,
+     "time": 180,
+     "key": []
+    }
+   ]
+  },
+  {
+   "id": "r4",
+   "type": "hitster",
+   "name": "Ronde 4: Muziek",
+   "enabled": false
+  },
+  {
+   "id": "r5",
+   "type": "prices",
+   "name": "Ronde 5: Prijzen van vroeger",
+   "yearsAgo": 15,
+   "maxPer": 5,
+   "intro": {
+    "emoji": "🛒",
+    "title": "Ronde 5: Prijzen van vroeger",
+    "text": "Bij tien boodschappen schatten jullie de prijs van nu én de prijs van 15 jaar geleden. Wie er het dichtst bij zit, krijgt de meeste punten."
+   },
+   "items": [
+    {
+     "id": "p1",
+     "product": "Brood (heel, A-merk)",
+     "unit": "1 stuk",
+     "now": 2.69,
+     "then": 1.6
+    },
+    {
+     "id": "p2",
+     "product": "Melk (halfvol)",
+     "unit": "1 liter",
+     "now": 1.45,
+     "then": 0.89
+    },
+    {
+     "id": "p3",
+     "product": "Eieren (scharrel)",
+     "unit": "10 stuks",
+     "now": 3.19,
+     "then": 1.99
+    },
+    {
+     "id": "p4",
+     "product": "Boter",
+     "unit": "250 gram",
+     "now": 3.39,
+     "then": 1.99
+    },
+    {
+     "id": "p5",
+     "product": "Kaas (jong belegen)",
+     "unit": "per 500 gram",
+     "now": 6.99,
+     "then": 4.69
+    },
+    {
+     "id": "p6",
+     "product": "Koffie (gemalen)",
+     "unit": "500 gram",
+     "now": 6.49,
+     "then": 3.99
+    },
+    {
+     "id": "p7",
+     "product": "Frikandel (diepvries)",
+     "unit": "10 stuks",
+     "now": 3.29,
+     "then": 2.19
+    },
+    {
+     "id": "p8",
+     "product": "Bananen",
+     "unit": "per kilo",
+     "now": 1.99,
+     "then": 1.49
+    },
+    {
+     "id": "p9",
+     "product": "Cola (fles)",
+     "unit": "1,5 liter",
+     "now": 2.39,
+     "then": 1.49
+    },
+    {
+     "id": "p10",
+     "product": "Pak pasta (spaghetti)",
+     "unit": "500 gram",
+     "now": 1.69,
+     "then": 0.89
+    }
+   ]
+  },
+  {
+   "id": "r6",
+   "type": "draw",
+   "name": "Ronde 6: Tekenen",
+   "time": 75,
+   "words": [
+    "Fiets",
+    "Hunebed",
+    "Koe",
+    "Windmolen",
+    "Paraplu",
+    "Vuurtoren",
+    "Pizza",
+    "Trampoline",
+    "Giraffe",
+    "Kasteel",
+    "Gitaar",
+    "Regenboog",
+    "Sneeuwpop",
+    "Tractor",
+    "Brandweerauto",
+    "Kerstboom",
+    "Vliegtuig",
+    "Ijsje",
+    "Piraat",
+    "Robot",
+    "Spin",
+    "Trein",
+    "Raket",
+    "Haai",
+    "Aardbei",
+    "Zonnebril",
+    "Boot",
+    "Kamer plant",
+    "Vlieger",
+    "Skateboard"
+   ]
+  },
+  {
+   "id": "r7",
+   "type": "thirty",
+   "name": "Ronde 7: 30 seconds",
+   "time": 30,
+   "cards": [
+    [
+     "Appelflap",
+     "Sinterklaas",
+     "Hunebed",
+     "Stroopwafel",
+     "Tulpen"
+    ],
+    [
+     "Boerderij",
+     "Trekker",
+     "Kip",
+     "Melkbus",
+     "Hooiberg"
+    ],
+    [
+     "Zwembad",
+     "Duikbril",
+     "Handdoek",
+     "Badmuts",
+     "Glijbaan"
+    ],
+    [
+     "Voetbal",
+     "Scheidsrechter",
+     "Strafschop",
+     "Doelman",
+     "Corner"
+    ],
+    [
+     "Verjaardag",
+     "Slingers",
+     "Taart",
+     "Cadeau",
+     "Kaarsjes"
+    ],
+    [
+     "Camping",
+     "Tent",
+     "Slaapzak",
+     "Kampvuur",
+     "Luchtbed"
+    ],
+    [
+     "Pizza",
+     "Lasagne",
+     "Spaghetti",
+     "Pesto",
+     "Parmezaan"
+    ],
+    [
+     "Supermarkt",
+     "Winkelwagen",
+     "Kassa",
+     "Bonuskaart",
+     "Tasje"
+    ],
+    [
+     "School",
+     "Rugzak",
+     "Juf",
+     "Pauze",
+     "Schoolplein"
+    ],
+    [
+     "Strand",
+     "Zonnecrème",
+     "Schelp",
+     "Parasol",
+     "Zandkasteel"
+    ],
+    [
+     "Kerst",
+     "Kerstboom",
+     "Kerstmuts",
+     "Kalkoen",
+     "Gourmetten"
+    ],
+    [
+     "Winter",
+     "Schaatsen",
+     "Sneeuw",
+     "Muts",
+     "Chocolademelk"
     ]
+   ]
+  },
+  {
+   "id": "r8",
+   "type": "logo",
+   "name": "Ronde 8: Logo's",
+   "reveal": "after_each",
+   "intro": {
+    "emoji": "🏷️",
+    "title": "Ronde 8: Raad het logo",
+    "text": "Van elk logo is een stuk weggelaten. Welk merk is het?"
+   },
+   "items": [
+    {
+     "id": "l01",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/01.png",
+      "hide": [
+       [
+        0,
+        55,
+        100,
+        45
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Coca-Cola",
+      "Pepsi",
+      "Fanta",
+      "Sprite"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "l02",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/02.png",
+      "hide": [
+       [
+        0,
+        0,
+        40,
+        100
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "McDonald's",
+      "Burger King",
+      "KFC",
+      "Subway"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "l03",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/03.png",
+      "hide": [
+       [
+        50,
+        0,
+        50,
+        100
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Adidas",
+      "Nike",
+      "Puma",
+      "Reebok"
+     ],
+     "answer": 1
+    },
+    {
+     "id": "l04",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/04.png",
+      "hide": [
+       [
+        0,
+        0,
+        100,
+        45
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Jumbo",
+      "Lidl",
+      "Albert Heijn",
+      "Aldi"
+     ],
+     "answer": 2
+    },
+    {
+     "id": "l05",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/05.png",
+      "hide": [
+       [
+        0,
+        0,
+        50,
+        50
+       ],
+       [
+        50,
+        50,
+        50,
+        50
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Spotify",
+      "Deezer",
+      "Tidal",
+      "SoundCloud"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "l06",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/06.png",
+      "hide": [
+       [
+        0,
+        0,
+        100,
+        35
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Instagram",
+      "Snapchat",
+      "WhatsApp",
+      "TikTok"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "l07",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/07.png",
+      "hide": [
+       [
+        0,
+        50,
+        100,
+        50
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "BP",
+      "Shell",
+      "Esso",
+      "Total"
+     ],
+     "answer": 1
+    },
+    {
+     "id": "l08",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/08.png",
+      "hide": [
+       [
+        60,
+        0,
+        40,
+        100
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Ikea",
+      "Hema",
+      "Gamma",
+      "Praxis"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "l09",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/09.png",
+      "hide": [
+       [
+        0,
+        0,
+        45,
+        100
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Apple",
+      "Samsung",
+      "Nokia",
+      "Huawei"
+     ],
+     "answer": 0
+    },
+    {
+     "id": "l10",
+     "media": {
+      "kind": "image",
+      "src": "images/logos/10.png",
+      "hide": [
+       [
+        0,
+        50,
+        100,
+        50
+       ]
+      ]
+     },
+     "question": "Welk merk is dit logo?",
+     "options": [
+      "Netflix",
+      "Disney+",
+      "HBO",
+      "Prime Video"
+     ],
+     "answer": 0
+    }
+   ]
+  },
+  {
+   "id": "fin",
+   "type": "final",
+   "name": "Slotvraag",
+   "items": [
+    {
+     "id": "f1",
+     "question": "Hoeveel hunebedden liggen er in Nederland?",
+     "options": [
+      "34",
+      "44",
+      "54",
+      "64"
+     ],
+     "answer": 2,
+     "explanation": "52 in Drenthe en 2 in Groningen."
+    }
+   ]
   }
-]
+ ]
+}

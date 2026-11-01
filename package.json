@@ -1,7 +1,7 @@
 {
   "name": "familiequiz-app",
-  "version": "2.0.0",
-  "description": "Interactieve familiequiz met teams, realtime sockets, tv-scherm, bediening en anti-spiek",
+  "version": "3.0.0",
+  "description": "Interactieve familiequiz met rondes, teams, tv-scherm, bediening en anti-spiek",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
