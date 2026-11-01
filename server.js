@@ -91,8 +91,9 @@ rawRounds.forEach((round, rIdx) => {
 let players = {};
 let currentIndex = 0;
 let reviewIndex = 0;
-let gameState = 'LOBBY'; // LOBBY, QUESTION, WAITING_NEXT, PAUSED, END, REVIEW
+let gameState = 'LOBBY'; // LOBBY, QUESTION, WAITING_NEXT, PAUSED, STANDINGS, END, REVIEW
 let stateBeforePause = 'QUESTION';
+let stateBeforeStandings = 'QUESTION';
 
 function currentQuestion() {
   return allQuestions[currentIndex] || null;
@@ -115,22 +116,46 @@ function connectedPlayers() {
 }
 
 // De score wordt altijd uit de gegeven antwoorden berekend: nooit dubbel of verloren
-function scoreOf(player) {
+function scoreOf(player, upToIndex = allQuestions.length - 1) {
   let total = 0;
-  for (const q of allQuestions) {
+  for (let i = 0; i <= upToIndex && i < allQuestions.length; i++) {
+    const q = allQuestions[i];
     if (player.answers[q.id] === q.answer) total += q.points ?? DEFAULT_POINTS;
   }
   return total;
 }
 
-function finalScores() {
+function ranking(upToIndex = allQuestions.length - 1) {
   const list = Object.values(players)
-    .map((p) => ({ name: p.name, score: scoreOf(p) }))
+    .map((p) => ({ name: p.name, score: scoreOf(p, upToIndex) }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'nl'));
   list.forEach((item) => {
     item.rank = 1 + list.filter((o) => o.score > item.score).length;
   });
   return list;
+}
+
+function finalScores() {
+  return ranking();
+}
+
+// Tussenstand telt alleen vragen die klaar zijn: de open vraag telt nog niet mee,
+// zodat de tussenstand geen antwoorden verklapt.
+function standings() {
+  const upTo = stateBeforeStandings === 'WAITING_NEXT' ? currentIndex : currentIndex - 1;
+  return ranking(upTo);
+}
+
+// Nakijken: per vraag wie wat heeft geantwoord (alleen voor de host)
+function reviewDetails() {
+  const q = allQuestions[reviewIndex];
+  if (!q) return null;
+  return {
+    ...q,
+    playerAnswers: Object.values(players)
+      .map((p) => ({ name: p.name, answerIndex: p.answers[q.id] ?? null }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'nl'))
+  };
 }
 
 // Als alle verbonden spelers hebben geantwoord -> WAITING_NEXT
@@ -148,6 +173,7 @@ function broadcastState() {
   const inPlay = ['QUESTION', 'WAITING_NEXT', 'PAUSED'].includes(gameState);
   const showScores = gameState === 'END' || gameState === 'REVIEW';
   const roundName = gameState === 'LOBBY' || !q ? 'Familiequiz' : q.roundName;
+  const standingsList = gameState === 'STANDINGS' ? standings() : null;
 
   // Host: ziet de vraag, de voortgang en bij het nakijken ook de antwoorden
   io.to('host_room').emit('state_update', {
@@ -158,14 +184,18 @@ function broadcastState() {
     totalQuestions: allQuestions.length,
     answeredCount: inPlay ? active.filter((p) => hasAnswered(p)).length : 0,
     connectedCount: active.length,
-    reviewQuestion: gameState === 'REVIEW' ? allQuestions[reviewIndex] : null,
+    reviewQuestion: gameState === 'REVIEW' ? reviewDetails() : null,
     reviewProgress: { current: reviewIndex + 1, total: allQuestions.length },
     playerList: Object.values(players).map((p) => ({
       name: p.name,
       connected: p.connected,
       answered: inPlay && hasAnswered(p)
     })),
-    finalScores: showScores ? finalScores() : null
+    finalScores: showScores ? finalScores() : null,
+    standings: standingsList,
+    standingsAfter: gameState === 'STANDINGS'
+      ? (stateBeforeStandings === 'WAITING_NEXT' ? currentIndex + 1 : currentIndex)
+      : null
   });
 
   // Scoreboard: alleen de einduitslag, en pas als de quiz klaar is
@@ -182,7 +212,8 @@ function broadcastState() {
       gameState,
       roundName,
       currentQuestion: gameState === 'QUESTION' ? publicQuestion(q, { forPlayer: true }) : null,
-      me: { answered: inPlay && hasAnswered(p) }
+      me: { answered: inPlay && hasAnswered(p) },
+      standings: standingsList
     });
   });
 }
@@ -307,9 +338,10 @@ io.on('connection', (socket) => {
     sync();
   });
 
-  // 5. Anti-spiek: alleen tijdens een open vraag
+  // 5. Anti-spiek: actief zolang een vraag open staat, ook na het indienen
+  // en terwijl er op de rest wordt gewacht (niet bij pauze, tussenstand of uitslag)
   socket.on('player_blurred', ({ reason } = {}) => {
-    if (gameState !== 'QUESTION') return;
+    if (gameState !== 'QUESTION' && gameState !== 'WAITING_NEXT') return;
     const player = playerOf(socket);
     if (!player) return;
 
@@ -404,12 +436,28 @@ io.on('connection', (socket) => {
     sync();
   });
 
+  // 9b. Host: tussenstand tonen/verbergen
+  socket.on('toggle_standings', () => {
+    if (!isHost(socket)) return;
+
+    if (gameState === 'STANDINGS') {
+      gameState = stateBeforeStandings;
+    } else if (gameState === 'QUESTION' || gameState === 'WAITING_NEXT') {
+      stateBeforeStandings = gameState;
+      gameState = 'STANDINGS';
+    } else {
+      return;
+    }
+    sync();
+  });
+
   // 10. Host: volledige reset
   socket.on('reset_quiz', () => {
     if (!isHost(socket)) return;
 
     gameState = 'LOBBY';
     stateBeforePause = 'QUESTION';
+    stateBeforeStandings = 'QUESTION';
     currentIndex = 0;
     reviewIndex = 0;
     players = {};
