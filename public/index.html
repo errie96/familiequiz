@@ -65,6 +65,13 @@
       <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de host pauze beëindigt.</small>
     </div>
 
+    <!-- 4b. Tussenstand -->
+    <div id="standings-screen" class="hidden">
+      <h2>📊 Tussenstand</h2>
+      <ul id="standings-list"></ul>
+      <p style="text-align:center; color:#94a3b8; margin-top:12px; font-size:14px;">Kijk ook naar het grote scherm!</p>
+    </div>
+
     <!-- 5. Einde quiz -->
     <div id="end-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
       <div style="font-size: 54px;">🏁 🏆</div>
@@ -92,7 +99,7 @@
     let currentGameState = "LOBBY";
     let renderedQuestionId = null; // id van de vraag die nu getekend staat
 
-    const SCREENS = ["join-screen", "lobby-screen", "question-screen", "pause-screen", "end-screen"];
+    const SCREENS = ["join-screen", "lobby-screen", "question-screen", "pause-screen", "standings-screen", "end-screen"];
     function showScreen(id) {
       SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id));
     }
@@ -108,10 +115,11 @@
       } catch (err) {}
     }
 
-    // Spiekdetectie: alleen tijdens een open vraag
+    // Spiekdetectie: actief zolang een vraag open staat, ook na het indienen
+    // (niet tijdens lobby, pauze, tussenstand of uitslag)
     let lastNotifyTime = 0;
     function notifyLeftApp(reason) {
-      if (!playerId || currentGameState !== "QUESTION") return;
+      if (!playerId || (currentGameState !== "QUESTION" && currentGameState !== "WAITING_NEXT")) return;
       const now = Date.now();
       if (now - lastNotifyTime < 3000) return;
       lastNotifyTime = now;
@@ -282,6 +290,24 @@
         if (previousState !== "PAUSED") {
           $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
         }
+        return;
+      }
+
+      if (state.gameState === "STANDINGS") {
+        showScreen("standings-screen");
+        const list = $("standings-list");
+        list.replaceChildren();
+        (state.standings || []).forEach((row) => {
+          const li = document.createElement("li");
+          if (row.name === playerName) li.style.background = "#2563eb";
+          const left = document.createElement("span");
+          const medal = row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : `#${row.rank}`;
+          left.textContent = `${medal}  ${row.name}`;
+          const pts = document.createElement("b");
+          pts.textContent = `${row.score} pt`;
+          li.append(left, pts);
+          list.appendChild(li);
+        });
         return;
       }
 
