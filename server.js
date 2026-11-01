@@ -19,12 +19,29 @@ try {
 }
 
 // Speler- & Host-status
-let players = {}; // playerId -> { playerId, socketId, name, score, answered, submittedAnswer, connected, lastAlertTime }
+let players = {};
 let activeHostToken = null;
 let hostSocketId = null;
 let currentRoundIndex = 0;
 let currentQuestionIndex = 0;
-let gameState = "LOBBY"; // LOBBY, QUESTION, PAUSED, WAITING_NEXT, END
+let reviewQuestionIndex = 0;
+let gameState = "LOBBY"; // LOBBY, QUESTION, PAUSED, WAITING_NEXT, END, REVIEW
+
+// Vlakke lijst van alle vragen om eenvoudig doorheen te bladeren
+function getAllQuestionsFlat() {
+  const list = [];
+  rounds.forEach((r, rIdx) => {
+    r.questions.forEach((q, qIdx) => {
+      list.push({
+        ...q,
+        roundName: r.roundName,
+        rIdx,
+        qIdx
+      });
+    });
+  });
+  return list;
+}
 
 function getCurrentQuestion() {
   if (rounds[currentRoundIndex] && rounds[currentRoundIndex].questions[currentQuestionIndex]) {
@@ -35,12 +52,14 @@ function getCurrentQuestion() {
 
 function broadcastState() {
   const currentQ = getCurrentQuestion();
+  const allFlat = getAllQuestionsFlat();
+
   io.emit('state_update', {
     gameState,
     roundName: rounds[currentRoundIndex]?.roundName || "Familiequiz",
     currentQuestion: (gameState === "QUESTION" || gameState === "PAUSED") ? currentQ : null,
-    currentRoundIndex,
-    currentQuestionIndex,
+    reviewQuestion: gameState === "REVIEW" ? allFlat[reviewQuestionIndex] : null,
+    reviewProgress: { current: reviewQuestionIndex + 1, total: allFlat.length },
     playerList: Object.values(players).map(p => ({
       playerId: p.playerId,
       name: p.name,
@@ -87,7 +106,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 3. Speler login / herstel
+  // 3. Speler login / sessieherstel na F5
   socket.on('init_player', ({ playerId, name }) => {
     if (playerId && players[playerId]) {
       const player = players[playerId];
@@ -140,7 +159,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5. Anti-spiek (alleen buiten LOBBY en PAUSED)
+  // 5. Anti-spiek: NIET in LOBBY of PAUSED
   socket.on('player_blurred', ({ playerId, reason }) => {
     if (gameState === "LOBBY" || gameState === "PAUSED") return;
 
@@ -175,27 +194,12 @@ io.on('connection', (socket) => {
         currentQuestionIndex = 0;
       }
 
+      // Laatste vraag voltooid -> Direct naar de ontknoping (END)
       if (currentRoundIndex >= rounds.length) {
         gameState = "END";
-        
-        // Eenvoudig overzicht van alle vragen zonder teamkeuzes
-        const reviewOverview = rounds.map(r => ({
-          roundName: r.roundName,
-          questions: r.questions.map(q => ({
-            question: q.question,
-            options: q.options,
-            correctAnswer: q.answer,
-            type: q.type,
-            imageUrl: q.imageUrl || null,
-            audioUrl: q.audioUrl || null
-          }))
-        }));
-
         io.emit('game_over', {
-          overview: reviewOverview,
           finalScores: Object.values(players).sort((a, b) => b.score - a.score)
         });
-
         broadcastState();
         return;
       }
@@ -213,22 +217,26 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. Host: Vraag teruggaan
+  // 7. Host: Vraag teruggaan (werkt tijdens het spel én tijdens de review)
   socket.on('prev_question', () => {
     if (socket.id !== hostSocketId) return;
-    if (gameState === "LOBBY") return;
 
-    if (currentQuestionIndex > 0) {
-      currentQuestionIndex--;
-      gameState = "QUESTION";
-    } else if (currentRoundIndex > 0) {
-      currentRoundIndex--;
-      currentQuestionIndex = rounds[currentRoundIndex].questions.length - 1;
-      gameState = "QUESTION";
+    if (gameState === "REVIEW") {
+      if (reviewQuestionIndex > 0) {
+        reviewQuestionIndex--;
+        broadcastState();
+      }
+      return;
     }
 
-    const q = getCurrentQuestion();
-    if (q) {
+    if (gameState === "QUESTION" || gameState === "WAITING_NEXT") {
+      if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+      } else if (currentRoundIndex > 0) {
+        currentRoundIndex--;
+        currentQuestionIndex = rounds[currentRoundIndex].questions.length - 1;
+      }
+      gameState = "QUESTION";
       Object.values(players).forEach(p => {
         p.answered = false;
         p.submittedAnswer = null;
@@ -237,7 +245,37 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 8. Host: Pauze aan/uit
+  // 8. Host: Start gezamenlijk nakijken NA de ontknoping
+  socket.on('start_review', () => {
+    if (socket.id !== hostSocketId) return;
+    gameState = "REVIEW";
+    reviewQuestionIndex = 0;
+    broadcastState();
+  });
+
+  // 9. Host: Volgende vraag tijdens nakijken
+  socket.on('next_review_question', () => {
+    if (socket.id !== hostSocketId || gameState !== "REVIEW") return;
+
+    const allFlat = getAllQuestionsFlat();
+    if (reviewQuestionIndex < allFlat.length - 1) {
+      reviewQuestionIndex++;
+      broadcastState();
+    } else {
+      // Laatste vraag besproken -> ga weer terug naar de einduitslag
+      gameState = "END";
+      broadcastState();
+    }
+  });
+
+  // 10. Host: Terug naar uitslag scherm vanuit de review
+  socket.on('back_to_scores', () => {
+    if (socket.id !== hostSocketId) return;
+    gameState = "END";
+    broadcastState();
+  });
+
+  // 11. Host: Pauze aan/uit
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -251,20 +289,21 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 9. Host: Geheel nieuwe quiz starten
+  // 12. Host: Geheel nieuwe quiz starten (volledige reset)
   socket.on('reset_quiz', () => {
     if (socket.id !== hostSocketId) return;
 
     gameState = "LOBBY";
     currentRoundIndex = 0;
     currentQuestionIndex = 0;
+    reviewQuestionIndex = 0;
     players = {};
 
     io.emit('quiz_reset');
     broadcastState();
   });
 
-  // 10. Disconnect
+  // 13. Disconnect
   socket.on('disconnect', () => {
     if (socket.id !== hostSocketId) {
       const player = Object.values(players).find(p => p.socketId === socket.id);
