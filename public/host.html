@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <title>Familiequiz - Host Dashboard</title>
+  <title>Familiequiz - Host Dashboard & Uitslag</title>
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -18,31 +18,31 @@
         <small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
       </div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button id="btn-reset" style="width: auto; padding: 10px 12px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Herstart</button>
-        <button id="btn-prev" class="btn-option" style="width: auto; padding: 10px 14px; margin: 0; background: #475569;">⬅️ Vorige</button>
+        <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Reset</button>
         <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 16px; margin: 0;">☕ Pauzeer</button>
-        <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 20px; margin: 0;">Start / Volgende ➡️</button>
+        <button id="btn-prev" class="btn-option" style="width: auto; padding: 10px 16px; margin: 0; background: #475569;">⬅️ Vorige</button>
+        <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
       </div>
     </div>
 
     <!-- Live Meldingen Container -->
     <div id="cheat-alerts"></div>
 
-    <!-- QR Code & Deelnemen -->
+    <!-- 1. Lobby & QR Code -->
     <div id="lobby-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
       <h2>Laat de familie scannen om mee te doen 📱</h2>
       <p style="color: #94a3b8; margin-bottom: 12px;">Link: <b id="join-url-text" style="color:#38bdf8;"></b></p>
       <div id="qrcode" style="background: white; padding: 12px; border-radius: 8px;"></div>
     </div>
 
-    <!-- Pauzescherm Weergave voor Host -->
+    <!-- 2. Pauzescherm -->
     <div id="host-pause-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; text-align: center; margin-bottom: 20px; border: 2px dashed #f59e0b;">
       <span style="font-size: 44px;">☕ 🍕</span>
       <h2 style="color: #f59e0b; margin: 10px 0;">PAUZE IS ACTIEF</h2>
-      <p style="color: #94a3b8;">Alle telefoons staan op het pauzescherm. Meldingen zijn tijdelijk uitgeschakeld.</p>
+      <p style="color: #94a3b8;">Alle telefoons staan op pauze. Meldingen zijn tijdelijk uitgeschakeld.</p>
     </div>
 
-    <!-- Huidige Vraagweergave tijdens de quiz -->
+    <!-- 3. Huidige Vraagweergave (tijdens het spelen) -->
     <div id="host-main-view">
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
         <span class="badge" id="host-round-title">Familiequiz</span>
@@ -54,54 +54,45 @@
       <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
     </div>
 
-    <!-- EINDFASE 1: Vraag-voor-vraag Nabespreking -->
-    <div id="host-review-view" class="hidden" style="margin-top: 10px;">
-      <div style="background: #0f172a; border-radius: 12px; padding: 20px; border: 1px solid #334155;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <span class="badge" id="review-round-name" style="background: #f59e0b; color: #000;">Ronde</span>
-          <span id="review-question-index" style="color: #94a3b8; font-weight: bold;">Vraag 1 van X</span>
-        </div>
-
-        <h2 id="review-question-text" style="font-size: 24px; margin-bottom: 16px;">Vraagtekst</h2>
-        <div id="review-media" style="text-align: center; margin: 15px 0;"></div>
-        <div id="review-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
-
-        <!-- Bediening tijdens nabespreking -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid #334155; padding-top: 16px;">
-          <button id="btn-review-prev" class="btn-option" style="width: auto; padding: 10px 18px;">⬅️ Vorige Vraag</button>
-          <button id="btn-reveal-answer" class="btn-primary" style="width: auto; padding: 10px 24px; background: #38bdf8; color: #0f172a;">👁️ Onthul Juiste Antwoord</button>
-          <button id="btn-review-next" class="btn-primary" style="width: auto; padding: 10px 18px;">Volgende Vraag ➡️</button>
-        </div>
+    <!-- 4. Gezamenlijk Vraag-voor-Vraag Nakijken (ZONDER teamantwoorden) -->
+    <div id="host-review-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; border: 2px solid #38bdf8; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <span class="badge" id="review-round-title" style="background: #f59e0b;">Ronde</span>
+        <span class="badge" id="review-counter-badge" style="background: #3b82f6;">Vraag 1 van X</span>
       </div>
 
-      <div style="text-align: center; margin-top: 20px;">
-        <button id="btn-go-to-podium" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #ef4444); width: auto; font-size: 18px; padding: 12px 28px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);">
-          🏆 Naar de Grote Ontknoping (Scores) ➔
-        </button>
+      <h2 id="review-question-text" style="font-size: 26px; margin: 15px 0;">Vraagtekst...</h2>
+      <div id="review-media" style="text-align: center; margin: 15px 0;"></div>
+      <div id="review-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px;"></div>
+
+      <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center;">
+        <button id="btn-review-prev" class="btn-option" style="width: auto; padding: 10px 18px; margin: 0; background: #334155;">⬅️ Vorige Vraag</button>
+        <button id="btn-skip-to-scores" class="btn-option" style="width: auto; padding: 10px 14px; margin: 0; color: #94a3b8; font-size: 13px; text-decoration: underline;">Direct naar Uitslag ⏩</button>
+        <button id="btn-review-next" class="btn-primary" style="width: auto; padding: 10px 24px; margin: 0; background: #22c55e;">Volgende Vraag ➡️</button>
       </div>
     </div>
 
-    <!-- EINDFASE 2: De Ontknoping (Slechtste naar Beste) -->
-    <div id="host-podium-view" class="hidden" style="margin-top: 20px; text-align: center;">
-      <h2 style="font-size: 32px; color: #38bdf8; margin-bottom: 10px;">🏆 De Einduitslag 🏆</h2>
-      <p style="color: #94a3b8; margin-bottom: 20px;">We onthullen de scores van de hekkensluiter naar de winnaar!</p>
+    <!-- 5. De Grote Ontknoping (Uitslag op het Hostscherm) -->
+    <div id="host-end-view" class="hidden" style="margin-top: 20px; text-align: center;">
+      <h2 style="color: #f59e0b; font-size: 32px; margin-bottom: 6px;">🏆 De Grote Ontknoping 🏆</h2>
+      <p style="color: #94a3b8; margin-bottom: 20px;">Alle vragen zijn besproken! Tijd voor de ranglijst van onder naar boven.</p>
 
-      <button id="btn-start-countdown-reveal" class="btn-primary" style="background: linear-gradient(135deg, #22c55e, #16a34a); width: auto; font-size: 20px; padding: 14px 30px; margin-bottom: 24px;">
-        🎉 Start Finale Ranking
+      <button id="btn-start-reveal" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #ef4444); font-size: 20px; padding: 14px 28px; width: auto; box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4); margin-bottom: 20px;">
+        🎬 Start Ontknoping (Slechtste ➔ Beste)
       </button>
 
-      <ul id="podium-list" style="text-align: left; list-style: none; margin: 0 auto; max-width: 650px;"></ul>
+      <ul id="scoreboard-table" style="text-align: left; font-size: 20px; max-width: 650px; margin: 0 auto; list-style: none;"></ul>
 
       <div id="winner-banner" class="hidden" style="margin-top: 24px; padding: 24px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; color: white; animation: pulse 1s infinite alternate; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6);">
-        <h2 style="font-size: 32px; margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
+        <h2 style="font-size: 34px; margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
         <p id="winner-name-text" style="font-size: 28px; font-weight: bold; margin-top: 8px;">TEAM</p>
       </div>
     </div>
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
-    <!-- Deelnemerslijst met Live Status -->
-    <div id="participants-section">
+    <!-- Deelnemerslijst Status (ZONDER scores tijdens het spel) -->
+    <div>
       <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
       <ul id="players-status-list"></ul>
     </div>
@@ -122,11 +113,19 @@
       transform: translateY(0);
       opacity: 1;
     }
+    .correct-answer-card {
+      background: #15803d !important;
+      border: 2px solid #4ade80 !important;
+      font-weight: bold;
+      transform: scale(1.02);
+      box-shadow: 0 4px 15px rgba(74, 222, 128, 0.3);
+    }
   </style>
 
   <script>
     const socket = io();
 
+    // Host Token
     let hostToken = localStorage.getItem("quiz_host_token");
     if (!hostToken) {
       hostToken = "host_" + Math.random().toString(36).substr(2, 9);
@@ -205,7 +204,9 @@
 
       const interval = setInterval(function() {
         const timeLeft = animationEnd - Date.now();
-        if (timeLeft <= 0) return clearInterval(interval);
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
         confetti({
           particleCount: 50,
           spread: 360,
@@ -215,7 +216,6 @@
       }, 250);
     }
 
-    // Sockets
     socket.on("connect", () => {
       document.getElementById("connection-status").textContent = "● Verbonden als Host";
       document.getElementById("connection-status").style.color = "#4ade80";
@@ -228,9 +228,7 @@
     });
 
     socket.on("host_confirmed", (data) => {
-      if (data.token) {
-        localStorage.setItem("quiz_host_token", data.token);
-      }
+      if (data.token) localStorage.setItem("quiz_host_token", data.token);
     });
 
     // Knoppen bediening
@@ -247,6 +245,11 @@
         socket.emit("reset_quiz");
       }
     });
+
+    // Knoppen nakijk-scherm
+    document.getElementById("btn-review-next").addEventListener("click", () => socket.emit("next_review_question"));
+    document.getElementById("btn-review-prev").addEventListener("click", () => socket.emit("prev_question"));
+    document.getElementById("btn-skip-to-scores").addEventListener("click", () => socket.emit("trigger_final_results"));
 
     // Spiekalarm
     socket.on("cheat_warning", (data) => {
@@ -280,22 +283,28 @@
       document.getElementById("submission-status-badge").style.background = "#22c55e";
     });
 
+    let cachedFinalScores = [];
+    let isRevealing = false;
+
     // State Synchronisatie
     socket.on("state_update", (state) => {
-      document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
-
       const mediaBox = document.getElementById("host-media");
       const optionsBox = document.getElementById("host-options");
       const lobbyBox = document.getElementById("lobby-container");
       const pauseView = document.getElementById("host-pause-view");
       const mainView = document.getElementById("host-main-view");
       const reviewView = document.getElementById("host-review-view");
-      const podiumView = document.getElementById("host-podium-view");
+      const endView = document.getElementById("host-end-view");
+
+      // Schermen resetten
+      lobbyBox.classList.add("hidden");
+      pauseView.classList.add("hidden");
+      mainView.classList.add("hidden");
+      reviewView.classList.add("hidden");
+      endView.classList.add("hidden");
 
       if (state.gameState === "LOBBY") {
         lobbyBox.classList.remove("hidden");
-        reviewView.classList.add("hidden");
-        podiumView.classList.add("hidden");
         mainView.classList.remove("hidden");
         btnNext.textContent = "Start Quiz 🚀";
         btnPrev.disabled = true;
@@ -304,166 +313,103 @@
         document.getElementById("submission-status-badge").style.background = "#334155";
         mediaBox.innerHTML = "";
         optionsBox.innerHTML = "";
-      } else if (state.gameState === "END") {
-        lobbyBox.classList.add("hidden");
-        mainView.classList.add("hidden");
-        pauseView.classList.add("hidden");
-        reviewView.classList.remove("hidden");
-        btnNext.disabled = true;
-        btnPrev.disabled = true;
-        btnPause.disabled = true;
-      } else {
-        lobbyBox.classList.add("hidden");
-        btnNext.textContent = "Volgende Vraag ➡️";
-        btnNext.disabled = false;
-        btnPrev.disabled = false;
-        btnPause.disabled = false;
-      }
-
-      if (state.gameState === "PAUSED") {
+      } else if (state.gameState === "PAUSED") {
         pauseView.classList.remove("hidden");
-        mainView.classList.add("hidden");
         btnPause.textContent = "▶️ Hervat Quiz";
         btnPause.style.background = "#22c55e";
-        renderPlayerStatuses(state.playerList, state.gameState);
-        return;
-      } else if (state.gameState !== "END") {
-        pauseView.classList.add("hidden");
+      } else if (state.gameState === "QUESTION" || state.gameState === "WAITING_NEXT") {
         mainView.classList.remove("hidden");
+        btnNext.textContent = "Volgende ➡️";
+        btnPrev.disabled = false;
         btnPause.textContent = "☕ Pauzeer";
         btnPause.style.background = "#f59e0b";
-      }
 
-      if (state.gameState === "QUESTION" && state.currentQuestion) {
-        document.getElementById("submission-status-badge").textContent = "Bezig met antwoorden...";
-        document.getElementById("submission-status-badge").style.background = "#334155";
-        document.getElementById("host-question").textContent = state.currentQuestion.question;
-        mediaBox.innerHTML = "";
-        optionsBox.innerHTML = "";
+        document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
+        if (state.gameState === "QUESTION" && state.currentQuestion) {
+          document.getElementById("submission-status-badge").textContent = "Bezig met antwoorden...";
+          document.getElementById("submission-status-badge").style.background = "#334155";
+          document.getElementById("host-question").textContent = state.currentQuestion.question;
+          mediaBox.innerHTML = "";
+          optionsBox.innerHTML = "";
 
-        if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
-          mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height: 250px; border-radius: 8px;">`;
+          if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
+            mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height: 250px; border-radius: 8px;">`;
+          }
+          if (state.currentQuestion.type === "audio" && state.currentQuestion.audioUrl) {
+            mediaBox.innerHTML = `<audio controls autoplay src="${state.currentQuestion.audioUrl}"></audio>`;
+          }
+
+          state.currentQuestion.options.forEach((opt, idx) => {
+            const div = document.createElement("div");
+            div.className = "btn-option";
+            div.style.padding = "10px";
+            div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
+            optionsBox.appendChild(div);
+          });
         }
-        if (state.currentQuestion.type === "audio" && state.currentQuestion.audioUrl) {
-          mediaBox.innerHTML = `<audio controls autoplay src="${state.currentQuestion.audioUrl}"></audio>`;
+      } else if (state.gameState === "REVIEW" && state.reviewQuestion) {
+        // Gezamenlijk vraag-voor-vraag nakijken
+        reviewView.classList.remove("hidden");
+        btnNext.textContent = "Volgende ➡️";
+        btnPrev.disabled = false;
+
+        const rq = state.reviewQuestion;
+        document.getElementById("review-round-title").textContent = rq.roundName;
+        document.getElementById("review-counter-badge").textContent = `Vraag ${state.reviewProgress.current} van ${state.reviewProgress.total}`;
+        document.getElementById("review-question-text").textContent = rq.question;
+
+        const rMedia = document.getElementById("review-media");
+        rMedia.innerHTML = "";
+        if (rq.type === "location" && rq.imageUrl) {
+          rMedia.innerHTML = `<img src="${rq.imageUrl}" style="max-height: 250px; border-radius: 8px;">`;
+        }
+        if (rq.type === "audio" && rq.audioUrl) {
+          rMedia.innerHTML = `<audio controls autoplay src="${rq.audioUrl}"></audio>`;
         }
 
-        state.currentQuestion.options.forEach((opt, idx) => {
+        const rOptions = document.getElementById("review-options");
+        rOptions.innerHTML = "";
+        rq.options.forEach((opt, idx) => {
           const div = document.createElement("div");
-          div.className = "btn-option";
-          div.style.padding = "10px";
-          div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
-          optionsBox.appendChild(div);
+          const isCorrect = (idx === rq.answer);
+          div.className = `btn-option ${isCorrect ? 'correct-answer-card' : ''}`;
+          div.style.padding = "14px";
+          div.style.borderRadius = "8px";
+          div.innerHTML = `${['A', 'B', 'C', 'D'][idx]}: ${opt} ${isCorrect ? ' &nbsp;<b>✅ JUIST</b>' : ''}`;
+          rOptions.appendChild(div);
         });
+
+      } else if (state.gameState === "END") {
+        endView.classList.remove("hidden");
+        btnNext.disabled = true;
+        btnPrev.disabled = true;
       }
 
       renderPlayerStatuses(state.playerList, state.gameState);
     });
 
-    // --- NABESPREKING LOGICA (Vraag voor vraag) ---
-    let allQuestionsFlat = [];
-    let currentReviewIndex = 0;
-    let finalScoresData = [];
-
+    // Einduitslag data ontvangen
     socket.on("game_over", (data) => {
-      finalScoresData = data.finalScores;
-
-      // Vlakke lijst maken van alle vragen uit alle rondes
-      allQuestionsFlat = [];
-      data.overview.forEach(round => {
-        round.questions.forEach(q => {
-          allQuestionsFlat.push({
-            roundName: round.roundName,
-            ...q
-          });
-        });
-      });
-
-      currentReviewIndex = 0;
-      loadReviewQuestion(currentReviewIndex);
+      cachedFinalScores = data.finalScores;
+      isRevealing = false;
+      document.getElementById("scoreboard-table").innerHTML = "";
+      document.getElementById("winner-banner").classList.add("hidden");
+      document.getElementById("btn-start-reveal").classList.remove("hidden");
     });
 
-    function loadReviewQuestion(index) {
-      if (!allQuestionsFlat[index]) return;
-      const q = allQuestionsFlat[index];
-
-      document.getElementById("review-round-name").textContent = q.roundName;
-      document.getElementById("review-question-index").textContent = `Vraag ${index + 1} van ${allQuestionsFlat.length}`;
-      document.getElementById("review-question-text").textContent = q.question;
-
-      const mediaBox = document.getElementById("review-media");
-      mediaBox.innerHTML = "";
-      if (q.type === "location" && q.imageUrl) {
-        mediaBox.innerHTML = `<img src="${q.imageUrl}" style="max-height: 260px; border-radius: 8px;">`;
-      }
-      if (q.type === "audio" && q.audioUrl) {
-        mediaBox.innerHTML = `<audio controls src="${q.audioUrl}"></audio>`;
-      }
-
-      const optionsBox = document.getElementById("review-options");
-      optionsBox.innerHTML = "";
-      q.options.forEach((opt, idx) => {
-        const div = document.createElement("div");
-        div.className = "btn-option review-opt";
-        div.id = `review-opt-${idx}`;
-        div.style.padding = "12px";
-        div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
-        optionsBox.appendChild(div);
-      });
-
-      document.getElementById("btn-reveal-answer").disabled = false;
-      document.getElementById("btn-reveal-answer").style.opacity = "1";
-    }
-
-    document.getElementById("btn-reveal-answer").addEventListener("click", () => {
-      const q = allQuestionsFlat[currentReviewIndex];
-      const correctDiv = document.getElementById(`review-opt-${q.correctAnswer}`);
-      if (correctDiv) {
-        correctDiv.style.background = "#22c55e";
-        correctDiv.style.border = "2px solid #86efac";
-        correctDiv.style.fontWeight = "bold";
-        correctDiv.innerHTML += " ✅ JUIST!";
-      }
-      document.getElementById("btn-reveal-answer").disabled = true;
-      document.getElementById("btn-reveal-answer").style.opacity = "0.5";
-    });
-
-    document.getElementById("btn-review-next").addEventListener("click", () => {
-      if (currentReviewIndex < allQuestionsFlat.length - 1) {
-        currentReviewIndex++;
-        loadReviewQuestion(currentReviewIndex);
-      }
-    });
-
-    document.getElementById("btn-review-prev").addEventListener("click", () => {
-      if (currentReviewIndex > 0) {
-        currentReviewIndex--;
-        loadReviewQuestion(currentReviewIndex);
-      }
-    });
-
-    // Schakel door naar de ontknoping
-    document.getElementById("btn-go-to-podium").addEventListener("click", () => {
-      document.getElementById("host-review-view").classList.add("hidden");
-      document.getElementById("host-podium-view").classList.remove("hidden");
-      document.getElementById("participants-section").classList.add("hidden");
-    });
-
-    // --- FINALE RANKING (Slechtste naar Beste met Confetti) ---
-    let isRevealing = false;
-    document.getElementById("btn-start-countdown-reveal").addEventListener("click", () => {
-      if (isRevealing || finalScoresData.length === 0) return;
+    // Start de ontknoping (van onder naar boven)
+    document.getElementById("btn-start-reveal").addEventListener("click", () => {
+      if (isRevealing || cachedFinalScores.length === 0) return;
       isRevealing = true;
-      document.getElementById("btn-start-countdown-reveal").classList.add("hidden");
+      document.getElementById("btn-start-reveal").classList.add("hidden");
 
-      const table = document.getElementById("podium-list");
+      const table = document.getElementById("scoreboard-table");
       table.innerHTML = "";
 
-      // Omkeren zodat we bij het slechtste team beginnen
-      const reversedList = [...finalScoresData].reverse();
+      const reversedList = [...cachedFinalScores].reverse();
 
       reversedList.forEach((player, i) => {
-        const trueRank = finalScoresData.length - i;
+        const trueRank = cachedFinalScores.length - i;
         const isWinner = (trueRank === 1);
 
         setTimeout(() => {
@@ -471,12 +417,11 @@
 
           const li = document.createElement("li");
           li.className = "rank-card";
-          li.style.padding = "16px";
+          li.style.padding = "14px 18px";
           li.style.borderRadius = "8px";
           li.style.marginBottom = "8px";
           li.style.display = "flex";
           li.style.justifyContent = "space-between";
-          li.style.alignItems = "center";
 
           let rankBadge = `#${trueRank}`;
           if (trueRank === 1) {
@@ -495,7 +440,7 @@
 
           li.innerHTML = `
             <span><b>${rankBadge}</b> &nbsp; ${player.name}</span>
-            <b style="color: ${isWinner ? '#fde047' : '#38bdf8'}; font-size: ${isWinner ? '26px' : '20px'};">${player.score} pt</b>
+            <b style="color: ${isWinner ? '#fde047' : '#38bdf8'}; font-size: ${isWinner ? '24px' : '20px'};">${player.score} pt</b>
           `;
 
           table.prepend(li);
@@ -504,8 +449,9 @@
           if (isWinner) {
             playVictoryFanfare();
             launchMassiveConfetti();
+            const banner = document.getElementById("winner-banner");
             document.getElementById("winner-name-text").textContent = `🏆 ${player.name} WINT DE FAMILIEQUIZ! 🏆`;
-            document.getElementById("winner-banner").classList.remove("hidden");
+            banner.classList.remove("hidden");
           }
 
         }, (i + 1) * 2200);
@@ -528,3 +474,17 @@
             ? `<span style="color:#4ade80; font-weight:bold;">✓ Ingediend</span>` 
             : `<span style="color:#f59e0b;">⏳ Bezig met kiezen</span>`;
         } else if (gameState === "WAITING_NEXT") {
+          statusBadge = `<span style="color:#4ade80; font-weight:bold;">✓ Klaar</span>`;
+        } else if (gameState === "PAUSED") {
+          statusBadge = `<span style="color:#f59e0b;">☕ Pauze</span>`;
+        } else {
+          statusBadge = `<span style="color:#38bdf8;">Klaar</span>`;
+        }
+
+        li.innerHTML = `<span>${p.name}</span>${statusBadge}`;
+        listEl.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
