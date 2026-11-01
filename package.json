@@ -1,13 +1,18 @@
 {
   "name": "familiequiz-app",
-  "version": "1.0.0",
-  "description": "Interactieve familiequiz met realtime sockets, anti-cheat detectie en pauzestand",
+  "version": "2.0.0",
+  "description": "Interactieve familiequiz met teams, realtime sockets, tv-scherm, bediening en anti-spiek",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "fresh": "node server.js --fresh",
+    "vendor": "node scripts/download-vendor.js"
   },
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
