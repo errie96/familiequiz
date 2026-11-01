@@ -1,7 +1,7 @@
 {
   "name": "familiequiz-app",
   "version": "3.0.0",
-  "description": "Interactieve familiequiz met rondes, teams, tv-scherm, bediening en anti-spiek",
+  "description": "Familiequiz met rondes, teams, tv-scherm en bediening",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,7 +12,5 @@
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
   },
-  "engines": {
-    "node": ">=18"
-  }
+  "engines": { "node": ">=18" }
 }

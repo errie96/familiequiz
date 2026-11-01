@@ -1,1232 +1,1375 @@
 {
- "rounds": [
-  {
-   "id": "test",
-   "type": "mc",
-   "name": "Testvragen",
-   "counts": false,
-   "intro": {
-    "emoji": "🧪",
-    "title": "Eerst een paar testvragen",
-    "text": "We beginnen met drie hele makkelijke vragen om te kijken of alles werkt: de telefoons, het grote scherm en de antwoorden. Deze vragen tellen niet mee voor de uitslag. Iedereen kan ze beantwoorden!"
-   },
-   "items": [
-    {
-     "id": "t1",
-     "question": "Welke kleur heeft een banaan als hij rijp is?",
-     "options": [
-      "Blauw",
-      "Geel",
-      "Paars",
-      "Zwart"
-     ],
-     "answer": 1
-    },
-    {
-     "id": "t2",
-     "question": "Hoeveel dagen heeft een week?",
-     "options": [
-      "5",
-      "6",
-      "7",
-      "8"
-     ],
-     "answer": 2
-    },
-    {
-     "id": "t3",
-     "question": "Welk dier zegt 'boe'?",
-     "options": [
-      "Een koe",
-      "Een kat",
-      "Een eend",
-      "Een schaap"
-     ],
-     "answer": 0
-    }
-   ],
-   "outro": {
-    "emoji": "🏁",
-    "title": "Hier begint de echte quiz!",
-    "text": "Alles werkt? Dan gaan we nu echt beginnen. Vanaf nu tellen de punten mee. Veel succes!"
-   }
+ "test": {
+  "intro": {
+   "emoji": "🧪",
+   "title": "Eerst even testen",
+   "text": "We beginnen met drie makkelijke testvragen om te kijken of alles werkt. Iedereen kan ze beantwoorden en ze tellen niet mee voor de uitslag. Alleen de basistelefoon van elk team dient het antwoord in."
   },
+  "questions": [
+   {
+    "question": "Welke kleur heeft een rijpe banaan meestal?",
+    "options": [
+     "Blauw",
+     "Geel",
+     "Paars",
+     "Zwart"
+    ],
+    "answer": 1
+   },
+   {
+    "question": "Hoeveel is 5 + 5?",
+    "options": [
+     "10",
+     "8",
+     "12",
+     "55"
+    ],
+    "answer": 0
+   },
+   {
+    "question": "Wat is de hoofdstad van Nederland?",
+    "options": [
+     "Rotterdam",
+     "Assen",
+     "Den Haag",
+     "Amsterdam"
+    ],
+    "answer": 3
+   }
+  ]
+ },
+ "start": {
+  "emoji": "🏁",
+  "title": "Hier begint de echte quiz!",
+  "text": "De testvragen zijn voorbij. Vanaf nu tellen de punten mee. Succes!"
+ },
+ "rounds": [
   {
    "id": "r1",
    "type": "mc",
-   "name": "Ronde 1: Meerkeuze",
-   "reveal": "after_category",
-   "intro": {
-    "emoji": "❓",
-    "title": "Ronde 1: Meerkeuzevragen",
-    "text": "Vijf onderwerpen: algemene kennis, nieuws van 2026, lokaal nieuws uit Drenthe, sport en social media & memes. Na elk onderwerp kijken we samen na."
-   },
-   "items": [
+   "title": "Meerkeuzevragen",
+   "emoji": "❓",
+   "intro": "Vijf categorieën van tien meerkeuzevragen: algemene kennis, nieuws 2026, lokaal nieuws uit Drenthe, sport en social media. Alleen de basistelefoon dient het antwoord van het team in.",
+   "categories": [
     {
-     "id": "ak1",
-     "question": "Wat is de hoofdstad van Australië?",
-     "options": [
-      "Sydney",
-      "Canberra",
-      "Melbourne",
-      "Perth"
-     ],
-     "answer": 1,
-     "category": "Algemene kennis"
+     "name": "Algemene kennis",
+     "questions": [
+      {
+       "question": "Wat is de hoofdstad van Australië?",
+       "options": [
+        "Sydney",
+        "Canberra",
+        "Melbourne",
+        "Perth"
+       ],
+       "answer": 1
+      },
+      {
+       "question": "Hoeveel botten heeft een volwassen mens ongeveer?",
+       "options": [
+        "206",
+        "106",
+        "306",
+        "412"
+       ],
+       "answer": 0
+      },
+      {
+       "question": "Wat is het scheikundig symbool van goud?",
+       "options": [
+        "Go",
+        "Gd",
+        "Ag",
+        "Au"
+       ],
+       "answer": 3
+      },
+      {
+       "question": "Wie schilderde De Nachtwacht?",
+       "options": [
+        "Johannes Vermeer",
+        "Vincent van Gogh",
+        "Rembrandt van Rijn",
+        "Frans Hals"
+       ],
+       "answer": 2
+      },
+      {
+       "question": "Hoeveel provincies heeft Nederland?",
+       "options": [
+        "10",
+        "12",
+        "11",
+        "13"
+       ],
+       "answer": 1
+      },
+      {
+       "question": "Welk landdier is het snelst over korte afstand?",
+       "options": [
+        "Cheeta",
+        "Leeuw",
+        "Gazelle",
+        "Struisvogel"
+       ],
+       "answer": 0
+      },
+      {
+       "question": "Welke oceaan is de grootste?",
+       "options": [
+        "Atlantische Oceaan",
+        "Indische Oceaan",
+        "Noordelijke IJszee",
+        "Stille Oceaan"
+       ],
+       "answer": 3
+      },
+      {
+       "question": "Wie schreef 'Het Achterhuis'?",
+       "options": [
+        "Etty Hillesum",
+        "Annie M.G. Schmidt",
+        "Anne Frank",
+        "Hella Haasse"
+       ],
+       "answer": 2
+      },
+      {
+       "question": "Wat is de grootste planeet van ons zonnestelsel?",
+       "options": [
+        "Saturnus",
+        "Jupiter",
+        "Neptunus",
+        "Aarde"
+       ],
+       "answer": 1
+      },
+      {
+       "question": "Hoeveel spelers van één team staan tegelijk in het veld bij een voetbalwedstrijd?",
+       "options": [
+        "11",
+        "9",
+        "10",
+        "12"
+       ],
+       "answer": 0
+      }
+     ]
     },
     {
-     "id": "ak2",
-     "question": "Hoeveel planeten heeft ons zonnestelsel?",
-     "options": [
-      "7",
-      "8",
-      "9",
-      "10"
-     ],
-     "answer": 1,
-     "category": "Algemene kennis"
+     "name": "Nieuws 2026",
+     "questions": [
+      {
+       "question": "Wie werd op 23 februari 2026 beëdigd als nieuwe minister-president?",
+       "options": [
+        "Dilan Yesilgöz",
+        "Rob Jetten",
+        "Henri Bontenbal",
+        "Dick Schoof"
+       ],
+       "answer": 1,
+       "explanation": "Kabinet-Jetten beëdigd op 23 februari 2026."
+      },
+      {
+       "question": "Welke drie partijen vormen samen het kabinet-Jetten?",
+       "options": [
+        "D66, VVD en CDA",
+        "D66, PVV en CDA",
+        "VVD, PVV en BBB",
+        "D66, GroenLinks-PvdA en CDA"
+       ],
+       "answer": 0,
+       "explanation": "Minderheidskabinet van D66, VVD en CDA."
+      },
+      {
+       "question": "Wat is bijzonder aan Rob Jetten als premier?",
+       "options": [
+        "Hij is de oudste premier ooit",
+        "Hij is de eerste vrouwelijke premier",
+        "Hij was eerst koning",
+        "Hij is de jongste premier ooit"
+       ],
+       "answer": 3,
+       "explanation": "Jetten was 38 toen hij aantrad."
+      },
+      {
+       "question": "Uit hoeveel ministers bestaat het kabinet-Jetten (premier meegeteld)?",
+       "options": [
+        "16",
+        "20",
+        "18",
+        "28"
+       ],
+       "answer": 2,
+       "explanation": "18 ministers en 10 staatssecretarissen (samen 28 bewindspersonen)."
+      },
+      {
+       "question": "Welk land won het Eurovisie Songfestival 2026 in Wenen?",
+       "options": [
+        "Oostenrijk",
+        "Bulgarije",
+        "Australië",
+        "Frankrijk"
+       ],
+       "answer": 1,
+       "explanation": "DARA met 'Banagaranga', finale 16 mei 2026."
+      },
+      {
+       "question": "Waarom deed Nederland in 2026 niet mee aan het Songfestival?",
+       "options": [
+        "Uit protest tegen de deelname van Israël",
+        "Er was geen geld voor",
+        "Er was geen geschikte zanger",
+        "Het Songfestival was geannuleerd"
+       ],
+       "answer": 0,
+       "explanation": "Ook Spanje, Ierland, IJsland en Slovenië deden niet mee."
+      },
+      {
+       "question": "Welk product wil Nederland Europees verbieden vanwege microplastics (juni 2026)?",
+       "options": [
+        "Plastic rietjes",
+        "Glitterlijm",
+        "Wattenstaafjes",
+        "Kauwgom"
+       ],
+       "answer": 3,
+       "explanation": "Bron: VRT NWS, 27 juni 2026."
+      },
+      {
+       "question": "Wie won in oktober 2026 de Nobelprijs voor de Vrede?",
+       "options": [
+        "Donald Trump",
+        "María Corina Machado",
+        "Navanethem Pillay",
+        "Greta Thunberg"
+       ],
+       "answer": 2,
+       "explanation": "Bekendgemaakt op 9 oktober 2026."
+      },
+      {
+       "question": "Wie kreeg in 2026 de Nobelprijs voor de Literatuur?",
+       "options": [
+        "Haruki Murakami",
+        "Anne Carson",
+        "Margaret Atwood",
+        "Salman Rushdie"
+       ],
+       "answer": 1,
+       "explanation": "Canadese dichter en classicus, bekendgemaakt op 8 oktober 2026."
+      },
+      {
+       "question": "Wat besloot AVROTROS in augustus 2026 over het Songfestival?",
+       "options": [
+        "Nederland doet in 2027 ook niet mee",
+        "Nederland organiseert het in 2027",
+        "Nederland neemt weer deel met Duncan Laurence",
+        "Het Songfestival verhuist naar Hilversum"
+       ],
+       "answer": 0,
+       "explanation": "Bericht van 24 augustus 2026."
+      }
+     ]
     },
     {
-     "id": "ak3",
-     "question": "Wie schilderde De Nachtwacht?",
-     "options": [
-      "Vermeer",
-      "Van Gogh",
-      "Rembrandt",
-      "Mondriaan"
-     ],
-     "answer": 2,
-     "category": "Algemene kennis"
+     "name": "Lokaal nieuws Drenthe 2026",
+     "questions": [
+      {
+       "question": "Wie won in juni 2026 de MotoGP-race tijdens de TT van Assen?",
+       "options": [
+        "Marc Márquez",
+        "Ai Ogura",
+        "Jorge Martín",
+        "Marco Bezzecchi"
+       ],
+       "answer": 1,
+       "explanation": "Eerste MotoGP-zege voor Ogura, eerste Japanse winnaar sinds 2004. 28 juni 2026."
+      },
+      {
+       "question": "Welke partij stapte op 1 juli 2026 uit de Drentse coalitie vanwege het stikstofplan?",
+       "options": [
+        "BBB",
+        "VVD",
+        "PvdA",
+        "CDA"
+       ],
+       "answer": 0,
+       "explanation": "Daarna ging een minderheidscoalitie van VVD, PvdA en CDA door tot de Statenverkiezingen in maart 2027."
+      },
+      {
+       "question": "Welk spoorproject kwam in juni 2026 dichterbij door een Drentse toezegging van 50 miljoen euro?",
+       "options": [
+        "De Zuiderzeelijn",
+        "De Hanzelijn",
+        "De Wunderline",
+        "De Nedersaksenlijn"
+       ],
+       "answer": 3,
+       "explanation": "Bron: RTV Drenthe / NOS, 18 juni 2026."
+      },
+      {
+       "question": "Waartegen trokken boeren op 19 augustus 2026 massaal door Drenthe?",
+       "options": [
+        "De komst van windmolens",
+        "Hogere accijns op diesel",
+        "Het stikstofbeleid",
+        "Het wolvenbeleid"
+       ],
+       "answer": 2,
+       "explanation": "Trekkers bij het provinciehuis in Assen."
+      },
+      {
+       "question": "Welke Drentse gemeente opende op 19 oktober 2026 de Regenboogweek Drenthe?",
+       "options": [
+        "Emmen",
+        "Hoogeveen",
+        "Assen",
+        "Meppel"
+       ],
+       "answer": 1,
+       "explanation": "Bron: RTV Meppel."
+      },
+      {
+       "question": "Op welk traject controleert Arriva weer de hele dag op de perrons tegen zwartrijders?",
+       "options": [
+        "Zwolle – Emmen",
+        "Assen – Groningen",
+        "Hoogeveen – Meppel",
+        "Emmen – Coevorden"
+       ],
+       "answer": 0,
+       "explanation": "Bericht van RTV Drenthe, najaar 2026."
+      },
+      {
+       "question": "Wie won de Moto3-race tijdens de TT van Assen 2026?",
+       "options": [
+        "Collin Veijer",
+        "David Alonso",
+        "Marco Morelli",
+        "Máximo Quiles"
+       ],
+       "answer": 3,
+       "explanation": "Zondag 28 juni 2026."
+      },
+      {
+       "question": "Wie won op zaterdag de MotoGP-sprintrace tijdens de TT van Assen 2026?",
+       "options": [
+        "Ai Ogura",
+        "Jorge Martín",
+        "Raúl Fernández",
+        "Álex Márquez"
+       ],
+       "answer": 2,
+       "explanation": "Teamgenoot Ogura werd tweede."
+      },
+      {
+       "question": "Wanneer zijn de eerstvolgende Provinciale Statenverkiezingen in Drenthe?",
+       "options": [
+        "Maart 2026",
+        "Maart 2027",
+        "November 2026",
+        "Maart 2028"
+       ],
+       "answer": 1,
+       "explanation": "De Drentse minderheidscoalitie blijft aan tot de verkiezingen."
+      },
+      {
+       "question": "Welke bijnaam heeft TT Circuit Assen onder motorfans?",
+       "options": [
+        "De Kathedraal van de Snelheid",
+        "De Hel van het Noorden",
+        "Het Groene Monster",
+        "De Bult van Drenthe"
+       ],
+       "answer": 0,
+       "explanation": "Engels: the Cathedral of Speed."
+      }
+     ]
     },
     {
-     "id": "ak4",
-     "question": "Wat is het chemische symbool van goud?",
-     "options": [
-      "Go",
-      "Gd",
-      "Au",
-      "Ag"
-     ],
-     "answer": 2,
-     "category": "Algemene kennis"
+     "name": "Sport",
+     "questions": [
+      {
+       "question": "Welk land werd in 2026 wereldkampioen voetbal?",
+       "options": [
+        "Argentinië",
+        "Spanje",
+        "Frankrijk",
+        "Engeland"
+       ],
+       "answer": 1,
+       "explanation": "Finale 19 juli 2026: Spanje - Argentinië 1-0 na verlenging."
+      },
+      {
+       "question": "Door welk land werd Oranje op het WK 2026 uitgeschakeld?",
+       "options": [
+        "Marokko",
+        "Zweden",
+        "Japan",
+        "Tunesië"
+       ],
+       "answer": 0,
+       "explanation": "Zestiende finale, na strafschoppen."
+      },
+      {
+       "question": "Wie werd topscorer van het WK voetbal 2026?",
+       "options": [
+        "Lionel Messi",
+        "Erling Haaland",
+        "Harry Kane",
+        "Kylian Mbappé"
+       ],
+       "answer": 3,
+       "explanation": "Met 10 doelpunten."
+      },
+      {
+       "question": "Hoeveel landen deden mee aan het WK voetbal 2026?",
+       "options": [
+        "32",
+        "40",
+        "48",
+        "64"
+       ],
+       "answer": 2,
+       "explanation": "Voor het eerst 48 landen, 104 wedstrijden."
+      },
+      {
+       "question": "In welk stadion werd de WK-finale van 2026 gespeeld?",
+       "options": [
+        "Estadio Azteca",
+        "MetLife Stadium",
+        "SoFi Stadium",
+        "AT&T Stadium"
+       ],
+       "answer": 1,
+       "explanation": "In New Jersey, bij New York."
+      },
+      {
+       "question": "In welke Italiaanse plaatsen werden de Winterspelen van 2026 gehouden?",
+       "options": [
+        "Milaan en Cortina d'Ampezzo",
+        "Turijn en Bormio",
+        "Rome en Venetië",
+        "Innsbruck en Milaan"
+       ],
+       "answer": 0,
+       "explanation": "6 tot en met 22 februari 2026."
+      },
+      {
+       "question": "Hoeveel gouden medailles won Nederland op de Winterspelen van 2026 (een record)?",
+       "options": [
+        "6",
+        "8",
+        "12",
+        "10"
+       ],
+       "answer": 3,
+       "explanation": "Totaal 20 medailles: 10 goud, 7 zilver, 3 brons."
+      },
+      {
+       "question": "Wie won goud op de massastart schaatsen bij de Winterspelen van 2026?",
+       "options": [
+        "Patrick Roest",
+        "Jan Blokhuijsen",
+        "Jorrit Bergsma",
+        "Sven Kramer"
+       ],
+       "answer": 2,
+       "explanation": "Het negende gouden plak voor Nederland."
+      },
+      {
+       "question": "Welk land stond bovenaan het medailleklassement van de Winterspelen 2026?",
+       "options": [
+        "Verenigde Staten",
+        "Noorwegen",
+        "Nederland",
+        "Duitsland"
+       ],
+       "answer": 1,
+       "explanation": "18 keer goud."
+      },
+      {
+       "question": "Welke club werd in 2026 kampioen van de Keuken Kampioen Divisie?",
+       "options": [
+        "ADO Den Haag",
+        "SC Cambuur",
+        "FC Emmen",
+        "Vitesse"
+       ],
+       "answer": 0,
+       "explanation": "Cambuur promoveerde ook."
+      }
+     ]
     },
     {
-     "id": "ak5",
-     "question": "Welk land heeft de meeste inwoners?",
-     "options": [
-      "India",
-      "Verenigde Staten",
-      "Indonesië",
-      "Brazilië"
-     ],
-     "answer": 0,
-     "category": "Algemene kennis"
-    },
-    {
-     "id": "ak6",
-     "question": "Hoeveel snaren heeft een gewone gitaar?",
-     "options": [
-      "4",
-      "5",
-      "6",
-      "7"
-     ],
-     "answer": 2,
-     "category": "Algemene kennis"
-    },
-    {
-     "id": "ak7",
-     "question": "Wat is de langste rivier van Europa?",
-     "options": [
-      "Donau",
-      "Rijn",
-      "Wolga",
-      "Seine"
-     ],
-     "answer": 2,
-     "category": "Algemene kennis"
-    },
-    {
-     "id": "ak8",
-     "question": "In welk jaar viel de Berlijnse Muur?",
-     "options": [
-      "1985",
-      "1989",
-      "1991",
-      "1993"
-     ],
-     "answer": 1,
-     "category": "Algemene kennis"
-    },
-    {
-     "id": "ak9",
-     "question": "Wat is het grootste orgaan van het menselijk lichaam?",
-     "options": [
-      "De lever",
-      "De hersenen",
-      "De huid",
-      "De longen"
-     ],
-     "answer": 2,
-     "category": "Algemene kennis"
-    },
-    {
-     "id": "ak10",
-     "question": "Welke taal heeft de meeste moedertaalsprekers?",
-     "options": [
-      "Engels",
-      "Spaans",
-      "Hindi",
-      "Mandarijn-Chinees"
-     ],
-     "answer": 3,
-     "category": "Algemene kennis"
-    },
-    {
-     "id": "nw1",
-     "question": "Welk land werd in 2026 wereldkampioen voetbal?",
-     "options": [
-      "Argentinië",
-      "Frankrijk",
-      "Spanje",
-      "Brazilië"
-     ],
-     "answer": 2,
-     "category": "Nieuws 2026",
-     "explanation": "Spanje won de finale op 19 juli 2026 na verlenging met 1-0."
-    },
-    {
-     "id": "nw2",
-     "question": "Tegen welk land won Spanje de WK-finale van 2026 (1-0 na verlenging)?",
-     "options": [
-      "Frankrijk",
-      "Argentinië",
-      "Engeland",
-      "Portugal"
-     ],
-     "answer": 1,
-     "category": "Nieuws 2026"
-    },
-    {
-     "id": "nw3",
-     "question": "In welke drie landen werd het WK voetbal 2026 gespeeld?",
-     "options": [
-      "Verenigde Staten, Canada en Mexico",
-      "Spanje, Portugal en Marokko",
-      "Brazilië, Argentinië en Chili",
-      "Qatar, Saoedi-Arabië en de VAE"
-     ],
-     "answer": 0,
-     "category": "Nieuws 2026"
-    },
-    {
-     "id": "nw4",
-     "question": "In welk land werden in 2026 de Olympische Winterspelen gehouden?",
-     "options": [
-      "Zwitserland",
-      "Italië",
-      "Oostenrijk",
-      "Frankrijk"
-     ],
-     "answer": 1,
-     "category": "Nieuws 2026",
-     "explanation": "Milaan en Cortina d'Ampezzo."
-    },
-    {
-     "id": "nw5",
-     "question": "Welke stad was in 2026 gastheer van het Eurovisie Songfestival?",
-     "options": [
-      "Wenen",
-      "Stockholm",
-      "Basel",
-      "Malmö"
-     ],
-     "answer": 0,
-     "category": "Nieuws 2026"
-    },
-    {
-     "id": "lk1",
-     "question": "Welk spoorproject kwam in juni 2026 dichterbij doordat de provincie Drenthe 50 miljoen euro inbracht?",
-     "options": [
-      "De Hanzelijn",
-      "De Nedersaksenlijn",
-      "De Zuiderzeelijn",
-      "De Wunderline"
-     ],
-     "answer": 1,
-     "category": "Lokaal nieuws Drenthe 2026"
-    },
-    {
-     "id": "lk2",
-     "question": "Waarom werd in juli 2026 het treinverkeer bij Meppel/Koekange even stilgelegd?",
-     "options": [
-      "Om kittens en een moederkat van het spoor te redden",
-      "Door een omgevallen boom",
-      "Door een verdwaalde koe",
-      "Voor een filmopname"
-     ],
-     "answer": 0,
-     "category": "Lokaal nieuws Drenthe 2026"
-    },
-    {
-     "id": "lk3",
-     "question": "Waartegen trokken boeren in augustus 2026 massaal met trekkers door Drenthe?",
-     "options": [
-      "Het stikstofbeleid",
-      "Windmolens",
-      "De wolf",
-      "Hogere dieselprijzen"
-     ],
-     "answer": 0,
-     "category": "Lokaal nieuws Drenthe 2026"
-    },
-    {
-     "id": "lk4",
-     "question": "Welk horlogemerk was in 2026 titelsponsor van de TT Assen?",
-     "options": [
-      "Rolex",
-      "Swatch",
-      "Tissot",
-      "Omega"
-     ],
-     "answer": 2,
-     "category": "Lokaal nieuws Drenthe 2026"
-    },
-    {
-     "id": "sp1",
-     "question": "Welke stad organiseerde in 2024 de Olympische Zomerspelen?",
-     "options": [
-      "Tokio",
-      "Los Angeles",
-      "Parijs",
-      "Londen"
-     ],
-     "answer": 2,
-     "category": "Sport"
-    },
-    {
-     "id": "sp2",
-     "question": "Welk land won het WK voetbal in 2022?",
-     "options": [
-      "Frankrijk",
-      "Argentinië",
-      "Kroatië",
-      "Brazilië"
-     ],
-     "answer": 1,
-     "category": "Sport"
-    },
-    {
-     "id": "sp3",
-     "question": "Hoeveel ringen staan er in het Olympische logo?",
-     "options": [
-      "4",
-      "5",
-      "6",
-      "7"
-     ],
-     "answer": 1,
-     "category": "Sport"
-    },
-    {
-     "id": "sp4",
-     "question": "Hoe lang is een marathon (afgerond)?",
-     "options": [
-      "32 km",
-      "40 km",
-      "42 km",
-      "50 km"
-     ],
-     "answer": 2,
-     "category": "Sport"
-    },
-    {
-     "id": "sp5",
-     "question": "Welke kleur heeft de trui van de leider in de Tour de France?",
-     "options": [
-      "Groen",
-      "Geel",
-      "Rood",
-      "Roze"
-     ],
-     "answer": 1,
-     "category": "Sport"
-    },
-    {
-     "id": "sp6",
-     "question": "Bij welke sport gebruik je een puck?",
-     "options": [
-      "Hockey op gras",
-      "IJshockey",
-      "Curling",
-      "Polo"
-     ],
-     "answer": 1,
-     "category": "Sport"
-    },
-    {
-     "id": "sp7",
-     "question": "Hoeveel punten is een try waard in rugby union?",
-     "options": [
-      "3",
-      "4",
-      "5",
-      "7"
-     ],
-     "answer": 2,
-     "category": "Sport"
-    },
-    {
-     "id": "sp8",
-     "question": "Welke Nederlandse coureur werd in 2021 wereldkampioen Formule 1?",
-     "options": [
-      "Nyck de Vries",
-      "Max Verstappen",
-      "Robert Doornbos",
-      "Jos Verstappen"
-     ],
-     "answer": 1,
-     "category": "Sport"
-    },
-    {
-     "id": "sp9",
-     "question": "Op welk circuit wordt de TT in Nederland gereden?",
-     "options": [
-      "Zandvoort",
-      "Assen",
-      "Zolder",
-      "Spa"
-     ],
-     "answer": 1,
-     "category": "Sport"
-    },
-    {
-     "id": "sp10",
-     "question": "In welke sport win je de Wimbledon-trofee?",
-     "options": [
-      "Golf",
-      "Cricket",
-      "Tennis",
-      "Badminton"
-     ],
-     "answer": 2,
-     "category": "Sport"
-    },
-    {
-     "id": "sm1",
-     "question": "Welk nummer was het eerste YouTube-filmpje met een miljard views?",
-     "options": [
-      "Gangnam Style",
-      "Despacito",
-      "Baby",
-      "Harlem Shake"
-     ],
-     "answer": 0,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm2",
-     "question": "Welk hondenras staat op de 'Doge'-meme?",
-     "options": [
-      "Husky",
-      "Shiba Inu",
-      "Corgi",
-      "Labrador"
-     ],
-     "answer": 1,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm3",
-     "question": "Welke zanger zit achter de 'Rickroll'?",
-     "options": [
-      "Rick Astley",
-      "Rick Ross",
-      "Ricky Martin",
-      "Rick Springfield"
-     ],
-     "answer": 0,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm4",
-     "question": "Hoe heet Twitter sinds 2023?",
-     "options": [
-      "Threads",
-      "Bluesky",
-      "X",
-      "Chirp"
-     ],
-     "answer": 2,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm5",
-     "question": "Welk bedrijf is eigenaar van Instagram en WhatsApp?",
-     "options": [
-      "Google",
-      "Meta",
-      "Microsoft",
-      "Snap"
-     ],
-     "answer": 1,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm6",
-     "question": "Uit welk land komt TikTok oorspronkelijk (moederbedrijf ByteDance)?",
-     "options": [
-      "Zuid-Korea",
-      "Japan",
-      "China",
-      "Singapore"
-     ],
-     "answer": 2,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm7",
-     "question": "Hoeveel tekens mocht een tweet oorspronkelijk maximaal bevatten?",
-     "options": [
-      "100",
-      "140",
-      "200",
-      "280"
-     ],
-     "answer": 1,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm8",
-     "question": "Voor welk doel was de Ice Bucket Challenge uit 2014?",
-     "options": [
-      "ALS",
-      "Klimaat",
-      "Kanker bij kinderen",
-      "Hongersnood"
-     ],
-     "answer": 0,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm9",
-     "question": "Wat betekent de afkorting FOMO?",
-     "options": [
-      "Fear Of Missing Out",
-      "Friends Of My Own",
-      "Find Out More Online",
-      "Full On Mobile Overload"
-     ],
-     "answer": 0,
-     "category": "Social media & memes"
-    },
-    {
-     "id": "sm10",
-     "question": "Wat betekent de afkorting POV in video's op social media?",
-     "options": [
-      "Point of view",
-      "Picture of video",
-      "Post on video",
-      "Play or view"
-     ],
-     "answer": 0,
-     "category": "Social media & memes"
+     "name": "Social media en memes",
+     "questions": [
+      {
+       "question": "Wat betekent de afkorting FOMO?",
+       "options": [
+        "Friends only meet online",
+        "Fear of missing out",
+        "Fun on my own",
+        "First one makes order"
+       ],
+       "answer": 1
+      },
+      {
+       "question": "In welk jaar werd Twitter omgedoopt tot X?",
+       "options": [
+        "2023",
+        "2021",
+        "2022",
+        "2024"
+       ],
+       "answer": 0
+      },
+      {
+       "question": "Welke hondenras staat centraal in de 'Doge'-meme?",
+       "options": [
+        "Corgi",
+        "Husky",
+        "Franse bulldog",
+        "Shiba Inu"
+       ],
+       "answer": 3
+      },
+      {
+       "question": "Welk nummer hoor je bij een 'Rickroll'?",
+       "options": [
+        "Take On Me",
+        "Together Forever",
+        "Never Gonna Give You Up",
+        "Never Gonna Let You Down"
+       ],
+       "answer": 2
+      },
+      {
+       "question": "Hoeveel tekens mocht een tweet oorspronkelijk maximaal hebben?",
+       "options": [
+        "100",
+        "140",
+        "200",
+        "280"
+       ],
+       "answer": 1
+      },
+      {
+       "question": "Voor welk goed doel was de Ice Bucket Challenge uit 2014?",
+       "options": [
+        "ALS",
+        "Kanker",
+        "Hartziekten",
+        "Alzheimer"
+       ],
+       "answer": 0
+      },
+      {
+       "question": "Welke kleuren had de beroemde virale jurk uit 2015 in werkelijkheid?",
+       "options": [
+        "Wit en goud",
+        "Blauw en wit",
+        "Zwart en goud",
+        "Blauw en zwart"
+       ],
+       "answer": 3
+      },
+      {
+       "question": "Welke app introduceerde als eerste 'Stories' die na 24 uur verdwijnen?",
+       "options": [
+        "Instagram",
+        "TikTok",
+        "Snapchat",
+        "Facebook"
+       ],
+       "answer": 2
+      },
+      {
+       "question": "Wat is de bedoeling van een 'POV'-video?",
+       "options": [
+        "Een video in slow motion",
+        "Het gezichtspunt van iemand laten zien",
+        "Een video zonder geluid",
+        "Een reactievideo"
+       ],
+       "answer": 1
+      },
+      {
+       "question": "Welk bedrijf kocht Instagram in 2012 voor ongeveer 1 miljard dollar?",
+       "options": [
+        "Facebook",
+        "Google",
+        "Twitter",
+        "Snapchat"
+       ],
+       "answer": 0
+      }
+     ]
     }
    ]
   },
   {
    "id": "r2",
    "type": "blur",
-   "name": "Ronde 2: Foto blur",
-   "levelPoints": [
-    10,
-    8,
-    6,
-    4,
-    2,
-    1
-   ],
-   "intro": {
-    "emoji": "🔍",
-    "title": "Ronde 2: Foto blur",
-    "text": "Een plaatje wordt steeds scherper. Hoe eerder jullie het goede antwoord geven, hoe meer punten. Een fout antwoord levert niets op en je kunt niet opnieuw. Eerst een testvraag."
+   "title": "Foto blur",
+   "emoji": "📸",
+   "intro": "Een foto wordt steeds scherper. Hoe eerder jullie het goede antwoord indienen, hoe meer punten. Eén poging per vraag! Eerst doen we een testvraag.",
+   "test": {
+    "question": "Wat zien we hier?",
+    "options": [
+     "De Euromast",
+     "De Atomium",
+     "De Eiffeltoren",
+     "De Tower Bridge"
+    ],
+    "answer": 2,
+    "media": {
+     "kind": "image",
+     "src": "blur/eiffeltoren.jpg"
+    }
    },
-   "items": [
+   "questions": [
     {
-     "id": "b01",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/01.jpg"
-     },
-     "question": "Wat zie je hier?",
+     "question": "Welke bekende Drentse plek zien we hier?",
      "options": [
-      "Eiffeltoren",
-      "Domtoren",
-      "Atomium",
-      "Big Ben"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b02",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/02.jpg"
-     },
-     "question": "Wat zie je hier?",
-     "options": [
-      "Een hunebed",
-      "Stonehenge",
-      "Een grafheuvel",
-      "Een windmolen"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b03",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/03.jpg"
-     },
-     "question": "Welk dier is dit?",
-     "options": [
-      "Tijger",
-      "Leeuw",
-      "Jaguar",
-      "Luipaard"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b04",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/04.jpg"
-     },
-     "question": "Welke Nederlandse stad is dit?",
-     "options": [
-      "Groningen",
-      "Utrecht",
-      "Maastricht",
-      "Zwolle"
-     ],
-     "answer": 1
-    },
-    {
-     "id": "b05",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/05.jpg"
-     },
-     "question": "Welk gebouw is dit?",
-     "options": [
-      "Colosseum",
-      "Parthenon",
-      "Pantheon",
-      "Sagrada Familia"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b06",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/06.jpg"
-     },
-     "question": "Wat voor voertuig is dit?",
-     "options": [
-      "Tractor",
-      "Bulldozer",
-      "Trein",
-      "Tram"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b07",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/07.jpg"
-     },
-     "question": "Welk eten is dit?",
-     "options": [
-      "Stroopwafel",
-      "Poffertjes",
-      "Pannenkoek",
-      "Oliebol"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b08",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/08.jpg"
-     },
-     "question": "Welk beroemd bruggetje is dit?",
-     "options": [
-      "Tower Bridge",
-      "Golden Gate Bridge",
-      "Rialtobrug",
-      "Erasmusbrug"
-     ],
-     "answer": 1
-    },
-    {
-     "id": "b09",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/09.jpg"
-     },
-     "question": "Welke beroemdheid is dit?",
-     "options": [
-      "Johan Cruijff",
-      "Marco van Basten",
-      "Ruud Gullit",
-      "Dennis Bergkamp"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "b10",
-     "media": {
-      "kind": "image",
-      "src": "images/blur/10.jpg"
-     },
-     "question": "Welk Drents dorp/gebouw is dit?",
-     "options": [
-      "Hunebedcentrum Borger",
-      "TT Circuit Assen",
-      "Drents Museum",
+      "Een grafheuvel bij Havelte",
+      "Het Drents Museum",
+      "Een hunebed bij Borger",
       "Kamp Westerbork"
      ],
-     "answer": 0
-    }
-   ],
-   "practice": [
-    {
-     "id": "t1",
+     "answer": 2,
      "media": {
       "kind": "image",
-      "src": "images/blur/test.jpg"
-     },
-     "question": "Wat zie je hier?",
+      "src": "blur/hunebed.jpg"
+     }
+    },
+    {
+     "question": "Welke toren is dit?",
      "options": [
-      "Een banaan",
-      "Een appel",
-      "Een peer",
-      "Een citroen"
+      "De Martinitoren",
+      "De Domtoren in Utrecht",
+      "De Euromast",
+      "De Belfort in Brugge"
      ],
-     "answer": 0
+     "answer": 1,
+     "media": {
+      "kind": "image",
+      "src": "blur/domtoren.jpg"
+     }
+    },
+    {
+     "question": "Welk bouwwerk is dit?",
+     "options": [
+      "De Euromast",
+      "De Erasmusbrug",
+      "De Rotterdamse Markthal",
+      "De Domtoren"
+     ],
+     "answer": 0,
+     "media": {
+      "kind": "image",
+      "src": "blur/euromast.jpg"
+     }
+    },
+    {
+     "question": "Welke bekende Nederlandse dijk zien we hier?",
+     "options": [
+      "De Deltawerken",
+      "De Brouwersdam",
+      "De Houtribdijk",
+      "De Afsluitdijk"
+     ],
+     "answer": 3,
+     "media": {
+      "kind": "image",
+      "src": "blur/afsluitdijk.jpg"
+     }
+    },
+    {
+     "question": "Welk museum zien we hier?",
+     "options": [
+      "Het Van Gogh Museum",
+      "Het Stedelijk Museum",
+      "Het Rijksmuseum",
+      "Het Drents Museum"
+     ],
+     "answer": 2,
+     "media": {
+      "kind": "image",
+      "src": "blur/rijksmuseum.jpg"
+     }
+    },
+    {
+     "question": "Welke bekende plek met molens is dit?",
+     "options": [
+      "Zaanse Schans",
+      "Kinderdijk",
+      "Schermerhorn",
+      "Schiedam"
+     ],
+     "answer": 1,
+     "media": {
+      "kind": "image",
+      "src": "blur/kinderdijk.jpg"
+     }
+    },
+    {
+     "question": "Welk circuit zien we hier?",
+     "options": [
+      "TT Circuit Assen",
+      "Circuit Zandvoort",
+      "Spa-Francorchamps",
+      "Circuit Zolder"
+     ],
+     "answer": 0,
+     "media": {
+      "kind": "image",
+      "src": "blur/tt-circuit.jpg"
+     }
+    },
+    {
+     "question": "Welk dier zien we hier?",
+     "options": [
+      "Een neushoorn",
+      "Een nijlpaard",
+      "Een tapir",
+      "Een olifant"
+     ],
+     "answer": 3,
+     "media": {
+      "kind": "image",
+      "src": "blur/olifant.jpg"
+     }
+    },
+    {
+     "question": "Welk beroemd monument is dit?",
+     "options": [
+      "De Arc de Triomphe",
+      "Het Colosseum",
+      "De Brandenburger Tor",
+      "De Sagrada Família"
+     ],
+     "answer": 2,
+     "media": {
+      "kind": "image",
+      "src": "blur/brandenburger-tor.jpg"
+     }
+    },
+    {
+     "question": "Welke stad zien we hier?",
+     "options": [
+      "Amsterdam",
+      "Venetië",
+      "Brugge",
+      "Kopenhagen"
+     ],
+     "answer": 1,
+     "media": {
+      "kind": "image",
+      "src": "blur/venetie.jpg"
+     }
     }
    ]
   },
   {
    "id": "r3",
    "type": "memory",
-   "name": "Ronde 3: Geheugen",
-   "intro": {
-    "emoji": "🧠",
-    "title": "Ronde 3: Geheugen",
-    "text": "Vorig jaar hebben we iets op een bord geschreven. Schrijf zoveel mogelijk op wat je nog weet. De quizmaster keurt jullie antwoorden goed of fout."
-   },
+   "title": "Het geheugen van vorig jaar",
+   "emoji": "🧠",
+   "prompt": "Wat stond er vorig jaar op het bord? Schrijf zoveel mogelijk op!",
+   "seconds": 120,
    "items": [
-    {
-     "id": "m1",
-     "prompt": "Wat stond er vorig jaar op het bord?",
-     "total": 10,
-     "time": 180,
-     "key": []
-    }
+    "VOORBEELD 1: vervang dit door wat er op het bord stond",
+    "VOORBEELD 2",
+    "VOORBEELD 3",
+    "VOORBEELD 4",
+    "VOORBEELD 5"
    ]
   },
   {
    "id": "r4",
    "type": "hitster",
-   "name": "Ronde 4: Muziek",
-   "enabled": false
+   "title": "Muziek: de tijdlijn",
+   "emoji": "🎵",
+   "startCards": 2,
+   "songs": [
+    {
+     "title": "Billie Jean",
+     "artist": "Michael Jackson",
+     "year": 1983,
+     "start": true
+    },
+    {
+     "title": "Wonderwall",
+     "artist": "Oasis",
+     "year": 1995,
+     "start": true
+    },
+    {
+     "title": "Dancing Queen",
+     "artist": "ABBA",
+     "year": 1976
+    },
+    {
+     "title": "Bohemian Rhapsody",
+     "artist": "Queen",
+     "year": 1975
+    },
+    {
+     "title": "Africa",
+     "artist": "Toto",
+     "year": 1982
+    },
+    {
+     "title": "Sweet Dreams (Are Made of This)",
+     "artist": "Eurythmics",
+     "year": 1983
+    },
+    {
+     "title": "Smells Like Teen Spirit",
+     "artist": "Nirvana",
+     "year": 1991
+    },
+    {
+     "title": "...Baby One More Time",
+     "artist": "Britney Spears",
+     "year": 1998
+    },
+    {
+     "title": "Hey Ya!",
+     "artist": "OutKast",
+     "year": 2003
+    },
+    {
+     "title": "Single Ladies (Put a Ring on It)",
+     "artist": "Beyoncé",
+     "year": 2008
+    },
+    {
+     "title": "Rolling in the Deep",
+     "artist": "Adele",
+     "year": 2010
+    },
+    {
+     "title": "Gangnam Style",
+     "artist": "PSY",
+     "year": 2012
+    },
+    {
+     "title": "Blinding Lights",
+     "artist": "The Weeknd",
+     "year": 2019
+    }
+   ]
   },
   {
    "id": "r5",
-   "type": "prices",
-   "name": "Ronde 5: Prijzen van vroeger",
-   "yearsAgo": 15,
-   "maxPer": 5,
-   "intro": {
-    "emoji": "🛒",
-    "title": "Ronde 5: Prijzen van vroeger",
-    "text": "Bij tien boodschappen schatten jullie de prijs van nu én de prijs van 15 jaar geleden. Wie er het dichtst bij zit, krijgt de meeste punten."
-   },
+   "type": "price",
+   "title": "Prijzen van vroeger en nu",
+   "emoji": "🛒",
+   "agoYears": 15,
+   "intro": "Van tien boodschappen schatten jullie de prijs van nu én van 15 jaar geleden. Wie het dichtstbij zit, krijgt de meeste punten.",
    "items": [
     {
-     "id": "p1",
-     "product": "Brood (heel, A-merk)",
-     "unit": "1 stuk",
-     "now": 2.69,
-     "then": 1.6
+     "name": "Liter halfvolle melk",
+     "unit": "huismerk",
+     "emoji": "🥛",
+     "now": 1.39,
+     "ago": 0.85
     },
     {
-     "id": "p2",
-     "product": "Melk (halfvol)",
-     "unit": "1 liter",
-     "now": 1.45,
-     "then": 0.89
+     "name": "Brood",
+     "unit": "heel volkoren, 800 g",
+     "emoji": "🍞",
+     "now": 2.45,
+     "ago": 1.3
     },
     {
-     "id": "p3",
-     "product": "Eieren (scharrel)",
-     "unit": "10 stuks",
-     "now": 3.19,
-     "then": 1.99
-    },
-    {
-     "id": "p4",
-     "product": "Boter",
-     "unit": "250 gram",
-     "now": 3.39,
-     "then": 1.99
-    },
-    {
-     "id": "p5",
-     "product": "Kaas (jong belegen)",
-     "unit": "per 500 gram",
-     "now": 6.99,
-     "then": 4.69
-    },
-    {
-     "id": "p6",
-     "product": "Koffie (gemalen)",
-     "unit": "500 gram",
-     "now": 6.49,
-     "then": 3.99
-    },
-    {
-     "id": "p7",
-     "product": "Frikandel (diepvries)",
-     "unit": "10 stuks",
+     "name": "Eieren",
+     "unit": "10 scharreleieren",
+     "emoji": "🥚",
      "now": 3.29,
-     "then": 2.19
+     "ago": 1.69
     },
     {
-     "id": "p8",
-     "product": "Bananen",
-     "unit": "per kilo",
+     "name": "Bananen",
+     "unit": "1 kilo",
+     "emoji": "🍌",
      "now": 1.99,
-     "then": 1.49
+     "ago": 1.49
     },
     {
-     "id": "p9",
-     "product": "Cola (fles)",
-     "unit": "1,5 liter",
-     "now": 2.39,
-     "then": 1.49
+     "name": "Koffie",
+     "unit": "pak 500 g Douwe Egberts",
+     "emoji": "☕",
+     "now": 8.49,
+     "ago": 4.19
     },
     {
-     "id": "p10",
-     "product": "Pak pasta (spaghetti)",
-     "unit": "500 gram",
-     "now": 1.69,
-     "then": 0.89
+     "name": "Pindakaas",
+     "unit": "pot 350 g Calvé",
+     "emoji": "🥜",
+     "now": 3.29,
+     "ago": 1.99
+    },
+    {
+     "name": "Cola",
+     "unit": "fles 1,5 liter Coca-Cola",
+     "emoji": "🥤",
+     "now": 2.79,
+     "ago": 1.69
+    },
+    {
+     "name": "Jonge kaas",
+     "unit": "1 kilo",
+     "emoji": "🧀",
+     "now": 11.5,
+     "ago": 7.5
+    },
+    {
+     "name": "Spaghetti",
+     "unit": "pak 500 g Barilla",
+     "emoji": "🍝",
+     "now": 1.99,
+     "ago": 1.09
+    },
+    {
+     "name": "Kipfilet",
+     "unit": "1 kilo",
+     "emoji": "🍗",
+     "now": 11.5,
+     "ago": 8.5
     }
    ]
   },
   {
    "id": "r6",
    "type": "draw",
-   "name": "Ronde 6: Tekenen",
-   "time": 75,
+   "title": "Tekenen",
+   "emoji": "✏️",
+   "seconds": 75,
    "words": [
-    "Fiets",
-    "Hunebed",
-    "Koe",
-    "Windmolen",
-    "Paraplu",
-    "Vuurtoren",
-    "Pizza",
-    "Trampoline",
-    "Giraffe",
-    "Kasteel",
-    "Gitaar",
-    "Regenboog",
-    "Sneeuwpop",
-    "Tractor",
-    "Brandweerauto",
-    "Kerstboom",
-    "Vliegtuig",
-    "Ijsje",
-    "Piraat",
-    "Robot",
-    "Spin",
-    "Trein",
-    "Raket",
-    "Haai",
-    "Aardbei",
-    "Zonnebril",
-    "Boot",
-    "Kamer plant",
-    "Vlieger",
-    "Skateboard"
+    {
+     "word": "Fiets",
+     "alt": []
+    },
+    {
+     "word": "Windmolen",
+     "alt": [
+      "molen"
+     ]
+    },
+    {
+     "word": "Hunebed",
+     "alt": []
+    },
+    {
+     "word": "Zonnebloem",
+     "alt": []
+    },
+    {
+     "word": "Pizza",
+     "alt": []
+    },
+    {
+     "word": "Vliegtuig",
+     "alt": []
+    },
+    {
+     "word": "Koe",
+     "alt": []
+    },
+    {
+     "word": "Regenboog",
+     "alt": []
+    },
+    {
+     "word": "Kasteel",
+     "alt": []
+    },
+    {
+     "word": "Gitaar",
+     "alt": []
+    },
+    {
+     "word": "Sneeuwpop",
+     "alt": []
+    },
+    {
+     "word": "Brug",
+     "alt": []
+    },
+    {
+     "word": "Giraf",
+     "alt": []
+    },
+    {
+     "word": "Paraplu",
+     "alt": []
+    },
+    {
+     "word": "Vuurtoren",
+     "alt": []
+    },
+    {
+     "word": "Trein",
+     "alt": []
+    },
+    {
+     "word": "Raket",
+     "alt": []
+    },
+    {
+     "word": "Kerstboom",
+     "alt": [
+      "boom"
+     ]
+    },
+    {
+     "word": "Tandenborstel",
+     "alt": []
+    },
+    {
+     "word": "Slak",
+     "alt": []
+    },
+    {
+     "word": "Hoed",
+     "alt": []
+    },
+    {
+     "word": "Zeilboot",
+     "alt": [
+      "boot",
+      "zeilschip"
+     ]
+    },
+    {
+     "word": "Olifant",
+     "alt": []
+    },
+    {
+     "word": "Ijsje",
+     "alt": [
+      "ijs"
+     ]
+    },
+    {
+     "word": "Brandweerauto",
+     "alt": [
+      "brandweerwagen",
+      "brandweer"
+     ]
+    },
+    {
+     "word": "Tent",
+     "alt": []
+    },
+    {
+     "word": "Vlinder",
+     "alt": []
+    },
+    {
+     "word": "Klok",
+     "alt": []
+    }
    ]
   },
   {
    "id": "r7",
    "type": "thirty",
-   "name": "Ronde 7: 30 seconds",
-   "time": 30,
+   "title": "30 Seconds",
+   "emoji": "⏱️",
+   "seconds": 30,
    "cards": [
     [
-     "Appelflap",
-     "Sinterklaas",
-     "Hunebed",
+     "Rutte",
+     "Efteling",
      "Stroopwafel",
-     "Tulpen"
+     "Eiffeltoren",
+     "Sinterklaas"
     ],
     [
-     "Boerderij",
-     "Trekker",
-     "Kip",
-     "Melkbus",
-     "Hooiberg"
-    ],
-    [
-     "Zwembad",
-     "Duikbril",
-     "Handdoek",
-     "Badmuts",
-     "Glijbaan"
-    ],
-    [
-     "Voetbal",
-     "Scheidsrechter",
-     "Strafschop",
-     "Doelman",
-     "Corner"
-    ],
-    [
-     "Verjaardag",
-     "Slingers",
-     "Taart",
-     "Cadeau",
-     "Kaarsjes"
-    ],
-    [
-     "Camping",
-     "Tent",
-     "Slaapzak",
-     "Kampvuur",
-     "Luchtbed"
-    ],
-    [
+     "Max Verstappen",
+     "Hunebed",
+     "Tulp",
      "Pizza",
-     "Lasagne",
-     "Spaghetti",
-     "Pesto",
-     "Parmezaan"
+     "Netflix"
     ],
     [
-     "Supermarkt",
-     "Winkelwagen",
-     "Kassa",
-     "Bonuskaart",
-     "Tasje"
+     "Koningsdag",
+     "Gouda",
+     "Madurodam",
+     "Harry Potter",
+     "Fietsbel"
     ],
     [
-     "School",
-     "Rugzak",
-     "Juf",
-     "Pauze",
-     "Schoolplein"
+     "Rembrandt",
+     "Hagelslag",
+     "Playstation",
+     "Kilimanjaro",
+     "Sneeuwpop"
     ],
     [
-     "Strand",
-     "Zonnecrème",
-     "Schelp",
-     "Parasol",
-     "Zandkasteel"
+     "Appeltaart",
+     "Kasteel",
+     "Zwarte Piet",
+     "Tour de France",
+     "Dinosaurus"
     ],
     [
-     "Kerst",
-     "Kerstboom",
-     "Kerstmuts",
-     "Kalkoen",
-     "Gourmetten"
+     "Ajax",
+     "Dikke Van Dale",
+     "Strandstoel",
+     "Mona Lisa",
+     "Wifi"
     ],
     [
-     "Winter",
+     "Frozen",
+     "Bitterballen",
+     "Zandvoort",
+     "Superman",
+     "Parachute"
+    ],
+    [
+     "Sint Maarten",
      "Schaatsen",
-     "Sneeuw",
-     "Muts",
+     "Albert Heijn",
+     "Michael Jackson",
+     "IJsbreker"
+    ],
+    [
+     "Pannenkoek",
+     "Vuurwerk",
+     "Titanic",
+     "Zwemdiploma",
+     "Draaideur"
+    ],
+    [
+     "Feyenoord",
+     "Fiets",
+     "Koffiezetapparaat",
+     "Santa Claus",
+     "Mount Everest"
+    ],
+    [
+     "Lego",
+     "Dikke Berta",
+     "Drop",
+     "Barbie",
+     "Wasmachine"
+    ],
+    [
+     "Oranje",
+     "Kamperen",
+     "Pinguïn",
+     "Giraffe",
+     "Brandweer"
+    ],
+    [
+     "Spaghetti",
+     "Beyoncé",
+     "Hoogspanningsmast",
+     "Piramide",
+     "Carnaval"
+    ],
+    [
+     "Smurfen",
+     "Tompouce",
+     "Zonnebrand",
+     "Olifant",
+     "Treinstation"
+    ],
+    [
+     "Dorpsfeest",
+     "Walkman",
+     "Suriname",
+     "Surfplank",
+     "Kerstkrans"
+    ],
+    [
+     "Mickey Mouse",
+     "Boerenkool",
+     "Gevangenis",
+     "Hotdog",
+     "Waterval"
+    ],
+    [
+     "Hockey",
+     "Drenthe",
+     "Hotel",
+     "Ridder",
      "Chocolademelk"
+    ],
+    [
+     "Doedelzak",
+     "Duikbril",
+     "Pretpark",
+     "Kaasschaaf",
+     "Wolkenkrabber"
     ]
    ]
   },
   {
    "id": "r8",
    "type": "logo",
-   "name": "Ronde 8: Logo's",
-   "reveal": "after_each",
-   "intro": {
-    "emoji": "🏷️",
-    "title": "Ronde 8: Raad het logo",
-    "text": "Van elk logo is een stuk weggelaten. Welk merk is het?"
-   },
-   "items": [
+   "title": "Logo's",
+   "emoji": "🏷️",
+   "hide": 0.5,
+   "questions": [
     {
-     "id": "l01",
+     "question": "Welk logo is dit?",
+     "options": [
+      "Jumbo",
+      "Albert Heijn",
+      "Plus",
+      "Dirk"
+     ],
+     "answer": 1,
      "media": {
       "kind": "image",
-      "src": "images/logos/01.png",
-      "hide": [
-       [
-        0,
-        55,
-        100,
-        45
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
-     "options": [
-      "Coca-Cola",
-      "Pepsi",
-      "Fanta",
-      "Sprite"
-     ],
-     "answer": 0
+      "src": "logos/albert-heijn.png"
+     }
     },
     {
-     "id": "l02",
-     "media": {
-      "kind": "image",
-      "src": "images/logos/02.png",
-      "hide": [
-       [
-        0,
-        0,
-        40,
-        100
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
+     "question": "Welk logo is dit?",
      "options": [
       "McDonald's",
       "Burger King",
       "KFC",
-      "Subway"
+      "Wendy's"
      ],
-     "answer": 0
-    },
-    {
-     "id": "l03",
+     "answer": 0,
      "media": {
       "kind": "image",
-      "src": "images/logos/03.png",
-      "hide": [
-       [
-        50,
-        0,
-        50,
-        100
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
+      "src": "logos/mcdonalds.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
      "options": [
       "Adidas",
-      "Nike",
       "Puma",
-      "Reebok"
+      "Under Armour",
+      "Nike"
      ],
-     "answer": 1
-    },
-    {
-     "id": "l04",
+     "answer": 3,
      "media": {
       "kind": "image",
-      "src": "images/logos/04.png",
-      "hide": [
-       [
-        0,
-        0,
-        100,
-        45
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
+      "src": "logos/nike.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
      "options": [
-      "Jumbo",
-      "Lidl",
-      "Albert Heijn",
-      "Aldi"
+      "Grolsch",
+      "Amstel",
+      "Heineken",
+      "Bavaria"
      ],
-     "answer": 2
-    },
-    {
-     "id": "l05",
+     "answer": 2,
      "media": {
       "kind": "image",
-      "src": "images/logos/05.png",
-      "hide": [
-       [
-        0,
-        0,
-        50,
-        50
-       ],
-       [
-        50,
-        50,
-        50,
-        50
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
+      "src": "logos/heineken.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
+     "options": [
+      "Transavia",
+      "KLM",
+      "Lufthansa",
+      "Air France"
+     ],
+     "answer": 1,
+     "media": {
+      "kind": "image",
+      "src": "logos/klm.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
      "options": [
       "Spotify",
       "Deezer",
-      "Tidal",
-      "SoundCloud"
+      "SoundCloud",
+      "Tidal"
      ],
-     "answer": 0
-    },
-    {
-     "id": "l06",
+     "answer": 0,
      "media": {
       "kind": "image",
-      "src": "images/logos/06.png",
-      "hide": [
-       [
-        0,
-        0,
-        100,
-        35
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
+      "src": "logos/spotify.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
      "options": [
-      "Instagram",
-      "Snapchat",
-      "WhatsApp",
-      "TikTok"
+      "Costa Coffee",
+      "Nescafé",
+      "Coffee Company",
+      "Starbucks"
      ],
-     "answer": 0
-    },
-    {
-     "id": "l07",
+     "answer": 3,
      "media": {
       "kind": "image",
-      "src": "images/logos/07.png",
-      "hide": [
-       [
-        0,
-        50,
-        100,
-        50
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
+      "src": "logos/starbucks.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
      "options": [
       "BP",
-      "Shell",
       "Esso",
-      "Total"
-     ],
-     "answer": 1
-    },
-    {
-     "id": "l08",
-     "media": {
-      "kind": "image",
-      "src": "images/logos/08.png",
-      "hide": [
-       [
-        60,
-        0,
-        40,
-        100
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
-     "options": [
-      "Ikea",
-      "Hema",
-      "Gamma",
-      "Praxis"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "l09",
-     "media": {
-      "kind": "image",
-      "src": "images/logos/09.png",
-      "hide": [
-       [
-        0,
-        0,
-        45,
-        100
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
-     "options": [
-      "Apple",
-      "Samsung",
-      "Nokia",
-      "Huawei"
-     ],
-     "answer": 0
-    },
-    {
-     "id": "l10",
-     "media": {
-      "kind": "image",
-      "src": "images/logos/10.png",
-      "hide": [
-       [
-        0,
-        50,
-        100,
-        50
-       ]
-      ]
-     },
-     "question": "Welk merk is dit logo?",
-     "options": [
-      "Netflix",
-      "Disney+",
-      "HBO",
-      "Prime Video"
-     ],
-     "answer": 0
-    }
-   ]
-  },
-  {
-   "id": "fin",
-   "type": "final",
-   "name": "Slotvraag",
-   "items": [
-    {
-     "id": "f1",
-     "question": "Hoeveel hunebedden liggen er in Nederland?",
-     "options": [
-      "34",
-      "44",
-      "54",
-      "64"
+      "Shell",
+      "TotalEnergies"
      ],
      "answer": 2,
-     "explanation": "52 in Drenthe en 2 in Groningen."
+     "media": {
+      "kind": "image",
+      "src": "logos/shell.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
+     "options": [
+      "Leen Bakker",
+      "IKEA",
+      "Kwantum",
+      "HEMA"
+     ],
+     "answer": 1,
+     "media": {
+      "kind": "image",
+      "src": "logos/ikea.png"
+     }
+    },
+    {
+     "question": "Welk logo is dit?",
+     "options": [
+      "Coca-Cola",
+      "Pepsi",
+      "Fanta",
+      "Dr Pepper"
+     ],
+     "answer": 0,
+     "media": {
+      "kind": "image",
+      "src": "logos/coca-cola.png"
+     }
     }
    ]
   }
- ]
+ ],
+ "final": {
+  "category": "Geschiedenis",
+  "question": "In welk jaar viel de Berlijnse Muur?",
+  "options": [
+   "1987",
+   "1989",
+   "1991",
+   "1993"
+  ],
+  "answer": 1,
+  "explanation": "De Muur viel op 9 november 1989."
+ }
 }

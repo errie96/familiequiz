@@ -7,21 +7,30 @@
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
-  <script src="rounds-ui.js"></script>
   <style>
-    body { display: block; max-width: 720px; margin: 0 auto; padding: 12px; }
+    body { display: block; max-width: 760px; margin: 0 auto; padding: 12px; }
     .row { display: flex; gap: 8px; }
     .row button { margin: 4px 0; }
     .big { font-size: 20px; padding: 18px; }
+    .btn-small { width: auto; padding: 8px 12px; margin: 4px 4px 0 0; font-size: 14px; }
     details { background: #0f172a; border-radius: 10px; padding: 10px 14px; margin-top: 14px; }
     summary { font-weight: bold; cursor: pointer; padding: 6px 0; }
     .team { border-top: 1px solid #334155; padding: 10px 0; }
     .team .head { display: flex; justify-content: space-between; gap: 8px; }
+    .team .members { color: #94a3b8; font-size: 14px; margin-top: 2px; }
     .setting { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #1e293b; }
-    .setting input[type="number"] { width: 80px; padding: 8px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: #fff; font-size: 16px; margin: 0; }
+    .setting input[type="number"] { width: 90px; padding: 8px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: #fff; font-size: 16px; }
+    .setting input[type="text"] { width: 160px; padding: 8px; margin: 0; }
     .setting input[type="checkbox"] { width: 26px; height: 26px; }
-    .alert-box { cursor: default; }
+    .alert-box { cursor: pointer; }
     .qbox { background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 12px; }
+    .opt { padding: 8px 10px; border-radius: 8px; background: #1e293b; margin: 4px 0; display: flex; justify-content: space-between; gap: 8px; }
+    .opt.right { background: #15803d; font-weight: bold; }
+    .line { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #1e293b; }
+    .tg { width: auto; margin: 0; padding: 4px 12px; font-size: 14px; }
+    .tg.on { background: #15803d; } .tg.off { background: #7f1d1d; }
+    .muted { color: #94a3b8; font-size: 14px; }
+    a.lnk { color: #38bdf8; }
     select { width: 100%; padding: 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid #475569; font-size: 16px; }
   </style>
 </head>
@@ -33,50 +42,62 @@
       <small id="connection-status" style="color:#94a3b8;">○ Verbinden...</small>
     </div>
 
-    <!-- Blijft staan totdat de speler weer naar de quiz kijkt -->
     <div id="cheat-alerts" style="margin-top:10px;"></div>
+    <div id="warnings" class="hidden" style="background:#78350f; border-radius:8px; padding:10px; margin-top:10px; font-size:13px;"></div>
 
+    <!-- Hoofdbediening -->
     <div style="margin-top:12px;">
+      <div id="status-line" class="muted" style="text-align:center; margin-bottom:6px;"></div>
       <button id="btn-main" class="btn-primary big">...</button>
+      <p id="main-hint" class="muted" style="text-align:center; min-height:1.2em;"></p>
+      <button id="btn-force" class="btn-option hidden" style="text-align:center;"></button>
       <div class="row">
         <button id="btn-prev" class="btn-option" style="text-align:center;">⬅️ Vorige</button>
         <button id="btn-pause" class="btn-pause">☕ Pauze</button>
         <button id="btn-standings" class="btn-option" style="text-align:center; background:#0ea5e9;">📊 Stand</button>
       </div>
-      <button id="btn-skip-reveal" class="btn-option hidden" style="text-align:center;">⏭️ Ontknoping overslaan</button>
-      <button id="btn-skip-review" class="btn-option hidden" style="text-align:center;">⏭️ Nakijken overslaan</button>
-    </div>
-
-    <div id="status-line" style="text-align:center; color:#94a3b8; margin-top:10px;"></div>
-
-    <div id="play-card" class="qbox hidden">
-      <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-        <span class="badge" id="q-round">Ronde</span>
-        <span class="badge" id="q-progress" style="background:#3b82f6;"></span>
-        <span class="badge hidden" id="q-practice" style="background:#7c3aed;">Oefenvraag</span>
-        <span class="badge hidden" id="q-timer"></span>
+      <div class="row">
+        <button id="btn-review" class="btn-option" style="text-align:center;">🔍 Nakijken (deze ronde)</button>
+        <button id="btn-time" class="btn-option hidden" style="text-align:center;">⏱️ +10 sec</button>
       </div>
-      <div id="play-root" style="margin-top:10px;"></div>
-      <p id="q-void" class="hidden" style="margin-top:8px; font-weight:bold; color:#fbbf24;"></p>
     </div>
 
-    <div id="end-card" class="qbox hidden">
+    <!-- Nakijken-navigatie -->
+    <div id="review-nav" class="qbox hidden">
+      <div style="text-align:center; font-weight:bold;" id="review-info"></div>
+      <div class="row">
+        <button id="rv-prev" class="btn-option" style="text-align:center;">◀ Vorige</button>
+        <button id="rv-next" class="btn-primary">Volgende ▶</button>
+      </div>
+      <button id="rv-close" class="btn-pause">Sluit nakijken</button>
+      <div id="rv-table" style="overflow:auto; font-size:13px;"></div>
+    </div>
+
+    <!-- Stap-paneel -->
+    <div id="panel" class="qbox hidden"></div>
+
+    <!-- Einde -->
+    <div id="end-box" class="qbox hidden">
       <h3 style="text-align:left;">🏁 Einduitslag</h3>
       <ul id="end-list"></ul>
+      <div class="row">
+        <button id="end-break" class="btn-option" style="text-align:center;">📋 Punten per ronde op tv</button>
+        <button id="end-rank" class="btn-option" style="text-align:center;">🏆 Eindstand op tv</button>
+      </div>
     </div>
 
     <details id="settings-panel">
       <summary>⚙️ Instellingen</summary>
-      <p id="settings-note" style="color:#94a3b8; font-size:13px; margin:4px 0 8px;"></p>
-      <div class="setting"><label for="s-timer">Tijdslimiet bij meerkeuzevragen</label><input type="checkbox" id="s-timer"></div>
+      <p id="settings-note" class="muted" style="margin:4px 0 8px;"></p>
+      <div class="setting"><label for="s-round">Punten per ronde (alle rondes even veel)</label><input type="number" id="s-round" min="10" max="1000"></div>
+      <div class="setting"><label for="s-timer">Tijdslimiet bij meerkeuze</label><input type="checkbox" id="s-timer"></div>
       <div class="setting"><label for="s-time">Standaardtijd (seconden)</label><input type="number" id="s-time" min="5" max="300"></div>
-      <div class="setting"><label for="s-max">Te verdienen punten per ronde</label><input type="number" id="s-max" min="10" max="1000"></div>
-    </details>
-
-    <details id="jump-panel">
-      <summary>🧭 Naar een ronde springen</summary>
-      <select id="jump-select"></select>
-      <button id="btn-jump" class="btn-option" style="text-align:center;">Spring naar het begin van deze ronde</button>
+      <div class="setting"><label for="s-mem">Geheugenronde: seconden schrijven</label><input type="number" id="s-mem" min="20" max="900"></div>
+      <div class="setting"><label for="s-draw">Tekenronde: seconden per beurt</label><input type="number" id="s-draw" min="15" max="300"></div>
+      <div class="setting"><label for="s-thirty">30 Seconds: seconden per beurt</label><input type="number" id="s-thirty" min="10" max="120"></div>
+      <div class="setting"><label for="s-blur">Foto blur: punten per stap</label><input type="text" id="s-blur"></div>
+      <div class="setting"><label for="s-price">Prijzen: punten dichtstbij, 2e, 3e…</label><input type="text" id="s-price"></div>
+      <button id="btn-save-settings" class="btn-primary">Instellingen opslaan</button>
     </details>
 
     <details id="teams-panel" open>
@@ -86,13 +107,16 @@
 
     <details id="emergency-panel">
       <summary>🚨 Noodknoppen</summary>
-      <p id="em-target" style="color:#94a3b8; font-size:14px; margin: 4px 0 8px;"></p>
-      <button id="btn-force-next" class="btn-option" style="text-align:center;">⏭️ Stap afsluiten / doorgaan zonder te wachten</button>
-      <button id="btn-add-time" class="btn-option" style="text-align:center;">⏱️ +10 seconden</button>
-      <button id="btn-all-correct" class="btn-option" style="text-align:center;">✅ Voor iedereen goed rekenen</button>
-      <button id="btn-void" class="btn-option" style="text-align:center;">🚫 Vraag laten vervallen</button>
+      <div style="margin:8px 0;">
+        <label class="muted">Spring naar een ronde:</label>
+        <select id="goto-round"></select>
+        <button id="btn-goto" class="btn-option" style="text-align:center;">Ga naar die ronde</button>
+      </div>
+      <button id="btn-skip" class="btn-option" style="text-align:center;">⏭️ Deze stap overslaan</button>
+      <button id="btn-all-correct" class="btn-option" style="text-align:center;">✅ Meerkeuzevraag voor iedereen goed rekenen</button>
+      <button id="btn-void" class="btn-option" style="text-align:center;">🚫 Meerkeuzevraag laten vervallen</button>
       <button id="btn-unvoid" class="btn-option" style="text-align:center;">↩️ Weer normaal laten tellen</button>
-      <p style="color:#64748b; font-size:13px; margin-top:8px;">Een antwoord wissen, een team hernoemen of verwijderen doe je onder "Teams".</p>
+      <button id="btn-dismiss-alerts" class="btn-option" style="text-align:center;">🧹 Alle spiekmeldingen wissen</button>
     </details>
 
     <div id="move-dialog" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:60; display:flex; align-items:center; justify-content:center; padding:16px;">
@@ -109,7 +133,9 @@
   <script>
     const socket = io();
     const $ = (id) => document.getElementById(id);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
+    // ---------------- Pincode ----------------
     function setStatus(text, color) { $("connection-status").textContent = text; $("connection-status").style.color = color; }
     function registerRemote() {
       let pin = localStorage.getItem("quiz_host_pin");
@@ -131,228 +157,304 @@
     socket.on("disconnect", () => setStatus("○ Verbinding verbroken...", "#ef4444"));
     socket.on("host_error", (data) => alert(data.message));
 
-    // Geluid en trilling bij een nieuwe melding; de lijst zelf komt uit de status
-    socket.on("cheat_warning", (data) => {
-      QuizFX.alarm(data.reason === "locked");
-      if (navigator.vibrate) navigator.vibrate(data.reason === "locked" ? 150 : [150, 80, 150]);
+    // ---------------- Spiekmeldingen (blijven staan tot de speler terug is) ----------------
+    socket.on("cheat_beep", (a) => {
+      const isLocked = a.reason === "locked";
+      QuizFX.alarm(isLocked);
+      if (navigator.vibrate) navigator.vibrate(isLocked ? 150 : [150, 80, 150]);
     });
-    function renderAway(list) {
+    function renderAlerts(list) {
       const box = $("cheat-alerts");
       box.replaceChildren();
-      list.forEach((a) => {
-        const locked = a.reason === "locked";
-        const d = document.createElement("div");
-        d.className = "alert-box";
-        d.style.backgroundColor = locked ? "#d97706" : "#dc2626";
-        d.style.border = locked ? "2px solid #fbbf24" : "2px solid #f87171";
-        const time = new Date(a.since).toLocaleTimeString("nl-NL", { timeZone: "Europe/Amsterdam" });
-        d.textContent = `${locked ? "🔒 Scherm vergrendeld" : "🚨 Quiz verlaten"}: ${a.teamName} · ${a.label} (sinds ${time}, blijft staan tot de speler terug is)`;
+      (list || []).forEach((a) => {
+        const d = el("div", "alert-box");
+        const isLocked = a.reason === "locked";
+        d.style.backgroundColor = isLocked ? "#d97706" : "#dc2626";
+        d.style.border = isLocked ? "2px solid #fbbf24" : "2px solid #f87171";
+        d.append(isLocked ? "🔒 Scherm vergrendeld: " : "🚨 Andere app: ", Object.assign(el("u"), { textContent: `${a.teamName} · ${a.label}` }), ` sinds ${a.timestamp} (tik om te verbergen)`);
+        d.onclick = () => socket.emit("alert_dismiss", { key: a.key });
         box.appendChild(d);
       });
     }
 
-    let lastState = null, mainEvent = null, prevEvent = null;
-    $("btn-main").addEventListener("click", () => { if (mainEvent) socket.emit(mainEvent); });
-    $("btn-prev").addEventListener("click", () => { if (prevEvent) socket.emit(prevEvent); });
-    $("btn-pause").addEventListener("click", () => socket.emit("toggle_pause"));
-    $("btn-skip-reveal").addEventListener("click", () => socket.emit("reveal_done"));
-    $("btn-skip-review").addEventListener("click", () => socket.emit("skip_review"));
-    $("btn-add-time").addEventListener("click", () => socket.emit("add_time"));
-    $("btn-force-next").addEventListener("click", () => {
-      if (confirm("Deze stap afsluiten en doorgaan, ook al is niet alles binnen?")) socket.emit("force_next");
-    });
-    $("btn-jump").addEventListener("click", () => {
-      const idx = parseInt($("jump-select").value, 10);
-      if (Number.isInteger(idx) && confirm("Naar het begin van deze ronde springen?")) socket.emit("goto_round", { idx });
-    });
-    $("move-cancel").addEventListener("click", () => $("move-dialog").classList.add("hidden"));
-    $("btn-reset").addEventListener("click", () => {
-      if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle teams en scores worden gewist.")) socket.emit("reset_quiz");
-    });
-    const target = () => (lastState ? lastState.targetSid : null);
-    $("btn-all-correct").addEventListener("click", () => { if (target()) socket.emit("void_question", { sid: target(), mode: "all_correct" }); });
-    $("btn-void").addEventListener("click", () => { if (target() && confirm("Deze vraag laten vervallen? Hij telt dan voor niemand mee.")) socket.emit("void_question", { sid: target(), mode: "void" }); });
-    $("btn-unvoid").addEventListener("click", () => { if (target()) socket.emit("void_question", { sid: target(), mode: null }); });
+    // ---------------- Knoppen ----------------
+    let S = null;
+    $("btn-main").onclick = () => socket.emit("host_main");
+    $("btn-force").onclick = () => socket.emit("host_force");
+    $("btn-pause").onclick = () => socket.emit("toggle_pause");
+    $("btn-standings").onclick = () => socket.emit("toggle_standings");
+    $("btn-prev").onclick = () => socket.emit("prev_step");
+    $("btn-review").onclick = () => socket.emit("review_open", { scope: S && S.phase === "END" ? "all" : null });
+    $("btn-time").onclick = () => socket.emit("add_time");
+    $("rv-prev").onclick = () => socket.emit("review_nav", { dir: -1 });
+    $("rv-next").onclick = () => socket.emit("review_nav", { dir: 1 });
+    $("rv-close").onclick = () => socket.emit("review_close");
+    $("end-break").onclick = () => socket.emit("end_view", { view: "breakdown" });
+    $("end-rank").onclick = () => socket.emit("end_view", { view: "ranking" });
+    $("btn-skip").onclick = () => { if (confirm("Deze stap overslaan?")) socket.emit("skip_step"); };
+    $("btn-all-correct").onclick = () => socket.emit("void_question", { mode: "all_correct" });
+    $("btn-void").onclick = () => socket.emit("void_question", { mode: "void" });
+    $("btn-unvoid").onclick = () => socket.emit("void_question", { mode: null });
+    $("btn-dismiss-alerts").onclick = () => socket.emit("alert_dismiss", { key: "all" });
+    $("btn-goto").onclick = () => { const id = $("goto-round").value; if (id && confirm("Naar deze ronde springen?")) socket.emit("goto_step", { stepId: id }); };
+    $("btn-reset").onclick = () => { if (confirm("Alles wissen en opnieuw beginnen? Alle teams en scores gaan verloren.")) socket.emit("reset_quiz"); };
 
-    function sendSettings() {
-      const num = (id, fb) => { const n = parseInt($(id).value, 10); return Number.isInteger(n) ? n : fb; };
-      const s = lastState ? lastState.settings : {};
-      socket.emit("update_settings", { timerEnabled: $("s-timer").checked, defaultTime: num("s-time", s.defaultTime), roundMax: num("s-max", s.roundMax) });
+    const parseList = (txt) => String(txt).split(/[ ,;]+/).filter(Boolean).map(Number);
+    $("btn-save-settings").onclick = () => socket.emit("update_settings", {
+      roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value),
+      memorySeconds: Number($("s-mem").value), drawSeconds: Number($("s-draw").value), thirtySeconds: Number($("s-thirty").value),
+      blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value)
+    });
+
+    // ---------------- Stap-paneel ----------------
+    const L = (i) => QuizFX.letter(i);
+    function toggle(on, onclick) {
+      const b = el("button", "tg " + (on ? "on" : "off"), on ? "✔ goed" : "✘ fout");
+      b.onclick = onclick;
+      return b;
     }
-    ["s-timer", "s-time", "s-max"].forEach((id) => $(id).addEventListener("change", sendSettings));
+    function renderPanel(state) {
+      const box = $("panel");
+      const p = state.panel, step = state.step;
+      box.replaceChildren();
+      if (!p || state.phase !== "PLAY") return box.classList.add("hidden");
+      box.classList.remove("hidden");
+      const head = el("div", "", "");
+      head.style.cssText = "display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;";
+      head.append(Object.assign(el("span", "badge"), { textContent: state.header.round }), Object.assign(el("span", "badge"), { textContent: `Stap ${state.stepNo} van ${state.stepTotal}` }));
+      box.append(head);
 
-    function setBtn(id, { label, disabled, hidden }) {
-      const b = $(id);
-      if (label !== undefined) b.textContent = label;
-      b.disabled = !!disabled;
-      b.classList.toggle("hidden", !!hidden);
+      if (p.type === "mc") {
+        box.append(Object.assign(el("h3"), { textContent: p.question || "(foto/logo-vraag)" }));
+        if (p.variant === "blur") {
+          const b = el("button", "btn-primary", `🔍 Scherper maken (${p.blurStep} van ${p.blurMax})`);
+          b.disabled = p.status !== "open" || p.blurStep >= p.blurMax;
+          b.onclick = () => socket.emit("blur_next");
+          const all = el("button", "btn-option", "Meteen helemaal scherp");
+          all.disabled = p.status !== "open";
+          all.onclick = () => socket.emit("blur_next", { all: true });
+          all.style.textAlign = "center";
+          box.append(b, all);
+        }
+        p.options.forEach((o, i) => { const r = el("div", "opt" + (i === p.answer ? " right" : "")); r.append(el("span", "", `${L(i)}: ${o}`), el("span", "", i === p.answer ? "✅" : "")); box.append(r); });
+        if (p.voided) box.append(el("p", "", p.voided === "void" ? "🚫 Deze vraag is vervallen" : "✅ Voor iedereen goed gerekend"));
+        box.append(el("h3", "", "Antwoorden"));
+        p.teams.forEach((t) => {
+          const row = el("div", "line");
+          const who = el("span", "", (t.connected ? "" : "○ ") + t.name);
+          const ans = el("span", "", t.answered ? `${L(t.value)}${t.value === p.answer ? " ✔" : " ✘"}` : "⏳");
+          const right = el("span");
+          right.append(ans);
+          if (t.answered) { const w = el("button", "btn-option tg", "wis"); w.style.marginLeft = "8px"; w.onclick = () => socket.emit("clear_answer", { teamId: t.teamId }); right.append(w); }
+          row.append(who, right);
+          box.append(row);
+        });
+        if (p.explanation) box.append(el("p", "muted", `💡 ${p.explanation}`));
+      }
+
+      if (p.type === "memory") {
+        box.append(el("h3", "", "Wat stond er op het bord?"));
+        const items = el("div", "muted");
+        items.textContent = p.items.join(" · ");
+        box.append(items);
+        box.append(el("p", "muted", p.status === "idle" ? "Teams schrijven nog niet. Druk op Start." : p.status === "writing" ? "Teams schrijven nu…" : p.status === "judging" ? "Keur de antwoorden na. Automatisch goed gerekend: wat lijkt op een item. Tik om te wijzigen." : "Nagekeken."));
+        p.teams.forEach((t) => {
+          box.append(el("h3", "", `${t.name} (${t.entries.filter((e) => e.ok).length} goed van ${t.entries.length})`));
+          t.entries.forEach((e) => {
+            const row = el("div", "line");
+            row.append(el("span", "", e.text));
+            if (p.status === "judging") row.append(toggle(!!e.ok, () => socket.emit("memory_judge", { teamId: t.teamId, entryId: e.id, ok: !e.ok })));
+            else row.append(el("span", "", e.ok === true ? "✔" : e.ok === false ? "✘" : ""));
+            box.append(row);
+          });
+        });
+      }
+
+      if (p.type === "song") {
+        box.append(el("h3", "", `${p.song.title} · ${p.song.artist}`));
+        box.append(el("p", "", `Jaar: ${p.song.year}`));
+        const r = el("div", "row");
+        const replay = el("button", "btn-option", "🔁 Opnieuw afspelen op tv");
+        replay.style.textAlign = "center";
+        replay.disabled = !p.song.hasAudio;
+        replay.onclick = () => socket.emit("song_replay");
+        r.append(replay);
+        box.append(r);
+        if (!p.song.hasAudio) {
+          const a = el("a", "lnk", "Open dit liedje in Spotify");
+          a.href = p.song.spotify; a.target = "_blank"; a.rel = "noopener";
+          box.append(el("p", "muted", "Geen geluidsbestand ingesteld: speel het liedje zelf af (bijv. via Spotify) zodat het via de tv-speakers te horen is."), a);
+        }
+        box.append(el("p", "muted", `${p.placed} team(s) hebben geplaatst.`));
+      }
+
+      if (p.type === "price") {
+        box.append(el("h3", "", `${p.name}${p.unit ? " (" + p.unit + ")" : ""}`));
+        box.append(el("p", "", `Nu: ${QuizFX.euro(p.now)}  ·  ${p.agoYears} jaar geleden: ${QuizFX.euro(p.ago)}`));
+      }
+
+      if (p.type === "draw") {
+        box.append(el("h3", "", `Tekenen: beurt ${p.turn} van ${p.total}`));
+        if (p.smallTeams.length) box.append(el("p", "bad", `Let op: ${p.smallTeams.join(", ")} heeft minder dan 2 spelers en kan niet meedoen.`));
+        if (p.status === "ready") box.append(el("p", "muted", "Laat de tekenaars aan jouw tafel zitten en druk op Start."));
+        p.teams.forEach((t) => {
+          const row = el("div", "line");
+          const left = el("div");
+          left.append(el("div", "", `${t.solved ? "✔" : "…"} ${t.name} · tekent: ${t.drawer}`), el("div", "muted", `Woord: ${t.word}`), el("div", "muted", t.guesses.map((g) => `${g.ok ? "✔" : "✘"} ${g.text}`).join("  ")));
+          const fix = el("button", "btn-option tg", t.solved ? "afkeuren" : "goedkeuren");
+          fix.onclick = () => socket.emit("draw_judge", { teamId: findTeamId(t.name), ok: !t.solved });
+          row.append(left, fix);
+          box.append(row);
+        });
+      }
+
+      if (p.type === "thirty") {
+        box.append(el("h3", "", `30 Seconds: beurt ${p.turn} van ${p.total}`));
+        if (p.team) box.append(el("p", "", `Aan de beurt: ${p.team} · ${p.explainer}`));
+        if (p.words) {
+          p.words.forEach((w, i) => {
+            const row = el("div", "line");
+            row.append(el("span", "", w));
+            if (p.status === "judging") row.append(toggle(!!p.ok[i], () => socket.emit("thirty_toggle", { index: i })));
+            else row.append(el("span", "", p.ok[i] ? "✔" : p.status === "result" ? "✘" : ""));
+            box.append(row);
+          });
+        }
+        box.append(el("p", "muted", p.status === "judging" ? "Tik op de woorden die goed geraden zijn en bevestig." : ""));
+      }
+
+      if (p.type === "joker") {
+        box.append(el("h3", "", "Jokers"));
+        p.teams.forEach((t) => box.append(Object.assign(el("div", "line"), { textContent: `${t.name}: ${t.round || "nog niet gekozen"}` })));
+      }
+
+      if (p.type === "final") {
+        box.append(el("h3", "", "Slotvraag"));
+        if (p.status !== "wager") {
+          box.append(el("p", "", p.question));
+          p.options.forEach((o, i) => { const r = el("div", "opt" + (i === p.answer ? " right" : "")); r.append(el("span", "", `${L(i)}: ${o}`), el("span", "", i === p.answer ? "✅" : "")); box.append(r); });
+        }
+        p.teams.forEach((t) => {
+          const row = el("div", "line");
+          row.append(el("span", "", t.name), el("span", "muted", `inzet ${t.wager ?? "–"} / max ${t.max}${t.answer !== null ? " · antwoord " + L(t.answer) : ""}`));
+          box.append(row);
+        });
+      }
     }
+    // Team-id opzoeken op naam (voor draw_judge)
+    function findTeamId(name) { const t = (S && S.teams || []).find((x) => x.name === name); return t ? t.teamId : null; }
 
-    function openMoveDialog(member, fromTeam) {
-      $("move-title").textContent = `Verplaats ${member.label} (van ${fromTeam.name}) naar:`;
+    // ---------------- Teams beheren ----------------
+    function openMove(device, from) {
+      const dlg = $("move-dialog");
+      $("move-title").textContent = `${device.label}: verplaatsen naar…`;
       const list = $("move-list");
       list.replaceChildren();
-      const others = lastState.teams.filter((t) => t.teamId !== fromTeam.teamId);
-      if (!others.length) { const p = document.createElement("p"); p.style.color = "#94a3b8"; p.textContent = "Er is geen ander team."; list.appendChild(p); }
-      others.forEach((t) => {
-        const b = document.createElement("button");
-        b.className = "btn-option";
-        b.textContent = `${t.name}  (${t.members.length} ${t.members.length === 1 ? "telefoon" : "telefoons"})`;
-        b.onclick = () => { socket.emit("move_player", { deviceId: member.deviceId, teamId: t.teamId }); $("move-dialog").classList.add("hidden"); };
+      S.teams.filter((t) => t.teamId !== from.teamId).forEach((t) => {
+        const b = el("button", "btn-option", t.name);
+        b.onclick = () => { socket.emit("move_player", { deviceId: device.deviceId, teamId: t.teamId }); dlg.classList.add("hidden"); };
         list.appendChild(b);
       });
-      $("move-dialog").classList.remove("hidden");
+      dlg.classList.remove("hidden");
     }
+    $("move-cancel").onclick = () => $("move-dialog").classList.add("hidden");
 
     function renderTeams(state) {
-      const showAnswer = state.gameState === "PLAY" && state.meta && state.meta.kind === "item";
       $("team-count").textContent = state.teams.length;
-      const list = $("team-list");
-      list.replaceChildren();
+      const box = $("team-list");
+      box.replaceChildren();
       state.teams.forEach((t) => {
-        const box = document.createElement("div");
-        box.className = "team";
-        const head = document.createElement("div");
-        head.className = "head";
-        const name = document.createElement("b");
-        name.textContent = t.name + (t.joker ? `  🃏 ${t.joker}` : "");
-        const status = document.createElement("span");
-        if (!t.connected) { status.textContent = "(basis offline)"; status.style.color = "#94a3b8"; }
-        else if (showAnswer) { status.textContent = t.answered ? "✓ Klaar" : "⏳ Bezig"; status.style.color = t.answered ? "#4ade80" : "#f59e0b"; }
-        head.append(name, status);
-        box.appendChild(head);
-
+        const d = el("div", "team");
+        const head = el("div", "head");
+        head.append(el("b", "", `${t.connected ? "●" : "○"} ${t.name} · ${t.score} pt${t.joker ? " · 🃏 " + t.joker : ""}`));
+        const acts = el("span");
+        const rn = el("button", "btn-option btn-small", "✏️"); rn.onclick = () => { const n = prompt("Nieuwe teamnaam:", t.name); if (n) socket.emit("rename_team", { teamId: t.teamId, name: n }); };
+        const rm = el("button", "btn-option btn-small", "🗑"); rm.onclick = () => { if (confirm(`Team ${t.name} verwijderen?`)) socket.emit("remove_team", { teamId: t.teamId }); };
+        acts.append(rn, rm);
+        head.append(acts);
+        d.append(head);
         t.members.forEach((m) => {
-          const row = document.createElement("div");
-          row.style.cssText = "margin-top:8px; padding:6px 8px; background:#1e293b; border-radius:8px;";
-          const label = document.createElement("div");
-          label.textContent = `${m.label}${m.role === "base" ? " ⭐ basis" : ""}${m.connected ? "" : "  ○ offline"}`;
-          label.style.color = m.connected ? "#e2e8f0" : "#94a3b8";
-          const btns = document.createElement("div");
-          const mk = (text, onClick) => { const b = document.createElement("button"); b.className = "btn-option btn-small"; b.textContent = text; b.onclick = onClick; btns.appendChild(b); };
-          mk("✏️ Naam", () => { const n = prompt(`Nieuwe naam voor ${m.label}:`, m.label); if (n && n.trim()) socket.emit("rename_player", { deviceId: m.deviceId, name: n }); });
-          mk("➡️ Verplaats", () => openMoveDialog(m, t));
-          if (m.role !== "base") mk("⭐ Maak basis", () => { if (confirm(`${m.label} aanwijzen als basistelefoon van ${t.name}? (Normaal kiest het team dit zelf.)`)) socket.emit("set_base", { deviceId: m.deviceId }); });
-          row.append(label, btns);
-          box.appendChild(row);
+          const row = el("div", "members");
+          row.append(`${m.connected ? "●" : "○"} ${m.label}${m.role === "base" ? " ⭐" : ""} `);
+          const a = el("button", "btn-option btn-small", "naam"); a.onclick = () => { const n = prompt("Nieuwe naam:", m.label); if (n) socket.emit("rename_player", { deviceId: m.deviceId, name: n }); };
+          const b = el("button", "btn-option btn-small", "→ team"); b.onclick = () => openMove(m, t);
+          row.append(a, b);
+          if (m.role !== "base") { const c = el("button", "btn-option btn-small", "⭐ basis"); c.onclick = () => socket.emit("set_base", { deviceId: m.deviceId }); row.append(c); }
+          d.append(row);
         });
-
-        const actions = document.createElement("div");
-        actions.style.marginTop = "8px";
-        const mkBtn = (label, onClick) => { const b = document.createElement("button"); b.className = "btn-option btn-small"; b.textContent = label; b.onclick = onClick; actions.appendChild(b); };
-        if (showAnswer && t.answered) mkBtn("↩️ Antwoord wissen", () => { if (confirm(`Antwoord van ${t.name} wissen? Het team mag dan opnieuw antwoorden.`)) socket.emit("clear_answer", { teamId: t.teamId }); });
-        mkBtn("✏️ Teamnaam", () => { const n = prompt("Nieuwe teamnaam:", t.name); if (n && n.trim()) socket.emit("rename_team", { teamId: t.teamId, name: n }); });
-        mkBtn("🗑️ Team verwijderen", () => { if (confirm(`Team "${t.name}" verwijderen? De punten van dit team gaan verloren.`)) socket.emit("remove_team", { teamId: t.teamId }); });
-        box.appendChild(actions);
-        list.appendChild(box);
+        box.append(d);
       });
     }
 
-    function renderSettings(state) {
-      const s = state.settings;
-      const set = (id, key, isCheck) => {
-        const el = $(id);
-        el.disabled = state.settingsLocked;
-        if (document.activeElement === el) return;
-        if (isCheck) el.checked = s[key]; else el.value = s[key];
-      };
-      set("s-timer", "timerEnabled", true); set("s-time", "defaultTime"); set("s-max", "roundMax");
-      $("settings-note").textContent = state.settingsLocked
-        ? "De quiz is gestart: instellingen staan nu vast. Met Reset kun je ze weer aanpassen."
-        : "Pas dit aan vóór je start. Een ronde kan zelf een eigen aantal punten hebben (veld \"points\" in questions.json).";
-    }
-
-    function renderRoundJump(state) {
-      const sel = $("jump-select");
-      const sig = JSON.stringify(state.rounds);
-      if (sel.dataset.sig === sig) return;
-      sel.dataset.sig = sig;
-      sel.replaceChildren();
-      state.rounds.forEach((r) => { const o = document.createElement("option"); o.value = r.idx; o.textContent = r.name; sel.appendChild(o); });
-    }
-
-    const hostCtx = { act: (type, payload) => socket.emit("step_action", { type, payload }) };
-
+    // ---------------- Hoofdlus ----------------
+    let settingsFilled = false;
     socket.on("state_update", (state) => {
-      lastState = state;
-      const gs = state.gameState;
-      const meta = state.meta || {};
-      const playing = gs === "PLAY";
-      const isItem = playing && meta.kind === "item";
+      S = state;
+      renderAlerts(state.alerts);
+      const w = $("warnings");
+      w.classList.toggle("hidden", !state.warnings.length);
+      w.textContent = state.warnings.length ? "⚠️ " + state.warnings.join(" · ") : "";
 
-      let main;
-      if (gs === "LOBBY") main = { label: "▶️ Start quiz", event: "next_question", disabled: state.teams.length === 0 };
-      else if (gs === "PLAY" && state.host) main = { label: state.host.label, event: "next_question", disabled: state.host.disabled };
-      else if (gs === "PAUSED") main = { label: "☕ Pauze actief", disabled: true };
-      else if (gs === "STANDINGS") main = { label: "📊 Tussenstand wordt getoond", disabled: true };
-      else if (gs === "END") {
-        if (state.revealState === "idle") main = { label: "🎬 Start ontknoping", event: "start_reveal" };
-        else if (state.revealState === "running") main = { label: "⏳ Ontknoping bezig...", disabled: true };
-        else main = { label: state.breakdownShown ? "🏆 Terug naar de uitslag" : "📋 Overzicht per ronde tonen", event: "toggle_breakdown" };
-      } else main = { label: "...", disabled: true };
-      mainEvent = main.event || null;
-      setBtn("btn-main", { label: main.label, disabled: main.disabled });
+      const m = state.controls.main;
+      $("btn-main").textContent = m.label;
+      $("btn-main").disabled = !m.enabled || !!state.review;
+      $("main-hint").textContent = state.review ? "Sluit eerst het nakijken." : m.hint || "";
+      const f = state.controls.force;
+      $("btn-force").classList.toggle("hidden", !f);
+      if (f) $("btn-force").textContent = f.label;
+      $("btn-pause").textContent = state.paused ? "▶️ Hervat" : "☕ Pauze";
+      $("btn-pause").disabled = state.phase !== "PLAY";
+      $("btn-prev").disabled = state.phase !== "PLAY";
+      $("btn-standings").textContent = state.showStandings ? "↩ Terug" : "📊 Stand";
+      $("btn-standings").disabled = state.phase === "LOBBY";
+      $("btn-review").textContent = state.phase === "END" ? "🔍 Nakijken (alles)" : "🔍 Nakijken (deze ronde)";
+      $("btn-review").disabled = state.phase === "LOBBY";
+      $("btn-time").classList.toggle("hidden", !(state.step && state.step.timer));
+      $("status-line").textContent = state.phase === "LOBBY" ? `${state.teams.length} team(s) aangemeld`
+        : state.phase === "END" ? "De quiz is afgelopen"
+        : `${state.header.round} · stap ${state.stepNo} van ${state.stepTotal}${state.paused ? " · ⏸ PAUZE" : ""}`;
 
-      prevEvent = "prev_question";
-      setBtn("btn-prev", { label: "⬅️ Vorige", disabled: !state.canGoBack });
-      setBtn("btn-pause", { label: gs === "PAUSED" ? "▶️ Hervat" : "☕ Pauze", disabled: !(playing || gs === "PAUSED"), hidden: false });
-      $("btn-pause").style.background = gs === "PAUSED" ? "#22c55e" : "#f59e0b";
-      setBtn("btn-standings", { label: gs === "STANDINGS" ? "↩️ Terug" : "📊 Stand", disabled: !(playing || gs === "STANDINGS"), hidden: false });
-      $("btn-standings").onclick = () => socket.emit("toggle_standings");
-      $("btn-skip-reveal").classList.toggle("hidden", !(gs === "END" && state.revealState === "running"));
-      $("btn-skip-review").classList.toggle("hidden", !(playing && meta.reviewGroup));
-
-      const progress = state.progress;
-      const labels = {
-        LOBBY: `${state.teams.length} team(s) aangemeld`,
-        PLAY: progress ? (progress.text || `${progress.done} van ${progress.total} teams klaar`) + (state.host && state.host.waiting.length ? ` · wacht op: ${state.host.waiting.join(", ")}` : "") : (meta.roundName || ""),
-        PAUSED: "Pauze: alle schermen staan stil", STANDINGS: "Tussenstand wordt getoond",
-        END: state.revealState === "done" ? "Uitslag is onthuld" : "Quiz afgelopen"
-      };
-      $("status-line").textContent = labels[gs] || gs;
-      renderAway(state.away || []);
-
-      $("play-card").classList.toggle("hidden", !(playing && state.view));
-      if (playing && state.view) {
-        $("q-round").textContent = meta.roundName;
-        $("q-progress").textContent = (meta.itemNo && !["draw", "thirty", "memory"].includes(meta.rtype) ? `${meta.itemNo} van ${meta.itemTotal}` : meta.kind === "item" ? "ronde bezig" : "scherm") + (meta.worth ? `  ·  ${meta.worth} pt` : "");
-        $("q-practice").classList.toggle("hidden", !meta.practice);
-        const r = Rounds[state.view.rtype];
-        const render = r && (r.host || r.tv || r.phone);
-        if (render) render($("play-root"), state.view, hostCtx);
-        const v = state.voided;
-        $("q-void").classList.toggle("hidden", !v);
-        $("q-void").textContent = v === "void" ? "🚫 Deze vraag is vervallen" : v === "all_correct" ? "✅ Voor iedereen goed gerekend" : "";
-      }
-      QuizFX.countdown("remote", playing ? state.timer : null, (info) => {
-        $("q-timer").classList.toggle("hidden", !info);
-        if (info) { $("q-timer").textContent = `⏱ ${info.secs}s`; $("q-timer").style.background = info.secs <= 5 && info.running ? "#dc2626" : "#475569"; }
-      });
-
-      $("end-card").classList.toggle("hidden", !(gs === "END" && state.finalScores));
-      if (gs === "END" && state.finalScores) {
-        const list = $("end-list");
-        list.replaceChildren();
-        state.finalScores.forEach((row) => {
-          const li = document.createElement("li");
-          const left = document.createElement("span"); left.textContent = `#${row.rank}  ${row.name}`;
-          const pts = document.createElement("b"); pts.textContent = `${row.score} pt`;
-          li.append(left, pts);
-          list.appendChild(li);
-        });
+      // Nakijken
+      $("review-nav").classList.toggle("hidden", !state.review);
+      if (state.review) {
+        $("review-info").textContent = state.review.data ? `${state.review.data.title}${state.review.data.subtitle ? " · " + state.review.data.subtitle : ""} (${state.review.page + 1} van ${state.review.total})` : "Er is hier nog niets om na te kijken.";
+        $("rv-prev").disabled = state.review.page <= 0;
+        $("rv-next").disabled = state.review.page >= state.review.total - 1;
+        QuizFX.renderTable($("rv-table"), state.review.data);
       }
 
-      const hasTarget = playing && !!state.targetSid && meta.kind !== "info";
-      $("em-target").textContent = hasTarget ? "Vraag/stap vervallen of goed rekenen geldt voor de huidige vraag." : "Beschikbaar zodra de quiz bezig is.";
-      setBtn("btn-force-next", { disabled: !playing });
-      setBtn("btn-add-time", { disabled: !(playing && state.timer), hidden: !(state.timer) });
-      setBtn("btn-all-correct", { disabled: !hasTarget || state.voided === "all_correct" });
-      setBtn("btn-void", { disabled: !hasTarget || state.voided === "void" });
-      setBtn("btn-unvoid", { disabled: !hasTarget || !state.voided });
+      renderPanel(state);
 
-      renderSettings(state);
-      renderRoundJump(state);
+      // Einde
+      $("end-box").classList.toggle("hidden", state.phase !== "END");
+      if (state.phase === "END") {
+        const ul = $("end-list");
+        ul.replaceChildren();
+        (state.standings || []).forEach((r) => { const li = el("li"); li.append(el("span", "", `#${r.rank} ${r.name}`), el("b", "", `${r.score} pt`)); ul.append(li); });
+      }
+
       renderTeams(state);
+
+      // Spring-naar-ronde lijst
+      const sel = $("goto-round");
+      if (sel.options.length !== state.rounds.length + 1) {
+        sel.replaceChildren(new Option("Kies een ronde…", ""));
+        sel.append(new Option("Testvragen (begin)", "test_intro"));
+        state.rounds.forEach((r) => sel.append(new Option(`Ronde ${r.no}: ${r.title}`, r.introId)));
+        sel.append(new Option("Joker", "joker"), new Option("Slotvraag", "final"));
+      }
+
+      // Instellingen
+      const locked = state.settingsLocked;
+      $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
+      ["s-round", "s-timer", "s-time", "s-mem", "s-draw", "s-thirty", "s-blur", "s-price", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+      const ae = document.activeElement && document.activeElement.id;
+      if (!settingsFilled || !ae || !ae.startsWith("s-")) {
+        $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime;
+        $("s-mem").value = state.settings.memorySeconds; $("s-draw").value = state.settings.drawSeconds; $("s-thirty").value = state.settings.thirtySeconds;
+        $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", ");
+        settingsFilled = true;
+      }
     });
   </script>
 </body>

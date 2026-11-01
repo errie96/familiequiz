@@ -7,7 +7,19 @@
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
-  <script src="rounds-ui.js"></script>
+  <style>
+    .note { text-align: center; color: #94a3b8; margin-top: 12px; font-size: 14px; }
+    .good { color: #4ade80; font-weight: bold; }
+    .bad { color: #f87171; font-weight: bold; }
+    .bigtxt { font-size: 22px; font-weight: bold; text-align: center; margin: 10px 0; }
+    .wordcard { background: #334155; border-radius: 10px; padding: 12px 14px; font-size: 22px; font-weight: bold; margin: 8px 0; text-align: center; }
+    .entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #334155; padding: 8px 4px; }
+    .entry button { width: auto; margin: 0; padding: 4px 10px; background: #475569; color: #fff; }
+    .row2 { display: flex; gap: 8px; }
+    .row2 > * { flex: 1; }
+    label.lbl { display: block; font-size: 13px; color: #94a3b8; margin: 6px 0 4px; }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  </style>
 </head>
 <body>
   <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
@@ -27,98 +39,85 @@
       <h1>Familiequiz 🏆</h1>
       <p style="text-align:center; margin-bottom:10px;"><b>Stap 1:</b> vul je eigen naam in</p>
       <input type="text" id="my-name" placeholder="Jouw naam" maxlength="16" autocomplete="off">
-
       <div id="join-steps" class="hidden">
         <p style="text-align:center; margin: 6px 0 10px;"><b>Stap 2:</b> maak een team of sluit aan bij een team</p>
         <div style="display:flex; gap:8px; margin-bottom:12px;">
           <button id="tab-new" class="btn-primary" style="margin:0;">Nieuw team</button>
           <button id="tab-join" class="btn-option" style="margin:0; text-align:center;">Aansluiten bij team</button>
         </div>
-
         <div id="join-new">
           <p style="text-align:center; margin-bottom:12px;">Kies een naam voor jullie team:</p>
           <input type="text" id="team-name" placeholder="Bijv. BalloerBatsers of Zeegse Zuiperds" maxlength="24">
-          <p style="text-align:center; color:#94a3b8; font-size:13px; margin-bottom:8px;">
+          <p class="note" style="margin-bottom:8px;">
             Samen kiezen jullie straks welke telefoon de <b>basistelefoon</b> is: daarmee dien je de antwoorden in.
             Voorlopig is dat deze telefoon. Teamgenoten sluiten aan met hun eigen telefoon.
           </p>
           <button class="btn-primary" id="btn-create">Maak team aan</button>
         </div>
-
         <div id="join-existing" class="hidden">
           <p style="text-align:center; margin-bottom:12px;">Tik op het team waarbij je wilt aansluiten:</p>
           <div id="team-list"></div>
-          <p id="team-list-empty" style="text-align:center; color:#94a3b8; font-size:14px;">Er zijn nog geen teams. Maak er zelf een aan, of wacht even.</p>
+          <p id="team-list-empty" class="note">Er zijn nog geen teams. Maak er zelf een aan, of wacht even.</p>
         </div>
       </div>
-
       <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px;"></p>
     </div>
 
-    <!-- 2. Wachtkamer -->
-    <div id="lobby-screen" class="hidden">
-      <h2 id="team-title">Team</h2>
-      <p id="role-text" style="text-align:center; color:#cbd5e1; margin-bottom:10px;"></p>
-      <ul id="member-list"></ul>
-      <p id="lobby-message" style="text-align:center; color:#94a3b8; margin-top:16px;">Wachten tot de quizmaster de quiz start...</p>
-      <div id="member-actions" class="hidden">
-        <button id="btn-leave" class="btn-option" style="text-align:center; font-size:14px; color:#94a3b8;">Team verlaten</button>
-      </div>
-      <p id="lobby-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px; font-size:14px;"></p>
-    </div>
-
-    <!-- 3. De quiz zelf: elk rondetype tekent zich in #play-root -->
-    <div id="play-screen" class="hidden">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:6px; flex-wrap:wrap;">
-        <span class="badge" id="player-round-badge">Ronde</span>
-        <span class="badge hidden" id="player-count-badge" style="background:#3b82f6;"></span>
-        <span class="badge hidden" id="player-practice-badge" style="background:#7c3aed;">Oefenvraag, telt niet mee</span>
-        <span class="badge" id="player-team-badge" style="background:#2563eb;"></span>
+    <!-- 2. Het spel -->
+    <div id="game-screen" class="hidden">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
+        <span class="badge" id="round-badge">Familiequiz</span>
+        <span class="badge" id="team-badge" style="background:#2563eb;"></span>
         <span class="badge hidden" id="timer-badge">⏱</span>
       </div>
-      <div id="play-root"></div>
+      <div id="view"></div>
+
+      <div id="team-panel" class="hidden" style="margin-top:18px; border-top:1px solid #334155; padding-top:12px;">
+        <h3 id="team-title" style="font-size:18px; margin-bottom:6px;">Team</h3>
+        <p id="role-text" class="note" style="margin:0 0 6px;"></p>
+        <ul id="member-list"></ul>
+        <div id="member-actions" class="hidden">
+          <button id="btn-leave" class="btn-option" style="text-align:center; font-size:14px; color:#94a3b8;">Team verlaten</button>
+        </div>
+        <p id="lobby-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px; font-size:14px;"></p>
+      </div>
     </div>
 
-    <!-- 4. Pauze -->
-    <div id="pause-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
+    <!-- Overlays -->
+    <div id="pause-screen" class="hidden" style="text-align:center; padding: 20px 10px;">
       <div style="font-size: 54px; animation: bounce 2s infinite;">☕ 🍕 🍷</div>
       <h2 style="font-size: 26px; margin: 12px 0; color: #f59e0b;">Tijd voor Pauze!</h2>
       <p style="color: #cbd5e1; font-size: 16px; line-height: 1.5;">Even de glazen bijvullen, wat lekkers pakken en bijkletsen.</p>
       <div style="background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 20px; border: 1px dashed #475569;">
-        <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
+        <span style="font-size: 12px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
         <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;"></p>
       </div>
       <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de quizmaster de pauze beëindigt.</small>
     </div>
 
-    <!-- 4b. Tussenstand -->
     <div id="standings-screen" class="hidden">
       <h2>📊 Tussenstand</h2>
       <ul id="standings-list"></ul>
-      <p style="text-align:center; color:#94a3b8; margin-top:12px; font-size:14px;">Kijk ook naar het grote scherm!</p>
+      <p class="note">Kijk ook naar het grote scherm!</p>
     </div>
 
-    <!-- 5. Einde quiz -->
-    <div id="end-screen" class="hidden" style="text-align: center; padding: 20px 10px;">
-      <div style="font-size: 54px;">🏁 🏆</div>
-      <h2 style="font-size: 26px; margin: 12px 0; color: #38bdf8;">De quiz is afgelopen!</h2>
-      <p style="color: #cbd5e1;">Kijk nu naar het grote scherm voor de ontknoping van de winnaar!</p>
+    <div id="look-screen" class="hidden" style="text-align:center; padding: 20px 10px;">
+      <div style="font-size: 54px;">📺</div>
+      <h2 id="look-title" style="margin:12px 0;">Kijk naar het grote scherm</h2>
     </div>
   </div>
-
-  <style>@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }</style>
 
   <script>
     const socket = io();
     const $ = (id) => document.getElementById(id);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
     let deviceId = localStorage.getItem("quiz_device_id") || null;
     let me = null;
     let lastState = null;
-    let currentGameState = "LOBBY";
-    let inItemStep = false;
+    let currentView = null;
 
-    const SCREENS = ["join-screen", "lobby-screen", "play-screen", "pause-screen", "standings-screen", "end-screen"];
+    const SCREENS = ["join-screen", "game-screen", "pause-screen", "standings-screen", "look-screen"];
     function showScreen(id) { SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id)); }
 
     // ---------------- Wake Lock ----------------
@@ -133,48 +132,43 @@
     }
 
     // ---------------- Spiekdetectie ----------------
-    // Meldt zich bij het verlaten van de app. De melding blijft op tv en bediening staan
-    // totdat deze telefoon weer naar de quiz kijkt (player_returned).
-    let awayReported = false;
+    // Actief bij vragen. De melding bij de quizmaster en op de tv blijft staan tot deze telefoon weer in beeld is.
+    let cheatActive = false;
+    let lastNotifyTime = 0;
     function notifyLeftApp(reason) {
-      if (!deviceId || currentGameState !== "PLAY" || !inItemStep) return;
-      awayReported = true;
-      socket.emit("player_blurred", { reason });
+      if (!deviceId || !cheatActive) return;
+      const now = Date.now();
+      if (now - lastNotifyTime < 1500) return;
+      lastNotifyTime = now;
+      socket.emit("player_blurred", { reason, t: now });
     }
-    function notifyReturned() {
-      if (!awayReported || document.hidden) return;
-      awayReported = false;
-      socket.emit("player_returned");
+    function notifyBack() {
+      if (!deviceId) return;
+      socket.emit("player_back", { t: Date.now() });
     }
     document.addEventListener("visibilitychange", async () => {
       if (document.hidden) notifyLeftApp("locked");
-      else { notifyReturned(); await requestWakeLock(); }
+      else { notifyBack(); await requestWakeLock(); }
     });
     window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
     window.addEventListener("blur", () => notifyLeftApp("app_switch"));
-    window.addEventListener("focus", notifyReturned);
-    window.addEventListener("pageshow", notifyReturned);
+    window.addEventListener("focus", notifyBack);
 
     // ---------------- Identiteit ----------------
     function saveIdentity(id) { deviceId = id; localStorage.setItem("quiz_device_id", id); }
     function clearIdentity() {
       localStorage.removeItem("quiz_device_id");
-      deviceId = null; me = null; awayReported = false;
-      $("play-root")._key = null;
+      deviceId = null; me = null; currentView = null; mounted = { key: null, update: null };
       QuizFX.countdown("phone", null, () => {});
     }
-
     socket.on("connect", () => {
-      if (deviceId) {
-        socket.emit("hello", { deviceId, visible: !document.hidden && document.hasFocus() });
-        requestWakeLock();
-      } else showJoin();
+      if (deviceId) { socket.emit("hello", { deviceId }); requestWakeLock(); }
+      else showJoin();
     });
     socket.on("need_join", () => { clearIdentity(); showJoin(); });
-    socket.on("session", (data) => saveIdentity(data.deviceId));
+    socket.on("session", (data) => { saveIdentity(data.deviceId); if (!document.hidden) notifyBack(); });
     socket.on("kicked", () => { clearIdentity(); showJoin("Je team is verwijderd door de quizmaster."); });
     socket.on("quiz_reset", () => { clearIdentity(); showJoin(); });
-    socket.on("step_event_in", (d) => { if (Rounds._incoming) Rounds._incoming(d); });
 
     // ---------------- Team maken / aansluiten ----------------
     let pollHandle = null;
@@ -212,7 +206,6 @@
     }
     $("tab-new").addEventListener("click", () => selectTab("new"));
     $("tab-join").addEventListener("click", () => selectTab("join"));
-
     function refreshTeams() {
       if ($("join-screen").classList.contains("hidden") || !myName()) return;
       socket.emit("list_teams", null, (res) => {
@@ -221,9 +214,7 @@
         const teams = (res && res.teams) || [];
         $("team-list-empty").classList.toggle("hidden", teams.length > 0);
         teams.forEach((t) => {
-          const btn = document.createElement("button");
-          btn.className = "btn-option";
-          btn.textContent = `${t.name}  (${t.members} ${t.members === 1 ? "telefoon" : "telefoons"})`;
+          const btn = el("button", "btn-option", `${t.name}  (${t.members} ${t.members === 1 ? "telefoon" : "telefoons"})`);
           btn.onclick = () => joinTeam(t.teamId);
           list.appendChild(btn);
         });
@@ -234,7 +225,7 @@
       clearInterval(pollHandle);
       pollHandle = null;
       saveIdentity(res.deviceId);
-      showScreen("lobby-screen");
+      showScreen("game-screen");
       requestWakeLock();
     }
     function createTeam() {
@@ -250,7 +241,7 @@
     $("btn-create").addEventListener("click", createTeam);
     $("team-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createTeam(); });
 
-    // ---------------- Teamkaart (wachtkamer) ----------------
+    // ---------------- Teamkaart ----------------
     function renderTeamCard() {
       $("team-title").textContent = me.teamName;
       const pending = !!me.proposal;
@@ -260,25 +251,21 @@
       const list = $("member-list");
       list.replaceChildren();
       me.members.forEach((m) => {
-        const li = document.createElement("li");
+        const li = el("li");
         li.style.alignItems = "center";
-        const name = document.createElement("span");
-        name.textContent = (m.memberId === me.memberId ? `${m.label} (jij)` : m.label) + (m.role === "base" ? " ⭐ basis" : "");
-        const right = document.createElement("span");
+        li.append(el("span", "", (m.memberId === me.memberId ? `${m.label} (jij)` : m.label) + (m.role === "base" ? " ⭐ basis" : "")));
+        const right = el("span");
         right.style.cssText = "display:flex; gap:8px; align-items:center;";
         if (m.role !== "base" && m.connected && !pending) {
-          const btn = document.createElement("button");
-          btn.className = "btn-option";
+          const btn = el("button", "btn-option", m.memberId === me.memberId ? "Maak mij de basis" : "Stel voor als basis");
           btn.style.cssText = "width:auto; margin:0; padding:6px 10px; font-size:13px;";
-          btn.textContent = m.memberId === me.memberId ? "Maak mij de basis" : "Stel voor als basis";
           btn.onclick = () => proposeBase(m.memberId);
           right.appendChild(btn);
         }
-        const status = document.createElement("span");
-        status.textContent = m.connected ? "●" : "○ offline";
+        const status = el("span", "", m.connected ? "●" : "○ offline");
         status.style.color = m.connected ? "#4ade80" : "#94a3b8";
         right.appendChild(status);
-        li.append(name, right);
+        li.append(right);
         list.appendChild(li);
       });
       $("member-actions").classList.toggle("hidden", me.role === "base");
@@ -286,7 +273,8 @@
     }
     function renderProposal() {
       const p = me && me.proposal;
-      $("base-banner").classList.toggle("hidden", !p || !$("join-screen").classList.contains("hidden"));
+      const banner = $("base-banner");
+      banner.classList.toggle("hidden", !p || !$("join-screen").classList.contains("hidden"));
       if (!p) return;
       const count = `${p.approved} van ${p.needed} akkoord`;
       let text;
@@ -307,7 +295,6 @@
     }
     $("btn-base-yes").addEventListener("click", () => socket.emit("respond_base", { approve: true }, () => {}));
     $("btn-base-no").addEventListener("click", () => socket.emit("respond_base", { approve: false }, () => {}));
-
     let toastTimer = null;
     socket.on("team_notice", (data) => {
       const t = $("toast");
@@ -324,44 +311,439 @@
       });
     });
 
+    // =====================================================================
+    // Weergaves: elk type scherm (view.type) heeft een builder. De builder
+    // tekent het scherm één keer en geeft een update-functie terug voor de
+    // onderdelen die live veranderen (zodat typen niet onderbroken wordt).
+    // =====================================================================
+    const ERR = {
+      not_open: "Dit kan nu niet meer.", not_base: "Alleen de basistelefoon kan indienen.",
+      wrong_question: "De vraag is net gewisseld.", invalid: "Dat antwoord is niet geldig."
+    };
+    const noop = () => {};
+    const bigEl = (txt) => el("div", "bigtxt", txt);
+    function submitBtn(label, onclick) {
+      const b = el("button", "btn-primary", label);
+      b.style.background = "#22c55e";
+      b.onclick = onclick;
+      return b;
+    }
+
+    const BUILD = {
+      lobby(box) {
+        box.append(el("h2", "", "Wachten op de start"), el("p", "note", "Wachten tot de quizmaster de quiz start..."));
+      },
+      info(box, v) {
+        const d = el("div"); d.style.textAlign = "center";
+        const e = el("div", "", v.emoji || ""); e.style.fontSize = "54px";
+        d.append(e, el("h2", "", v.title), el("p", "note", v.text || ""));
+        box.append(d);
+      },
+      roundresult(box) {
+        box.append(bigEl("📊"), el("h2", "", "Rondeuitslag"), el("p", "note", "Kijk naar het grote scherm voor de uitslag van deze ronde."));
+      },
+      end(box) {
+        const d = el("div"); d.style.textAlign = "center";
+        const e = el("div", "", "🏁 🏆"); e.style.fontSize = "54px";
+        d.append(e, el("h2", "", "De quiz is afgelopen!"), el("p", "note", "Kijk nu naar het grote scherm voor de ontknoping van de winnaar!"));
+        box.append(d);
+      },
+
+      // ----- Meerkeuze, foto blur en logo's -----
+      mc(box, v) {
+        if (v.category) box.append(el("span", "badge", v.category));
+        const h = el("h3", "", v.question || (v.variant === "blur" ? "Wat zien we op het grote scherm?" : "Welk logo is dit?"));
+        h.style.margin = "12px 0";
+        box.append(h);
+        const media = el("div");
+        box.append(media);
+        if (v.media) QuizFX.renderMedia(media, v.media);
+        if (v.variant !== "text") box.append(el("p", "note", "👀 Kijk naar het grote scherm"));
+        const opts = el("div");
+        box.append(opts);
+        const canAnswer = v.isBase && v.status === "open" && !v.answered;
+        let selected = v.answered ? v.given : null;
+        const buttons = v.options.map((opt, i) => {
+          const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
+          b.disabled = !canAnswer;
+          b.onclick = () => { selected = i; paint(); };
+          opts.append(b);
+          return b;
+        });
+        const send = submitBtn("Antwoord indienen 📤", () => {
+          if (selected === null) return;
+          send.disabled = true;
+          socket.emit("submit_answer", { stepId: v.id, value: selected }, (res) => {
+            send.disabled = false;
+            if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); }
+          });
+        });
+        send.style.marginTop = "16px";
+        const err = el("p", "bad hidden"); err.style.textAlign = "center";
+        function paint() {
+          buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; });
+          send.classList.toggle("hidden", !canAnswer || selected === null);
+        }
+        paint();
+        box.append(send, err);
+        if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is..."));
+        else if (v.status !== "open") box.append(el("p", "note", "De vraag is gesloten."));
+        else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in."));
+      },
+
+      // ----- Geheugen: samen opschrijven -----
+      memory(box, v) {
+        box.append(el("h3", "", v.prompt));
+        if (v.status === "idle") { box.append(el("p", "note", "Pak jullie telefoon klaar… de quizmaster start zo.")); return noop; }
+        const info = el("p", "note");
+        const list = el("div");
+        if (v.status === "writing") {
+          const input = el("input"); input.type = "text"; input.placeholder = "Typ iets en tik op Toevoegen"; input.maxLength = 60; input.autocomplete = "off";
+          const add = () => {
+            const text = input.value.trim();
+            if (!text) return;
+            socket.emit("memory_add", { text }, (res) => { if (res && res.message) { info.textContent = res.message; } });
+            input.value = "";
+            input.focus();
+          };
+          input.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+          const btn = el("button", "btn-primary", "➕ Toevoegen");
+          btn.onclick = add;
+          box.append(input, btn, info, list);
+          info.textContent = "Iedereen in het team mag meeschrijven.";
+        } else {
+          box.append(el("p", "note", "De quizmaster keurt de antwoorden na… kijk naar het grote scherm."), list);
+        }
+        return (nv) => {
+          list.replaceChildren();
+          const writing = nv.status === "writing";
+          [...nv.entries].reverse().forEach((e) => {
+            const r = el("div", "entry");
+            r.append(el("span", "", e.text));
+            if (writing) { const x = el("button", "", "✕"); x.onclick = () => socket.emit("memory_remove", { id: e.id }); r.append(x); }
+            list.append(r);
+          });
+          if (!nv.entries.length) list.append(el("p", "note", "Nog niets opgeschreven."));
+          else list.prepend(el("p", "note", `${nv.entries.length} opgeschreven`));
+        };
+      },
+
+      // ----- Muziek: tijdlijn -----
+      song(box, v) {
+        box.append(el("h3", "", v.status === "revealed" ? `${v.song.title} · ${v.song.artist}` : "🎵 Luister naar het liedje"));
+        if (v.status === "revealed") {
+          box.append(bigEl(`${v.song.year}`));
+          if (v.result) box.append(el("p", "bigtxt " + (v.result.ok ? "good" : "bad"), v.result.ok ? "✔ Goed! De kaart is toegevoegd aan jullie tijdlijn." : "✘ Helaas, de kaart is niet toegevoegd."));
+          else box.append(el("p", "note", "Jullie hebben niet geplaatst."));
+        } else if (v.placed !== null) {
+          box.append(el("p", "note good", "✅ Geplaatst! Wachten tot iedereen klaar is..."));
+        } else if (v.isBase) {
+          box.append(el("p", "note", "Tik op de plek waar het liedje hoort (oud boven, nieuw onder) en bevestig."));
+        } else {
+          box.append(el("p", "note", "Denk mee! De basistelefoon legt het liedje in de tijdlijn."));
+        }
+        const canPlace = v.isBase && v.status === "open" && v.placed === null;
+        let sel = v.placed;
+        const tl = el("div", "tl");
+        const slots = [];
+        const addSlot = (i) => {
+          const s = el("button", "tlslot", canPlace ? "⬇ Hier plaatsen" : "");
+          s.onclick = () => { sel = i; paint(); };
+          if (!canPlace && !(v.placed === i)) { s.style.display = "none"; }
+          if (!canPlace && v.placed === i) s.textContent = "⭐ Hier hebben jullie het liedje gelegd";
+          slots.push(s);
+          tl.append(s);
+        };
+        addSlot(0);
+        v.timeline.forEach((c, i) => {
+          const card = el("div", "tlcard");
+          card.append(el("div", "yr", String(c.year)), el("div", "tt", `${c.title} · ${c.artist}`));
+          tl.append(card);
+          addSlot(i + 1);
+        });
+        box.append(tl);
+        const send = submitBtn("Kaart plaatsen 📤", () => {
+          if (sel === null) return;
+          send.disabled = true;
+          socket.emit("place_card", { stepId: v.id, slot: sel }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
+        });
+        function paint() {
+          slots.forEach((s, i) => s.classList.toggle("sel", sel === i));
+          send.classList.toggle("hidden", !canPlace || sel === null);
+        }
+        paint();
+        box.append(send);
+      },
+
+      // ----- Prijzen -----
+      price(box, v) {
+        const d = el("div"); d.style.textAlign = "center";
+        const e = el("div", "", v.emoji); e.style.fontSize = "54px";
+        d.append(e, el("h3", "", v.name + (v.unit ? ` (${v.unit})` : "")));
+        box.append(d);
+        const canAnswer = v.isBase && v.status === "open" && !v.answered;
+        const mk = (label, val) => {
+          box.append(Object.assign(el("label", "lbl"), { textContent: label }));
+          const i = el("input"); i.type = "text"; i.inputMode = "decimal"; i.placeholder = "bijv. 2,49"; i.disabled = !canAnswer;
+          if (val !== undefined && val !== null) i.value = String(val).replace(".", ",");
+          box.append(i);
+          return i;
+        };
+        const nowI = mk("Prijs nu (in euro's)", v.given && v.given.now);
+        const agoI = mk(`Prijs ${v.agoYears} jaar geleden (in euro's)`, v.given && v.given.ago);
+        const parse = (x) => Number(String(x.value).replace(",", ".").replace(/[^0-9.]/g, ""));
+        const err = el("p", "bad hidden"); err.style.textAlign = "center";
+        const send = submitBtn("Schatting indienen 📤", () => {
+          const now = parse(nowI), ago = parse(agoI);
+          if (!(now >= 0) || !(ago >= 0) || nowI.value.trim() === "" || agoI.value.trim() === "") { err.textContent = "Vul beide prijzen in."; err.classList.remove("hidden"); return; }
+          send.disabled = true;
+          socket.emit("submit_price", { stepId: v.id, now, ago }, (res) => {
+            send.disabled = false;
+            if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); }
+          });
+        });
+        send.classList.toggle("hidden", !canAnswer);
+        box.append(send, err);
+        if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is..."));
+        else if (v.status !== "open") box.append(el("p", "note", "Kijk naar het grote scherm voor de echte prijzen."));
+        else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient de schatting in."));
+      },
+
+      // ----- Tekenen -----
+      draw(box, v) {
+        if (v.status === "ready") {
+          box.append(bigEl("✏️"), el("h3", "", `Beurt ${v.turn} van ${v.total}`), el("p", "note", v.role === "drawer" ? "Jij bent de tekenaar! Ga aan de tafel van de quizmaster zitten." : v.role === "guesser" ? `${v.drawerLabel} gaat tekenen. Maak je klaar om te raden!` : "Jullie team heeft deze beurt geen tekenaar."));
+          return noop;
+        }
+        if (v.status === "result") {
+          box.append(bigEl("⏹"), el("h3", "", v.answerWord ? `Het woord was: ${v.answerWord}` : "Beurt afgelopen"), el("p", v.solved ? "bigtxt good" : "note", v.solved ? "✔ Jullie hebben het geraden!" : "Niet geraden."), el("p", "note", "Kijk naar het grote scherm."));
+          return noop;
+        }
+        if (v.role === "idle") { box.append(el("p", "note", "Jullie team heeft deze beurt geen tekenaar. Kijk mee op het grote scherm.")); return noop; }
+
+        const wrap = el("div", "padwrap");
+        const canvas = el("canvas");
+        wrap.append(canvas);
+        let strokes = [];
+        const repaint = () => QuizFX.paintStrokes(canvas, strokes);
+        window.addEventListener("resize", repaint);
+
+        if (v.role === "drawer") {
+          box.append(el("p", "note", "Teken dit woord (niet praten of letters schrijven!):"), bigEl(v.word), wrap);
+          let color = "#111827", width = 5, drawing = null, pending = [], timer = null;
+          const flush = () => { clearTimeout(timer); timer = null; if (pending.length) { socket.emit("draw_ops", { ops: pending }); pending = []; } };
+          const queue = (op) => { pending.push(op); if (!timer) timer = setTimeout(flush, 60); };
+          const pos = (e) => { const r = canvas.getBoundingClientRect(); return [Math.round(((e.clientX - r.left) / r.width) * 1000), Math.round(((e.clientY - r.top) / r.height) * 1000)]; };
+          canvas.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            canvas.setPointerCapture(e.pointerId);
+            const p = pos(e);
+            drawing = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), c: color, w: width, p: [p] };
+            strokes.push(drawing);
+            queue({ t: "p", id: drawing.id, c: color, w: width, p: [p] });
+            repaint();
+          });
+          canvas.addEventListener("pointermove", (e) => {
+            if (!drawing) return;
+            e.preventDefault();
+            const p = pos(e);
+            drawing.p.push(p);
+            queue({ t: "p", id: drawing.id, c: drawing.c, w: drawing.w, p: [p] });
+            repaint();
+          });
+          const end = () => { drawing = null; flush(); };
+          canvas.addEventListener("pointerup", end);
+          canvas.addEventListener("pointercancel", end);
+
+          const sw = el("div", "swatches");
+          ["#111827", "#dc2626", "#2563eb", "#16a34a", "#f59e0b", "#9333ea"].forEach((c, i) => {
+            const b = el("button", "swatch" + (i === 0 ? " sel" : ""));
+            b.style.background = c;
+            b.onclick = () => { color = c; sw.querySelectorAll(".swatch").forEach((x) => x.classList.remove("sel")); b.classList.add("sel"); };
+            sw.append(b);
+          });
+          const tools = el("div", "row2");
+          const thin = el("button", "btn-option", "Dun"); thin.onclick = () => { width = 3; };
+          const thick = el("button", "btn-option", "Dik"); thick.onclick = () => { width = 10; };
+          const undo = el("button", "btn-option", "↩ Terug"); undo.onclick = () => { strokes.pop(); queue({ t: "u" }); repaint(); };
+          const clear = el("button", "btn-option", "🗑 Wis"); clear.onclick = () => { strokes = []; queue({ t: "x" }); repaint(); };
+          tools.append(thin, thick, undo, clear);
+          tools.querySelectorAll("button").forEach((b) => { b.style.textAlign = "center"; b.style.padding = "10px 4px"; });
+          box.append(sw, tools);
+          socket.emit("draw_get", null, (res) => { if (!strokes.length) { strokes = (res && res.strokes) || []; repaint(); } });
+          requestAnimationFrame(repaint);
+          return noop;
+        }
+
+        // Raadplek: tekening live meekijken en raden
+        box.append(el("p", "note", `${v.drawerLabel} tekent! Wat is het?`), wrap);
+        window.__drawHandler = (ops) => {
+          ops.forEach((op) => {
+            if (op.t === "x") strokes = [];
+            else if (op.t === "u") strokes.pop();
+            else {
+              let st = strokes.find((x) => x.id === op.id);
+              if (!st) { st = { id: op.id, c: op.c, w: op.w, p: [] }; strokes.push(st); }
+              st.p.push(...op.p);
+            }
+          });
+          repaint();
+        };
+        socket.emit("draw_get", null, (res) => { strokes = (res && res.strokes) || []; repaint(); });
+        requestAnimationFrame(repaint);
+        const guesses = el("div");
+        if (v.solved) {
+          box.append(el("p", "bigtxt good", "✔ Goed geraden!"), el("p", "note", "Wachten op de andere teams…"));
+          return (nv) => {};
+        }
+        const input = el("input"); input.type = "text"; input.placeholder = "Jouw gok"; input.maxLength = 40; input.autocomplete = "off";
+        const send = () => {
+          const text = input.value.trim();
+          if (!text) return;
+          input.value = "";
+          socket.emit("draw_guess", { text }, () => {});
+          input.focus();
+        };
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+        const btn = el("button", "btn-primary", "Gokken 🎯"); btn.onclick = send;
+        box.append(input, btn, guesses);
+        return (nv) => {
+          guesses.replaceChildren();
+          [...nv.guesses].reverse().forEach((g) => guesses.append(el("div", "entry", `${g.ok ? "✔" : "✘"} ${g.label}: ${g.text}`)));
+        };
+      },
+
+      // ----- 30 Seconds -----
+      thirty(box, v) {
+        box.append(el("h3", "", `⏱️ 30 Seconds · beurt ${v.turn} van ${v.total}`));
+        if (v.role === "explainer") {
+          if (v.words) {
+            box.append(el("p", "note", "Leg uit aan je team, zonder het woord zelf te zeggen!"));
+            v.words.forEach((w) => box.append(el("div", "wordcard", w)));
+            if (v.status === "judging") box.append(el("p", "note", "Tijd om! De quizmaster keurt de antwoorden goed."));
+          } else if (v.status === "ready") box.append(el("p", "note", "Jij bent aan de beurt! Zodra de quizmaster start, zie je vijf woorden."));
+          else box.append(el("p", "note", "Klaar! Kijk naar het grote scherm."));
+        } else if (v.role === "teammate") {
+          box.append(bigEl("🗣️"), el("p", "note", `${v.explainer} legt uit aan jullie team. Roep de antwoorden!`));
+        } else {
+          box.append(bigEl("🤫"), el("p", "note", v.team ? `Team ${v.team} is aan de beurt (${v.explainer}). Niet meeroepen!` : "Wachten…"));
+        }
+        return noop;
+      },
+
+      // ----- Joker -----
+      joker(box, v) {
+        const d = el("div"); d.style.textAlign = "center";
+        const e = el("div", "", "🃏"); e.style.fontSize = "54px";
+        d.append(e, el("h2", "", "Zet je joker in!"));
+        box.append(d, el("p", "note", "Kies de ronde waarin de punten van jullie team verdubbeld worden. Dit doet de basistelefoon."));
+        const list = el("div");
+        box.append(list);
+        return (nv) => {
+          list.replaceChildren();
+          nv.rounds.forEach((r) => {
+            const b = el("button", "btn-option", (nv.chosen === r.id ? "🃏 " : "") + r.title);
+            if (nv.chosen === r.id) b.style.background = "#7c3aed";
+            b.disabled = !nv.isBase;
+            b.onclick = () => socket.emit("joker_choose", { roundId: r.id }, () => {});
+            list.append(b);
+          });
+          if (!nv.isBase && nv.chosen) list.append(el("p", "note good", "De basistelefoon heeft de joker ingezet."));
+        };
+      },
+
+      // ----- Slotvraag -----
+      final(box, v) {
+        box.append(el("h2", "", `🎰 Slotvraag: ${v.category}`));
+        if (v.status === "wager") {
+          box.append(el("p", "note", `Zet punten in! Goed = je inzet erbij, fout = je inzet kwijt. Jullie hebben ${v.maxWager} punten.`));
+          if (!v.isBase) { box.append(el("p", "note", "De basistelefoon bepaalt de inzet. Overleg!")); const s = el("p", "bigtxt", v.wager !== null ? `Inzet: ${v.wager}` : ""); box.append(s); return noop; }
+          const input = el("input"); input.type = "number"; input.min = 0; input.max = v.maxWager; input.inputMode = "numeric"; input.value = v.wager !== null ? v.wager : "";
+          const quick = el("div", "row2");
+          [["0", 0], ["¼", 0.25], ["½", 0.5], ["Alles", 1]].forEach(([l, f]) => {
+            const b = el("button", "btn-option", l); b.style.textAlign = "center";
+            b.onclick = () => { input.value = Math.floor(v.maxWager * f); };
+            quick.append(b);
+          });
+          const err = el("p", "bad hidden"); err.style.textAlign = "center";
+          const ok = submitBtn(v.wager !== null ? "Inzet wijzigen" : "Inzet bevestigen", () => {
+            const amount = Math.floor(Number(input.value));
+            socket.emit("final_wager", { amount }, (res) => {
+              if (!res || !res.ok) { err.textContent = (res && res.message) || "Dat lukte niet."; err.classList.remove("hidden"); }
+              else err.classList.add("hidden");
+            });
+          });
+          box.append(input, quick, ok, err);
+          if (v.wager !== null) box.append(el("p", "note good", `✅ Ingezet: ${v.wager} punten. Wachten tot iedereen klaar is…`));
+          return noop;
+        }
+        box.append(el("p", "bigtxt", v.wager !== null ? `Inzet: ${v.wager}` : ""), el("h3", "", v.question));
+        const canAnswer = v.isBase && v.status === "question" && !v.answered;
+        let selected = v.answered ? v.given : null;
+        const opts = el("div");
+        const buttons = v.options.map((opt, i) => {
+          const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
+          b.disabled = !canAnswer;
+          b.onclick = () => { selected = i; paint(); };
+          opts.append(b);
+          return b;
+        });
+        const send = submitBtn("Antwoord indienen 📤", () => { if (selected !== null) socket.emit("submit_answer", { stepId: v.id, value: selected }, () => {}); });
+        function paint() { buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; }); send.classList.toggle("hidden", !canAnswer || selected === null); }
+        paint();
+        box.append(opts, send);
+        if (v.result) box.append(el("p", "bigtxt " + (v.result.ok ? "good" : "bad"), v.result.ok ? `✔ Goed! +${v.result.delta} punten` : `✘ Fout! ${v.result.delta} punten`));
+        else if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is…"));
+        else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in."));
+        return noop;
+      }
+    };
+
+    // Tekenen: live streken van de tekenaar doorgeven aan de raders
+    socket.on("draw_ops", (data) => { if (window.__drawHandler && data && data.ops) window.__drawHandler(data.ops); });
+
+    let mounted = { key: null, update: null };
+    function viewKey(v) {
+      switch (v.type) {
+        case "mc": return [v.id, v.status, v.answered, v.isBase, v.given].join("|");
+        case "memory": return [v.id, v.status].join("|");
+        case "song": return [v.id, v.status, v.placed, v.isBase, v.result && v.result.ok].join("|");
+        case "price": return [v.id, v.status, v.answered, v.isBase].join("|");
+        case "draw": return [v.id, v.status, v.role, v.turn, v.solved].join("|");
+        case "thirty": return [v.id, v.status, v.role, v.turn, v.words ? 1 : 0].join("|");
+        case "joker": return [v.id, v.isBase].join("|");
+        case "final": return [v.id, v.status, v.answered, v.wager !== null, v.isBase, v.result ? 1 : 0].join("|");
+        case "info": return [v.type, v.id].join("|");
+        default: return v.type + (v.id || "");
+      }
+    }
+    function mount(v) {
+      const key = viewKey(v);
+      const box = $("view");
+      if (mounted.key !== key) {
+        window.__drawHandler = null;
+        box.replaceChildren();
+        mounted = { key, update: (BUILD[v.type] || BUILD.lobby)(box, v) || noop };
+      }
+      mounted.update(v);
+    }
+
     const funFacts = [
       "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
       "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
       "Neem gerust nog een drankje; de quizmaster houdt de antwoorden geheim tot het einde!",
-      "Tactische tip: niemand weet nog wie er voor staat..."
+      "Tactische tip: denk goed na over wanneer je je joker inzet..."
     ];
-
-    // ---------------- Quiz tekenen ----------------
-    function renderPlay(state) {
-      const meta = state.meta || {};
-      const v = state.view;
-      $("player-round-badge").textContent = meta.roundName || "Familiequiz";
-      $("player-team-badge").textContent = me.teamName;
-      $("player-count-badge").classList.toggle("hidden", !(meta.kind === "item" && meta.itemTotal && meta.rtype !== "draw" && meta.rtype !== "thirty" && meta.rtype !== "memory"));
-      $("player-count-badge").textContent = `${meta.itemNo} van ${meta.itemTotal}`;
-      $("player-practice-badge").classList.toggle("hidden", !meta.practice);
-
-      const ctx = {
-        me,
-        submit: (payload, cb) => socket.emit("step_submit", { sid: v.sid, payload }, cb),
-        event: (type, data) => socket.emit("step_event", { sid: v.sid, type, data }),
-        fetch: (cb) => socket.emit("step_fetch", { sid: v.sid }, cb)
-      };
-      const renderer = Rounds[v.rtype];
-      if (renderer && renderer.phone) renderer.phone($("play-root"), v, ctx);
-    }
+    let prevPaused = false;
 
     socket.on("state_update", (state) => {
       if (!deviceId || !state.me) return;
       me = state.me;
       lastState = state;
-      const previousState = currentGameState;
-      currentGameState = state.gameState;
-      inItemStep = !!(state.meta && state.meta.kind === "item");
-      if (!inItemStep || state.gameState !== "PLAY") awayReported = false;
       renderTeamCard();
-
-      QuizFX.countdown("phone", state.gameState === "PLAY" ? state.timer : null, (info) => {
+      const v = state.view;
+      cheatActive = !!(v && v.cheat) && !state.paused && state.phase === "PLAY";
+      QuizFX.countdown("phone", v && v.timer ? v.timer : null, (info) => {
         const badge = $("timer-badge");
         if (!info) return badge.classList.add("hidden");
         badge.classList.remove("hidden");
@@ -369,37 +751,34 @@
         badge.style.background = info.secs <= 5 && info.running ? "#dc2626" : "#475569";
       });
 
-      if (state.gameState === "END") { showScreen("end-screen"); return; }
-      if (state.gameState === "PAUSED") {
+      if (state.paused && state.phase === "PLAY") {
         showScreen("pause-screen");
-        if (previousState !== "PAUSED") $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
+        if (!prevPaused) $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
+        prevPaused = true;
         return;
       }
-      if (state.gameState === "STANDINGS") {
+      prevPaused = false;
+
+      if (state.reviewing) { showScreen("look-screen"); return; }
+      if (state.showStandings && state.standings) {
         showScreen("standings-screen");
         const list = $("standings-list");
         list.replaceChildren();
-        (state.standings || []).forEach((row) => {
-          const li = document.createElement("li");
+        state.standings.forEach((row) => {
+          const li = el("li");
           if (row.teamId === me.teamId) li.style.background = "#2563eb";
-          const left = document.createElement("span");
-          const medal = row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : `#${row.rank}`;
-          left.textContent = `${medal}  ${row.name}`;
-          const pts = document.createElement("b");
-          pts.textContent = `${row.score} pt`;
-          li.append(left, pts);
+          const medalIcon = row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : `#${row.rank}`;
+          li.append(el("span", "", `${medalIcon}  ${row.name}`), el("b", "", `${row.score} pt`));
           list.appendChild(li);
         });
         return;
       }
-      if (state.gameState === "PLAY" && state.view) {
-        showScreen("play-screen");
-        renderPlay(state);
-        return;
-      }
-      showScreen("lobby-screen");
-      $("lobby-error").classList.add("hidden");
-      $("lobby-message").textContent = "Wachten tot de quizmaster de quiz start...";
+
+      showScreen("game-screen");
+      $("round-badge").textContent = state.roundName || "Familiequiz";
+      $("team-badge").textContent = me.teamName;
+      $("team-panel").classList.toggle("hidden", !["lobby", "info", "roundresult"].includes(v.type));
+      mount(v);
     });
   </script>
 </body>

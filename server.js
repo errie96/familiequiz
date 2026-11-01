@@ -1,3 +1,4 @@
+'use strict';
 const express = require('express');
 const http = require('http');
 const os = require('os');
@@ -5,11 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
-const createHandlers = require('./rounds');
+const { loadContent } = require('./lib/content');
+const { newId, cleanText, norm, fuzzyEq, shuffle } = require('./lib/util');
 
 const PORT = process.env.PORT || 3000;
 const ON_RENDER = !!process.env.RENDER;
 
+// Pincode voor bediening.html. Lokaal standaard 1234; op Render zelf instellen via HOST_PIN.
 let HOST_PIN = String(process.env.HOST_PIN || '').trim();
 let pinWasGenerated = false;
 if (!HOST_PIN) {
@@ -23,6 +26,8 @@ const FRESH = process.argv.includes('--fresh') || process.env.FRESH === '1';
 const MAX_TEAM_NAME = 24;
 const MAX_LABEL = 16;
 const MAX_DEVICES_PER_TEAM = 8;
+const DRAW_MAX = 10;   // maximaal aantal punten (ruw) per tekenbeurt
+const THIRTY_MAX = 5;  // maximaal aantal punten (ruw) per 30-secondsbeurt
 
 const app = express();
 const server = http.createServer(app);
@@ -30,7 +35,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------------------------------------------------------
-// Join-URL voor de QR-code
+// Adressen voor de QR-code
 // ---------------------------------------------------------------
 function getLanAddress() {
   const found = [];
@@ -52,309 +57,104 @@ app.get('/api/join-url', (req, res) => res.json({ url: getJoinUrl() }));
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
 // ---------------------------------------------------------------
-// Instellingen
+// Instellingen (config.json = standaard; de quizmaster past ze in de lobby aan)
 // ---------------------------------------------------------------
 const DEFAULT_SETTINGS = {
-  timerEnabled: false, // tijdslimiet bij meerkeuzevragen
-  defaultTime: 20,     // seconden voor vragen zonder eigen "time"
-  roundMax: 100        // te verdienen punten per ronde (per ronde te overschrijven met "points")
+  roundPoints: 100,          // te verdienen punten per ronde (alle rondes even zwaar)
+  timerEnabled: false,       // tijdslimiet bij meerkeuzevragen
+  defaultTime: 20,           // seconden (of "time" bij de vraag zelf)
+  blurPoints: [10, 8, 6, 4, 3, 2], // punten per blurstap: hoe eerder goed, hoe meer
+  pricePoints: [5, 3, 2, 1], // punten voor dichtstbij, tweede, derde, ...
+  memorySeconds: 120,
+  drawSeconds: 75,
+  thirtySeconds: 30
 };
 function sanitizeSettings(input, base) {
   const out = { ...base };
   const src = input && typeof input === 'object' ? input : {};
-  if (typeof src.timerEnabled === 'boolean') out.timerEnabled = src.timerEnabled;
   const int = (k, min, max) => { if (Number.isInteger(src[k]) && src[k] >= min && src[k] <= max) out[k] = src[k]; };
+  const list = (k, len) => {
+    if (Array.isArray(src[k]) && src[k].length >= 1 && src[k].length <= len && src[k].every((n) => Number.isInteger(n) && n >= 0 && n <= 100)) out[k] = src[k];
+  };
+  if (typeof src.timerEnabled === 'boolean') out.timerEnabled = src.timerEnabled;
+  int('roundPoints', 10, 1000);
   int('defaultTime', 5, 300);
-  int('roundMax', 10, 1000);
+  int('memorySeconds', 20, 900);
+  int('drawSeconds', 15, 300);
+  int('thirtySeconds', 10, 120);
+  list('blurPoints', 10);
+  list('pricePoints', 8);
   return out;
 }
 let settings = { ...DEFAULT_SETTINGS };
 try {
   settings = sanitizeSettings(JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')), DEFAULT_SETTINGS);
-} catch (e) { /* geen config.json */ }
+} catch (e) { /* geen config.json: standaardwaarden */ }
+
+// ---------------------------------------------------------------
+// Inhoud
+// ---------------------------------------------------------------
+const content = loadContent(path.join(__dirname, 'questions.json'));
+const { rounds, steps, songs } = content;
+const roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
+content.warnings.forEach((w) => console.warn('Waarschuwing:', w));
+const roundPoints = (round) => round.points ?? settings.roundPoints;
 
 // ---------------------------------------------------------------
 // Spelstatus
 // ---------------------------------------------------------------
-let teams = {};
-let devices = {};
-let steps = [];          // het hele programma, plat: info-schermen, vragen, nakijken, jokers...
-let rounds = [];
-let stepIndexBySid = {};
-let stepState = {};      // sid -> status van die stap (fase, tekenstreken, enz.)
-let currentIndex = 0;
-let gameState = 'LOBBY'; // LOBBY, PLAY, PAUSED, STANDINGS, END
-let stateBeforePause = 'PLAY';
-let revealState = 'idle';
-let breakdownShown = false;
-let voided = {};
+let teams = {};      // teamId -> { teamId, name, seq, baseDeviceId, jokerRound, timeline, proposal }
+let devices = {};    // deviceId -> { deviceId, memberId, teamId, label, seq, socketId, connected }
+let phase = 'LOBBY'; // LOBBY | PLAY | END
+let stepIndex = 0;
+let paused = false;
+let showStandings = false;
+let review = null;   // { scope: rondeId | 'all', page }
+let reveal = 'idle'; // einduitslag: idle -> running -> done
+let endView = 'ranking'; // ranking | breakdown (op de tv na de ontknoping)
+let ssAll = {};      // stepId -> dynamische status van die stap
+let alerts = {};     // deviceId -> spiekmelding (blijft staan tot de speler terug is)
+let seq = 0;
 
-const timer = { sid: null, totalMs: 0, remainingMs: 0, startedAt: 0, handle: null, active: false };
+const timer = { tag: null, totalMs: 0, remainingMs: 0, startedAt: 0, handle: null };
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'nl');
-const newId = (prefix) => prefix + crypto.randomBytes(6).toString('hex');
-const cleanName = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+const bySeq = (a, b) => a.seq - b.seq;
+const cur = () => (phase === 'PLAY' ? steps[stepIndex] : null);
 
-const currentStep = () => steps[currentIndex] || null;
-const getSS = (st) => (stepState[st.sid] = stepState[st.sid] || {});
-const teamDevices = (team) => Object.values(devices).filter((d) => d.teamId === team.teamId);
+function ss(step) {
+  if (!ssAll[step.id]) {
+    const init = {
+      mc: { status: 'open', answers: {}, blurStep: 0, voided: null },
+      memory: { status: 'idle', entries: {} },
+      song: { status: 'open', placements: {}, results: null },
+      price: { status: 'open', answers: {} },
+      draw: { status: 'ready', turn: 0, turns: [], plan: null, used: [] },
+      thirty: { status: 'ready', turn: 0, turns: [], order: null, cardOrder: [] },
+      joker: { choices: {} },
+      final: { status: 'wager', wagers: {}, answers: {} }
+    };
+    ssAll[step.id] = init[step.kind] ? JSON.parse(JSON.stringify(init[step.kind])) : {};
+  }
+  return ssAll[step.id];
+}
+
+const teamDevices = (team) => Object.values(devices).filter((d) => d.teamId === team.teamId).sort(bySeq);
+const connectedDevices = (team) => teamDevices(team).filter((d) => d.connected);
 const teamConnected = (team) => { const b = devices[team.baseDeviceId]; return !!(b && b.connected); };
 const activeTeams = () => Object.values(teams).filter(teamConnected);
-const connectedDevices = (team) => teamDevices(team).filter((d) => d.connected);
 function notifyTeam(team, text) {
   for (const d of teamDevices(team)) if (d.connected && d.socketId) io.to(d.socketId).emit('team_notice', { text });
 }
-const labelTaken = (team, label, except = null) =>
-  teamDevices(team).some((d) => d.deviceId !== except && d.label.toLowerCase() === label.toLowerCase());
-const findTeamByName = (name, except = null) =>
-  Object.values(teams).find((t) => t.teamId !== except && t.name.toLowerCase() === name.toLowerCase());
+const labelTaken = (team, label, except = null) => teamDevices(team).some((d) => d.deviceId !== except && d.label.toLowerCase() === label.toLowerCase());
+const findTeamByName = (name, except = null) => Object.values(teams).find((t) => t.teamId !== except && t.name.toLowerCase() === name.toLowerCase());
 
-function proposalFor(team, device) {
-  const p = team.proposal;
-  const candidate = p && devices[p.candidateId];
-  if (!candidate) return null;
-  const proposer = devices[p.proposerId];
-  const need = connectedDevices(team);
-  return {
-    candidateMemberId: candidate.memberId, candidateLabel: candidate.label, proposerLabel: proposer ? proposer.label : '',
-    youApproved: p.approvals.includes(device.deviceId), youAreProposer: p.proposerId === device.deviceId,
-    youAreCandidate: candidate.deviceId === device.deviceId,
-    approved: need.filter((x) => p.approvals.includes(x.deviceId)).length, needed: need.length
-  };
+// ---------------------------------------------------------------
+// Timer (draait op de server; pauze bevriest hem)
+// ---------------------------------------------------------------
+function remainingNow() {
+  return timer.handle ? Math.max(0, timer.remainingMs - (Date.now() - timer.startedAt)) : timer.remainingMs;
 }
-
-// ---------------------------------------------------------------
-// Media
-// ---------------------------------------------------------------
-function normalizeMedia(q) {
-  let media = q.media && typeof q.media === 'object' ? { ...q.media } : null;
-  if (!media && q.imageUrl) media = { kind: 'image', src: q.imageUrl };
-  if (!media && q.audioUrl) media = { kind: 'audio', src: q.audioUrl };
-  if (!media || !media.src) return null;
-  if (!/^(https?:)?\/\//i.test(media.src) && !media.src.startsWith('/')) media.src = '/media/' + media.src.replace(/^\.?\/+/, '');
-  if (!Array.isArray(media.hide)) media.hide = null; // logo's: [[x%, y%, breedte%, hoogte%], ...] die verborgen worden
-  return media;
-}
-
-// ---------------------------------------------------------------
-// Engine voor de rondetypes (rounds.js)
-// ---------------------------------------------------------------
-const E = {
-  settings: () => settings,
-  teams: () => Object.values(teams),
-  team: (id) => teams[id],
-  active: activeTeams,
-  devicesOf: teamDevices,
-  isBase: (team, device) => team.baseDeviceId === device.deviceId,
-  toTeam(team, event, payload, exceptDeviceId) {
-    for (const d of teamDevices(team)) if (d.connected && d.socketId && d.deviceId !== exceptDeviceId) io.to(d.socketId).emit(event, payload);
-  },
-  byName,
-  cleanText: cleanName,
-  step: (i) => steps[i],
-  ss: getSS,
-  handler: (st) => H[st.rtype],
-  timer: {
-    sid: () => timer.sid,
-    start(sid, ms) { timerStop(); timer.sid = sid; timer.totalMs = timer.remainingMs = ms; timer.active = true; },
-    clear() { timerStop(); timer.active = false; timer.sid = null; timer.totalMs = 0; timer.remainingMs = 0; }
-  },
-  totalBefore: (team) => totalOf(team, { joker: true, final: false }),
-  jokerChoices(team) {
-    return rounds.filter((r) => r.jokerable).map((r) => ({ id: r.id, name: r.name, pts: roundScore(team, r) }));
-  },
-  jokerRoundCount: () => rounds.filter((r) => r.jokerable).length,
-  roundName: (id) => (rounds.find((r) => r.id === id) || {}).name,
-  roundTable(roundIdx) {
-    const r = rounds[roundIdx];
-    const rows = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, roundPts: roundScore(t, r), total: grandTotal(t) }));
-    rows.sort((a, b) => b.roundPts - a.roundPts || byName(a, b));
-    rows.forEach((x) => { x.rank = 1 + rows.filter((o) => o.roundPts > x.roundPts).length; });
-    return { name: r.name, points: roundPoints(r), rows };
-  }
-};
-const H = createHandlers(E);
-
-// ---------------------------------------------------------------
-// Programma opbouwen uit questions.json
-// ---------------------------------------------------------------
-const ROUND_EMOJI = { mc: '❓', logo: '🏷️', blur: '🔍', memory: '🧠', hitster: '🎵', prices: '🛒', draw: '✏️', thirty: '⏱️', final: '🎯' };
-const DEFAULT_RULES = {
-  mc: 'Meerkeuzevragen. Overleg samen, de basistelefoon dient het antwoord in.',
-  logo: 'Raad het logo. Een deel van het logo is verborgen!',
-  blur: 'Een plaatje wordt steeds scherper. Hoe eerder je het goede antwoord geeft, hoe meer punten. Een fout antwoord levert niets op en je kunt niet opnieuw.',
-  memory: 'Vorig jaar schreven we dingen op een bord. Schrijf zoveel mogelijk op wat je nog weet. De quizmaster keurt jullie antwoorden goed of fout.',
-  hitster: 'Leg de nummers in de juiste tijdlijn. Alleen de basistelefoon mag kaarten plaatsen.',
-  prices: 'Wat kostte een boodschap vroeger en wat kost hij nu? Wie er het dichtst bij zit, krijgt de meeste punten.',
-  draw: 'Per team tekent steeds één speler aan de tafel van de quizmaster. De rest van het team ziet de tekening live op de telefoon. Wie het goed raadt, verdient een punt. Iedereen is een keer tekenaar.',
-  thirty: 'Eén speler legt vijf dingen uit aan het eigen team, in 30 seconden. De quizmaster keurt de goede antwoorden goed. De teams zijn om en om aan de beurt en iedereen is een keer uitlegger.',
-  final: 'De slotvraag! Zet zoveel van je eigen punten in als je durft. Goed: je inzet wordt verdubbeld. Fout: je verliest je inzet.'
-};
-const REVIEW_TYPES = ['mc', 'logo'];
-
-function buildProgram() {
-  let raw = null;
-  try { raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'questions.json'), 'utf8')); }
-  catch (e) { console.error('Fout bij inladen questions.json:', e.message); }
-  const list = Array.isArray(raw) ? raw : raw && Array.isArray(raw.rounds) ? raw.rounds : [];
-  steps = []; rounds = [];
-  const add = (st) => { st.index = steps.length; steps.push(st); return st; };
-  const usedSids = new Set();
-  const uniqueSid = (s) => { let x = s, n = 2; while (usedSids.has(x)) x = `${s}_${n++}`; usedSids.add(x); return x; };
-  let jokerAdded = false;
-  let reviewGroup = 0;
-  const addJoker = () => {
-    if (jokerAdded || !rounds.some((r) => r.jokerable)) return;
-    jokerAdded = true;
-    add({ sid: uniqueSid('joker'), kind: 'joker', rtype: 'joker', roundIdx: -1, label: 'Jokers' });
-  };
-
-  list.forEach((r, ri) => {
-    if (!r || r.enabled === false) return;
-    const type = H[r.type] && !['info', 'round_end', 'review', 'joker'].includes(r.type) ? r.type : 'mc';
-    const h = H[type];
-    const round = {
-      id: String(r.id || `r${ri + 1}`), idx: rounds.length, type, raw: r,
-      name: r.name || r.roundName || `Ronde ${ri + 1}`,
-      counts: r.counts !== false, normalized: type !== 'final'
-    };
-    round.jokerable = round.counts && round.normalized && r.joker !== false;
-    if (type === 'final') addJoker();
-    rounds.push(round);
-    const reveal = REVIEW_TYPES.includes(type) ? (r.reveal || 'after_each') : 'after_each';
-
-    add({ sid: uniqueSid(`${round.id}:intro`), kind: 'info', rtype: 'info', roundIdx: round.idx,
-      item: { emoji: (r.intro && r.intro.emoji) || r.emoji || ROUND_EMOJI[type], title: (r.intro && r.intro.title) || round.name,
-        text: (r.intro && r.intro.text) || r.rules || DEFAULT_RULES[type], points: round.counts && round.normalized ? roundPoints(round) : null, counts: round.counts } });
-
-    const makeItems = (rawItems, practice) => {
-      const items = [];
-      rawItems.forEach((it, i) => {
-        const prepped = h.prep({ ...it, media: normalizeMedia(it) }, round);
-        if (!prepped) { console.warn(`Waarschuwing: item ${i + 1} in "${round.name}" is ongeldig en wordt overgeslagen.`); return; }
-        items.push(prepped);
-      });
-      return items;
-    };
-    const mkSteps = (items, practice) => items.map((item, i) => add({
-      sid: uniqueSid(`${round.id}:${practice ? 'p' : ''}${item.id || i + 1}`), kind: 'item', rtype: type, roundIdx: round.idx,
-      practice, item, itemNo: i + 1, itemTotal: items.length, revealNow: reveal === 'after_each'
-    }));
-
-    if (Array.isArray(r.practice) && r.practice.length) {
-      const pItems = makeItems(r.practice, true);
-      mkSteps(pItems, true);
-      add({ sid: uniqueSid(`${round.id}:real`), kind: 'info', rtype: 'info', roundIdx: round.idx,
-        item: { emoji: '🚀', title: (r.realIntro && r.realIntro.title) || 'Nu de échte vragen!', text: (r.realIntro && r.realIntro.text) || 'De oefenronde is voorbij. Vanaf nu tellen de punten mee.', points: roundPoints(round) } });
-    }
-
-    const rawItems = h.roundItems ? h.roundItems(r) : (Array.isArray(r.items) ? r.items : []);
-    const items = makeItems(rawItems, false);
-    if (type === 'hitster' && !items.length) items.push(h.prep({}));
-    const itemSteps = mkSteps(items, false);
-
-    // Nakijken-schermen (alleen meerkeuze/logo): na elke categorie of na de ronde
-    if (reveal === 'after_category' || reveal === 'after_round') {
-      let group = [];
-      const flush = (label) => {
-        if (!group.length) return;
-        const g = ++reviewGroup;
-        add({ sid: uniqueSid(`${round.id}:rev${g}`), kind: 'info', rtype: 'info', roundIdx: round.idx, reviewGroup: g,
-          item: { emoji: '📝', title: `Nakijken${label ? ': ' + label : ''}`, text: 'We lopen de vragen nog even langs. Kijk op het grote scherm wat jullie antwoord was.' } });
-        group.forEach((s, i) => add({ sid: uniqueSid(`${s.sid}:review`), kind: 'review', rtype: 'review', roundIdx: round.idx, ref: s.index, reviewGroup: g, itemNo: i + 1, itemTotal: group.length }));
-        group = [];
-      };
-      itemSteps.forEach((s, i) => {
-        group.push(s);
-        const next = itemSteps[i + 1];
-        const endOfGroup = !next || (reveal === 'after_category' && (next.item.category || '') !== (s.item.category || ''));
-        if (endOfGroup) flush(reveal === 'after_category' ? s.item.category : round.name);
-      });
-    }
-
-    if (round.counts && round.normalized) {
-      add({ sid: uniqueSid(`${round.id}:end`), kind: 'round_end', rtype: 'round_end', roundIdx: round.idx });
-    }
-    if (r.outro) {
-      add({ sid: uniqueSid(`${round.id}:outro`), kind: 'info', rtype: 'info', roundIdx: round.idx,
-        item: { emoji: r.outro.emoji || '🚀', title: r.outro.title || '', text: r.outro.text || '' } });
-    }
-  });
-  addJoker();
-  stepIndexBySid = {};
-  steps.forEach((s) => { stepIndexBySid[s.sid] = s.index; });
-}
-
-// ---------------------------------------------------------------
-// Punten
-// ---------------------------------------------------------------
-const roundPoints = (r) => (Number.isFinite(r.raw.points) ? r.raw.points : settings.roundMax);
-
-function stepDone(st) {
-  if (gameState === 'END') return true;
-  if (st.index < currentIndex) return true;
-  if (st.index > currentIndex || gameState === 'LOBBY') return false;
-  const h = H[st.rtype];
-  return h.done ? !!h.done(st, getSS(st)) : false;
-}
-
-function roundScore(team, round) {
-  if (!round.normalized || !round.counts) return 0;
-  let num = 0, den = 0;
-  for (const st of steps) {
-    if (st.roundIdx !== round.idx || st.kind !== 'item' || st.practice) continue;
-    if (voided[st.sid] === 'void') continue;
-    const sc = H[st.rtype].score(st, getSS(st), team);
-    den += sc.max;
-    if (voided[st.sid] === 'all_correct') num += sc.max;
-    else if (stepDone(st)) num += sc.points;
-  }
-  return den ? Math.round((roundPoints(round) * num) / den) : 0;
-}
-
-function jokerApplied() {
-  const js = steps.find((s) => s.kind === 'joker');
-  return !!js && stepDone(js);
-}
-
-function totalOf(team, o = {}) {
-  let sum = 0;
-  for (const r of rounds) {
-    if (!r.normalized || !r.counts) continue;
-    const v = roundScore(team, r);
-    sum += o.joker && team.joker === r.id ? v * 2 : v;
-  }
-  if (o.final) {
-    for (const st of steps) {
-      if (st.kind === 'item' && st.rtype === 'final' && !st.practice && stepDone(st) && voided[st.sid] !== 'void') sum += H.final.score(st, getSS(st), team).points;
-    }
-  }
-  return sum;
-}
-const grandTotal = (team) => totalOf(team, { joker: jokerApplied(), final: true });
-
-function ranking() {
-  const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, score: grandTotal(t) })).sort((a, b) => b.score - a.score || byName(a, b));
-  list.forEach((x) => { x.rank = 1 + list.filter((o) => o.score > x.score).length; });
-  return list;
-}
-
-function breakdown() {
-  const counted = rounds.filter((r) => r.normalized && r.counts);
-  const finals = steps.filter((s) => s.kind === 'item' && s.rtype === 'final' && !s.practice);
-  const rows = ranking().map((x) => {
-    const t = teams[x.teamId];
-    return { name: x.name, rank: x.rank, total: x.score,
-      rounds: counted.map((r) => ({ pts: roundScore(t, r), joker: t.joker === r.id })),
-      final: finals.length ? finals.reduce((n, s) => n + H.final.score(s, getSS(s), t).points, 0) : null };
-  });
-  return { rounds: counted.map((r) => r.name), hasFinal: finals.length > 0, rows };
-}
-
-// ---------------------------------------------------------------
-// Timer
-// ---------------------------------------------------------------
-const currentRemaining = () => (timer.handle ? Math.max(0, timer.remainingMs - (Date.now() - timer.startedAt)) : timer.remainingMs);
 function timerStop() {
   if (timer.handle) {
     clearTimeout(timer.handle);
@@ -362,29 +162,497 @@ function timerStop() {
     timer.remainingMs = Math.max(0, timer.remainingMs - (Date.now() - timer.startedAt));
   }
 }
-function onTimeUp() {
-  timer.handle = null;
-  timer.remainingMs = 0;
-  timer.active = false;
-  const st = currentStep();
-  if (gameState === 'PLAY' && st && timer.sid === st.sid) {
-    const h = H[st.rtype];
-    if (h.timeUp) h.timeUp(st, getSS(st));
-  }
-  sync();
+function timerClear() { timerStop(); timer.tag = null; timer.totalMs = 0; timer.remainingMs = 0; }
+function timerRun() {
+  if (timer.handle || !timer.tag) return;
+  timer.startedAt = Date.now();
+  timer.handle = setTimeout(() => {
+    const tag = timer.tag;
+    timer.handle = null;
+    timer.remainingMs = 0;
+    onTimerEnd(tag);
+    sync();
+  }, Math.max(0, timer.remainingMs));
 }
-function timerEnsure() {
-  const st = currentStep();
-  if (gameState !== 'PLAY' || !st || !timer.active || timer.sid !== st.sid) return timerStop();
-  if (!timer.handle && timer.remainingMs > 0) {
-    timer.startedAt = Date.now();
-    timer.handle = setTimeout(onTimeUp, timer.remainingMs);
+function timerStart(ms, tag) {
+  timerClear();
+  timer.tag = tag;
+  timer.totalMs = timer.remainingMs = ms;
+  if (!paused) timerRun();
+}
+function timerInfo(tag) {
+  if (!timer.tag || (tag && timer.tag !== tag) || !timer.totalMs) return null;
+  return { remainingMs: Math.round(remainingNow()), totalMs: timer.totalMs, running: !!timer.handle };
+}
+function onTimerEnd(tag) {
+  const step = cur();
+  if (!step) return;
+  if (tag === 'mc' && step.kind === 'mc') { if (ss(step).status === 'open') closeStep(step); }
+  else if (tag === 'memory' && step.kind === 'memory') stopWriting(step);
+  else if (tag === 'draw' && step.kind === 'draw') endDrawTurn(step);
+  else if (tag === 'thirty' && step.kind === 'thirty') stopThirty(step);
+}
+
+// ---------------------------------------------------------------
+// Scores
+// ---------------------------------------------------------------
+function mcAward(step, team) {
+  const s = ss(step);
+  const max = step.variant === 'blur' ? settings.blurPoints[0] : 1;
+  if (s.voided === 'void') return { ok: null, raw: 0, max: 0, a: null };
+  const a = s.answers[team.teamId] || null;
+  const ok = s.voided === 'all_correct' || (!!a && a.v === step.answer);
+  let raw = 0;
+  if (ok) raw = step.variant === 'blur' ? settings.blurPoints[Math.min(a ? a.step : 0, settings.blurPoints.length - 1)] : 1;
+  return { ok, raw, max, a };
+}
+
+function priceAwards(step) {
+  const s = ss(step);
+  const out = {};
+  for (const key of ['now', 'ago']) {
+    const list = Object.entries(s.answers)
+      .filter(([tid, a]) => teams[tid] && Number.isFinite(a[key]))
+      .map(([tid, a]) => ({ tid, d: Math.abs(a[key] - step[key]) }))
+      .sort((x, y) => x.d - y.d);
+    let rank = 0;
+    list.forEach((e, i) => {
+      if (i > 0 && e.d > list[i - 1].d + 1e-9) rank = i;
+      (out[e.tid] = out[e.tid] || {})[key] = { v: s.answers[e.tid][key], rank, pts: settings.pricePoints[rank] || 0 };
+    });
+  }
+  return out;
+}
+
+const drawPlanTurns = (s, team) => {
+  const list = s.plan && s.plan.members[team.teamId];
+  return list && list.length >= 2 ? list.length : 0;
+};
+const thirtyPlanTurns = (s, team) => (s.order ? s.order.filter((o) => o.teamId === team.teamId).length : teamDevices(team).length);
+
+// Ruwe score en maximum van een team in een ronde
+function roundRaw(team, round) {
+  const list = steps.filter((s) => s.round === round.id);
+  let raw = 0, max = 0;
+  for (const step of list) {
+    const s = ss(step);
+    if (step.kind === 'mc' && !step.test) {
+      const a = mcAward(step, team);
+      max += a.max;
+      if (s.status === 'closed') raw += a.raw;
+    } else if (step.kind === 'memory') {
+      max += step.items.length;
+      if (s.status === 'done') raw += Math.min(step.items.length, (s.entries[team.teamId] || []).filter((e) => e.ok).length);
+    } else if (step.kind === 'song') {
+      max += 1;
+      if (s.results && s.results[team.teamId] && s.results[team.teamId].ok) raw += 1;
+    } else if (step.kind === 'price') {
+      max += settings.pricePoints[0] * 2;
+      if (s.status === 'revealed') {
+        const aw = priceAwards(step)[team.teamId];
+        if (aw) raw += (aw.now ? aw.now.pts : 0) + (aw.ago ? aw.ago.pts : 0);
+      }
+    } else if (step.kind === 'draw') {
+      max += drawPlanTurns(s, team) * DRAW_MAX;
+      s.turns.forEach((t) => { raw += (t.pts && t.pts[team.teamId]) || 0; });
+    } else if (step.kind === 'thirty') {
+      max += thirtyPlanTurns(s, team) * THIRTY_MAX;
+      s.turns.forEach((t) => { if (t.teamId === team.teamId && t.done) raw += t.ok.filter(Boolean).length; });
+    }
+  }
+  return { raw, max };
+}
+function roundScore(team, round) {
+  const { raw, max } = roundRaw(team, round);
+  return max > 0 ? Math.round((raw / max) * roundPoints(round)) : 0;
+}
+const jokerFactor = (team, round) => (team.jokerRound === round.id ? 2 : 1);
+
+const finalStep = () => steps.find((s) => s.kind === 'final') || null;
+function totalBeforeFinal(team) {
+  return rounds.reduce((sum, r) => sum + roundScore(team, r) * jokerFactor(team, r), 0);
+}
+function finalDelta(team) {
+  const f = finalStep();
+  if (!f) return 0;
+  const s = ss(f);
+  if (s.status !== 'revealed') return 0;
+  const wager = s.wagers[team.teamId] || 0;
+  const a = s.answers[team.teamId];
+  return a !== undefined && a === f.answer ? wager : -wager;
+}
+const scoreOf = (team) => totalBeforeFinal(team) + finalDelta(team);
+
+function ranking() {
+  const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, score: scoreOf(t) })).sort((a, b) => b.score - a.score || byName(a, b));
+  list.forEach((item) => { item.rank = 1 + list.filter((o) => o.score > item.score).length; });
+  return list;
+}
+function breakdown() {
+  const f = finalStep();
+  return {
+    rounds: rounds.map((r) => ({ id: r.id, title: `R${r.no}`, full: r.title, max: roundPoints(r) })),
+    rows: Object.values(teams).map((t) => ({
+      name: t.name,
+      rounds: rounds.map((r) => ({ pts: roundScore(t, r), joker: t.jokerRound === r.id })),
+      final: f && ss(f).status === 'revealed' ? finalDelta(t) : null,
+      total: scoreOf(t)
+    })).sort((a, b) => b.total - a.total || byName(a, b))
+  };
+}
+function roundStandings(round) {
+  return Object.values(teams).map((t) => ({
+    name: t.name,
+    teamId: t.teamId,
+    round: roundScore(t, round),
+    total: scoreOf(t)
+  })).sort((a, b) => b.round - a.round || byName(a, b));
+}
+
+// ---------------------------------------------------------------
+// Antwoorden en voortgang
+// ---------------------------------------------------------------
+function hasAnswered(team, step) {
+  const s = ss(step);
+  const id = team.teamId;
+  switch (step.kind) {
+    case 'mc': return !!s.answers[id];
+    case 'price': return !!s.answers[id];
+    case 'song': return s.placements[id] !== undefined;
+    case 'joker': return s.choices[id] !== undefined;
+    case 'final': return s.status === 'wager' ? s.wagers[id] !== undefined : s.answers[id] !== undefined;
+    default: return false;
   }
 }
-function timerInfo() {
-  const st = currentStep();
-  if (gameState === 'LOBBY' || !st || timer.sid !== st.sid || !timer.totalMs) return null;
-  return { remainingMs: Math.round(currentRemaining()), totalMs: timer.totalMs, running: !!timer.handle };
+const waitingFor = (step) => activeTeams().filter((t) => !hasAnswered(t, step)).map((t) => t.name);
+
+// Reveal = direct na het sluiten tonen we het antwoord (bij gewone meerkeuze pas bij het nakijken)
+const revealsOnClose = (step) => step.kind !== 'mc' || step.variant !== 'text';
+
+function closeStep(step) {
+  const s = ss(step);
+  if (step.kind === 'mc') {
+    s.status = 'closed';
+    timerClear();
+  } else if (step.kind === 'price') {
+    s.status = 'revealed';
+  } else if (step.kind === 'song') {
+    revealSong(step);
+  } else if (step.kind === 'final' && s.status === 'question') {
+    s.status = 'closed';
+  }
+}
+
+function revealSong(step) {
+  const s = ss(step);
+  if (s.status === 'revealed') return;
+  const song = songs[step.songId];
+  s.results = {};
+  for (const team of Object.values(teams)) {
+    const slot = s.placements[team.teamId];
+    if (slot === undefined) continue;
+    const tl = ensureTimeline(team);
+    const left = slot > 0 ? songs[tl[slot - 1]] : null;
+    const right = slot < tl.length ? songs[tl[slot]] : null;
+    const ok = (!left || left.year <= song.year) && (!right || song.year <= right.year);
+    s.results[team.teamId] = { slot, ok };
+    if (ok) tl.splice(slot, 0, song.id);
+  }
+  s.status = 'revealed';
+}
+
+function ensureTimeline(team) {
+  if (!team.timeline) {
+    const round = rounds.find((r) => r.type === 'hitster');
+    team.timeline = round ? [...round.startIds].sort((a, b) => songs[a].year - songs[b].year) : [];
+  }
+  return team.timeline;
+}
+
+function settle() {
+  if (paused || phase !== 'PLAY') return;
+  const step = cur();
+  if (!step) return;
+  const s = ss(step);
+  const active = activeTeams();
+  if (!active.length) return;
+  if ((step.kind === 'mc' || step.kind === 'price' || step.kind === 'song') && ['open'].includes(s.status)) {
+    if (active.every((t) => hasAnswered(t, step))) closeStep(step);
+  } else if (step.kind === 'final' && s.status === 'question') {
+    if (active.every((t) => hasAnswered(t, step))) closeStep(step);
+  }
+  if (step.kind === 'draw' && s.status === 'drawing') {
+    const turn = s.turns[s.turn];
+    const eligible = eligibleDrawTeams(step, turn);
+    if (turn && eligible.length && eligible.every((t) => turn.solved[t.teamId])) endDrawTurn(step);
+  }
+}
+
+// Een team dat terugkomt terwijl de vraag al "klaar" was, mag alsnog antwoorden (alleen zonder tijdslimiet)
+function reopenIfMissed(team) {
+  const step = cur();
+  if (!step || step.kind !== 'mc' || step.variant !== 'text' || settings.timerEnabled) return;
+  const s = ss(step);
+  if (s.status === 'closed' && teamConnected(team) && !s.answers[team.teamId]) s.status = 'open';
+}
+
+// ---------------------------------------------------------------
+// Stappen betreden
+// ---------------------------------------------------------------
+function enterStep() {
+  timerClear();
+  review = null;
+  showStandings = false;
+  const step = cur();
+  if (!step) return;
+  const s = ss(step);
+  if (step.kind === 'mc' && s.status === 'open' && settings.timerEnabled) {
+    const secs = step.time ?? settings.defaultTime;
+    if (secs > 0 && step.variant === 'text') timerStart(secs * 1000, 'mc');
+  }
+  if (step.kind === 'draw' && !s.plan) planDraw(step);
+  if (step.kind === 'thirty' && !s.order) planThirty(step);
+  if (step.kind === 'song') Object.values(teams).forEach(ensureTimeline);
+  // Spiekmeldingen horen bij vragen; bij andere schermen weer opruimen
+  if (!cheatSensitive(step)) alerts = {};
+}
+const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final'].includes(step.kind);
+
+function next() {
+  if (stepIndex + 1 >= steps.length) { phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear(); }
+  else { stepIndex++; enterStep(); }
+}
+
+// ---------------------------------------------------------------
+// Ronde: geheugen
+// ---------------------------------------------------------------
+function startWriting(step) {
+  const s = ss(step);
+  s.status = 'writing';
+  Object.values(teams).forEach((t) => { if (!s.entries[t.teamId]) s.entries[t.teamId] = []; });
+  timerStart((step.seconds || settings.memorySeconds) * 1000, 'memory');
+}
+function acceptedForms(item) { return [item.text, ...(item.alt || [])]; }
+function entryMatches(text, item) {
+  const n = norm(text);
+  return acceptedForms(item).some((form) => {
+    const f = norm(form);
+    return fuzzyEq(text, form) || (f.length >= 4 && n.includes(f));
+  });
+}
+function autoJudge(step) {
+  const s = ss(step);
+  for (const entries of Object.values(s.entries)) {
+    const used = new Set();
+    for (const e of entries) {
+      const idx = step.items.findIndex((it, i) => !used.has(i) && entryMatches(e.text, it));
+      if (idx >= 0) { used.add(idx); e.ok = true; } else e.ok = false;
+    }
+  }
+}
+function stopWriting(step) {
+  const s = ss(step);
+  if (s.status !== 'writing') return;
+  timerClear();
+  autoJudge(step);
+  s.status = 'judging';
+}
+
+// ---------------------------------------------------------------
+// Ronde: tekenen
+// ---------------------------------------------------------------
+function planDraw(step) {
+  const s = ss(step);
+  const members = {};
+  Object.values(teams).forEach((t) => { members[t.teamId] = teamDevices(t).map((d) => d.deviceId); });
+  s.plan = { members };
+  s.turn = 0;
+  s.turns = [];
+  s.used = [];
+  s.status = 'ready';
+  s.total = Math.max(0, ...Object.values(members).map((l) => (l.length >= 2 ? l.length : 0)));
+  if (!s.total) s.status = 'result';
+}
+function eligibleDrawTeams(step, turn) {
+  const s = ss(step);
+  return Object.values(teams).filter((t) => turn && turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] && connectedDevices(t).length >= 2);
+}
+function startDrawTurn(step) {
+  const s = ss(step);
+  const pool = step.words.length ? step.words : [{ word: 'Fiets', alt: [] }];
+  let free = pool.map((_, i) => i).filter((i) => !s.used.includes(i));
+  if (!free.length) { s.used = []; free = pool.map((_, i) => i); }
+  const turn = { words: {}, drawers: {}, strokes: {}, guesses: {}, solved: {}, pts: {}, seconds: step.seconds || settings.drawSeconds };
+  const picks = shuffle(free);
+  let k = 0;
+  for (const team of Object.values(teams).sort(bySeq)) {
+    const list = s.plan.members[team.teamId] || [];
+    if (list.length < 2 || !list[s.turn] || !devices[list[s.turn]]) continue;
+    const idx = picks[k++ % picks.length];
+    s.used.push(idx);
+    turn.drawers[team.teamId] = list[s.turn];
+    turn.words[team.teamId] = pool[idx];
+    turn.strokes[team.teamId] = [];
+    turn.guesses[team.teamId] = [];
+  }
+  s.turns.push(turn);
+  s.status = 'drawing';
+  timerStart(turn.seconds * 1000, 'draw');
+}
+function endDrawTurn(step) {
+  const s = ss(step);
+  if (s.status !== 'drawing') return;
+  timerClear();
+  s.status = 'result';
+}
+function drawGuessOk(entry, text) {
+  return [entry.word, ...(entry.alt || [])].some((w) => fuzzyEq(w, text));
+}
+
+// ---------------------------------------------------------------
+// Ronde: 30 seconds
+// ---------------------------------------------------------------
+function planThirty(step) {
+  const s = ss(step);
+  const lists = Object.values(teams).sort(bySeq).map((t) => ({ t, members: teamDevices(t) }));
+  const maxM = Math.max(0, ...lists.map((l) => l.members.length));
+  s.order = [];
+  for (let k = 0; k < maxM; k++) for (const l of lists) if (l.members[k]) s.order.push({ teamId: l.t.teamId, deviceId: l.members[k].deviceId });
+  s.cardOrder = shuffle(step.cards.map((_, i) => i));
+  s.turn = 0;
+  s.turns = [];
+  s.status = s.order.length ? 'ready' : 'finished';
+}
+function startThirty(step) {
+  const s = ss(step);
+  const o = s.order[s.turn];
+  const card = step.cards[s.cardOrder[s.turn % Math.max(1, s.cardOrder.length)]] || ['?', '?', '?', '?', '?'];
+  s.turns.push({ teamId: o.teamId, deviceId: o.deviceId, words: card, ok: [false, false, false, false, false], done: false });
+  s.status = 'running';
+  timerStart((step.seconds || settings.thirtySeconds) * 1000, 'thirty');
+}
+function stopThirty(step) {
+  const s = ss(step);
+  if (s.status !== 'running') return;
+  timerClear();
+  s.status = 'judging';
+}
+
+// ---------------------------------------------------------------
+// Nakijken: pagina's met tabellen (voor tv en bediening)
+// ---------------------------------------------------------------
+const L = ['A', 'B', 'C', 'D', 'E', 'F'];
+const clip = (t, n = 28) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+
+function reviewPages(scope) {
+  const list = scope === 'all' ? rounds : rounds.filter((r) => r.id === scope);
+  const pages = [];
+  const teamList = Object.values(teams).sort(byName);
+  const names = teamList.map((t) => t.name);
+  for (const round of list) {
+    const rs = steps.filter((s) => s.round === round.id);
+    const title = `Ronde ${round.no}: ${round.title}`;
+    if (['mc', 'blur', 'logo'].includes(round.type)) {
+      const qs = rs.filter((s) => s.kind === 'mc' && !s.test && ss(s).status === 'closed');
+      const groups = [];
+      qs.forEach((q) => {
+        const key = q.category || '';
+        let g = groups[groups.length - 1];
+        if (!g || g.key !== key || g.items.length >= 8) { g = { key, items: [] }; groups.push(g); }
+        g.items.push(q);
+      });
+      groups.forEach((g) => {
+        pages.push({
+          title, subtitle: g.key,
+          columns: ['Vraag', 'Goed antwoord', ...names],
+          rows: g.items.map((q) => [
+            clip(q.question || q.options[q.answer], 60),
+            `${L[q.answer]}: ${clip(q.options[q.answer], 24)}`,
+            ...teamList.map((t) => {
+              const a = mcAward(q, t);
+              if (a.ok === null) return { t: 'vervallen' };
+              if (!a.a) return { t: '–', ok: false };
+              return { t: `${L[a.a.v]}: ${clip(q.options[a.a.v], 18)}`, ok: a.ok };
+            })
+          ])
+        });
+      });
+    } else if (round.type === 'memory') {
+      const step = rs.find((s) => s.kind === 'memory');
+      const s = step && ss(step);
+      if (s && s.status === 'done') {
+        pages.push({ title, subtitle: 'Op het bord stond', columns: ['Antwoorden die goed waren'], rows: step.items.map((it) => [it.text]) });
+        teamList.forEach((t) => {
+          const entries = s.entries[t.teamId] || [];
+          pages.push({
+            title, subtitle: `${t.name}: ${entries.filter((e) => e.ok).length} van ${step.items.length} goed`,
+            columns: ['Antwoord', 'Beoordeling'],
+            rows: entries.length ? entries.map((e) => [e.text, { t: e.ok ? 'Goed' : 'Fout', ok: !!e.ok }]) : [['(niets opgeschreven)', '']]
+          });
+        });
+      }
+    } else if (round.type === 'hitster') {
+      const ss2 = rs.filter((s) => s.kind === 'song' && ss(s).status === 'revealed');
+      if (ss2.length) {
+        pages.push({
+          title, subtitle: 'Liedjes in de tijdlijn',
+          columns: ['Liedje', 'Jaar', ...names],
+          rows: ss2.map((st) => {
+            const song = songs[st.songId];
+            const res = ss(st).results || {};
+            return [`${song.title} – ${song.artist}`, String(song.year), ...teamList.map((t) => (res[t.teamId] ? { t: `plek ${res[t.teamId].slot + 1}`, ok: res[t.teamId].ok } : { t: '–', ok: false }))];
+          })
+        });
+      }
+    } else if (round.type === 'price') {
+      const ps = rs.filter((s) => s.kind === 'price' && ss(s).status === 'revealed');
+      const euro = (n) => '€' + n.toFixed(2).replace('.', ',');
+      for (const key of ['now', 'ago']) {
+        if (!ps.length) break;
+        pages.push({
+          title, subtitle: key === 'now' ? 'Prijs nu' : `Prijs ${round.agoYears} jaar geleden`,
+          columns: ['Product', 'Echte prijs', ...names],
+          rows: ps.map((st) => {
+            const aw = priceAwards(st);
+            return [st.name + (st.unit ? ` (${st.unit})` : ''), euro(st[key]), ...teamList.map((t) => {
+              const x = aw[t.teamId] && aw[t.teamId][key];
+              return x ? { t: `${euro(x.v)}  +${x.pts}`, ok: x.rank === 0 } : { t: '–', ok: false };
+            })];
+          })
+        });
+      }
+    } else if (round.type === 'draw') {
+      const step = rs.find((s) => s.kind === 'draw');
+      const s = step && ss(step);
+      if (s && s.turns.length) {
+        const rows = [];
+        s.turns.forEach((turn, i) => {
+          teamList.forEach((t) => {
+            if (!turn.words[t.teamId]) return;
+            const d = devices[turn.drawers[t.teamId]];
+            rows.push([`Beurt ${i + 1}`, t.name, d ? d.label : '?', turn.words[t.teamId].word, { t: turn.solved[t.teamId] ? `Geraden (+${turn.pts[t.teamId]})` : 'Niet geraden', ok: !!turn.solved[t.teamId] }]);
+          });
+        });
+        pages.push({ title, subtitle: 'Tekenbeurten', columns: ['Beurt', 'Team', 'Tekenaar', 'Woord', 'Uitslag'], rows });
+      }
+    } else if (round.type === 'thirty') {
+      const step = rs.find((s) => s.kind === 'thirty');
+      const s = step && ss(step);
+      if (s && s.turns.length) {
+        pages.push({
+          title, subtitle: '30 seconds',
+          columns: ['Team', 'Uitlegger', 'Goed', 'Woorden'],
+          rows: s.turns.filter((t) => t.done).map((t) => [
+            (teams[t.teamId] || { name: '?' }).name,
+            (devices[t.deviceId] || { label: '?' }).label,
+            { t: `${t.ok.filter(Boolean).length} van 5`, ok: t.ok.filter(Boolean).length >= 3 },
+            t.words.map((w, i) => (t.ok[i] ? '✓ ' : '✗ ') + w).join(' · ')
+          ])
+        });
+      }
+    }
+  }
+  return pages;
 }
 
 // ---------------------------------------------------------------
@@ -398,126 +666,321 @@ function scheduleSave() {
 function saveNow() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    const st = currentStep();
     const snapshot = {
-      version: 2, savedAt: new Date().toISOString(), gameState, stateBeforePause, revealState, breakdownShown,
-      sid: st ? st.sid : null, settings, voided, stepState,
-      timer: { sid: timer.sid, totalMs: timer.totalMs, remainingMs: Math.round(currentRemaining()), active: timer.active },
+      version: 2, savedAt: new Date().toISOString(),
+      phase, stepIndex, paused, reveal, endView, settings, seq, ssAll,
+      timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
-      devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label }]))
+      devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
     };
     const tmp = STATE_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(snapshot));
     fs.renameSync(tmp, STATE_FILE);
-  } catch (e) { console.error('Opslaan mislukt:', e.message); }
+  } catch (e) {
+    console.error('Opslaan mislukt:', e.message);
+  }
 }
 function loadSaved() {
   if (FRESH) { try { fs.unlinkSync(STATE_FILE); } catch (e) { /* bestond niet */ } return false; }
   let data;
   try { data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (e) { return false; }
   if (!data || data.version !== 2 || typeof data.teams !== 'object' || !steps.length) return false;
+
   teams = {};
   for (const t of Object.values(data.teams)) {
     if (!t || !t.teamId || !t.name) continue;
-    teams[t.teamId] = { teamId: t.teamId, name: t.name, answers: t.answers || {}, joker: t.joker || null, baseDeviceId: t.baseDeviceId };
+    teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timeline: Array.isArray(t.timeline) ? t.timeline : null, proposal: null };
   }
   devices = {};
   for (const d of Object.values(data.devices || {})) {
     if (!d || !teams[d.teamId]) continue;
-    devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', socketId: null, connected: false, away: null };
+    devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', seq: d.seq || ++seq, socketId: null, connected: false };
   }
   for (const t of Object.values(teams)) {
     if (!devices[t.baseDeviceId]) { const first = teamDevices(t)[0]; if (first) t.baseDeviceId = first.deviceId; }
   }
+  seq = Math.max(seq, data.seq || 0, ...Object.values(teams).map((t) => t.seq), ...Object.values(devices).map((d) => d.seq));
   settings = sanitizeSettings(data.settings, settings);
-  voided = data.voided && typeof data.voided === 'object' ? data.voided : {};
-  stepState = data.stepState && typeof data.stepState === 'object' ? data.stepState : {};
-  currentIndex = stepIndexBySid[data.sid] ?? 0;
-  revealState = ['idle', 'running', 'done'].includes(data.revealState) ? data.revealState : 'idle';
-  breakdownShown = !!data.breakdownShown;
-  stateBeforePause = 'PLAY';
-  gameState = ['LOBBY', 'PLAY', 'PAUSED', 'STANDINGS', 'END'].includes(data.gameState) ? data.gameState : 'LOBBY';
-  if (gameState === 'PLAY' || gameState === 'STANDINGS') gameState = 'PAUSED'; // na een herstart: eerst even pauze
-  if (data.timer && typeof data.timer === 'object') {
-    timer.sid = data.timer.sid ?? null;
-    timer.totalMs = Number(data.timer.totalMs) || 0;
-    timer.remainingMs = Number(data.timer.remainingMs) || 0;
-    timer.active = !!data.timer.active;
-  }
-  return Object.keys(teams).length > 0 || gameState !== 'LOBBY';
+  ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
+  phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
+  stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), steps.length - 1);
+  reveal = ['idle', 'running', 'done'].includes(data.reveal) ? data.reveal : 'idle';
+  endView = data.endView === 'breakdown' ? 'breakdown' : 'ranking';
+  if (data.timer && data.timer.tag) { timer.tag = data.timer.tag; timer.totalMs = Number(data.timer.totalMs) || 0; timer.remainingMs = Number(data.timer.remainingMs) || 0; }
+  // Teams komen pas langzaam terug na een herstart: begin dus op pauze
+  paused = phase === 'PLAY';
+  return Object.keys(teams).length > 0 || phase !== 'LOBBY';
 }
 
 // ---------------------------------------------------------------
-// Status naar de schermen sturen
+// Wat welk scherm te zien krijgt
 // ---------------------------------------------------------------
-const inItemStep = () => { const st = currentStep(); return gameState === 'PLAY' && !!st && st.kind === 'item'; };
-
-function awayList() {
-  if (!inItemStep()) return [];
-  return Object.values(devices).filter((d) => d.away).map((d) => ({
-    deviceId: d.deviceId, teamName: (teams[d.teamId] || {}).name || '', label: d.label, reason: d.away.reason, since: d.away.since
-  }));
+function progressOf(step) {
+  if (!step) return null;
+  if (step.test) return { label: 'Testvraag' };
+  const items = steps.filter((s) => s.round === step.round && ['mc', 'song', 'price'].includes(s.kind) && !s.test);
+  const i = items.findIndex((s) => s.id === step.id);
+  return i >= 0 ? { n: i + 1, total: items.length } : null;
 }
 
-function stepMeta(st) {
-  const r = rounds[st.roundIdx];
-  const meta = { sid: st.sid, kind: st.kind, rtype: st.rtype, index: st.index, roundName: r ? r.name : 'Familiequiz',
-    roundPoints: r && r.counts && r.normalized ? roundPoints(r) : null,
-    practice: !!st.practice || (!!r && !r.counts && st.kind === 'item'),
-    itemNo: st.itemNo || null, itemTotal: st.itemTotal || null, category: (st.item && st.item.category) || null,
-    reviewGroup: st.reviewGroup || null };
-  if (st.kind === 'item' && r && r.counts && !st.practice) {
-    const max = H[st.rtype].max ? H[st.rtype].max(st.item, r) : 0;
-    const total = steps.filter((s) => s.roundIdx === r.idx && s.kind === 'item' && !s.practice).reduce((n, s) => n + (H[s.rtype].max ? H[s.rtype].max(s.item, r) : 0), 0);
-    if (max && total) meta.worth = Math.round((roundPoints(r) * max * 10) / total) / 10;
+function teamChips(step) {
+  return Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, connected: teamConnected(t), answered: hasAnswered(t, step) })).sort(byName);
+}
+function mcResultTeams(step) {
+  return Object.values(teams).map((t) => { const a = mcAward(step, t); return { name: t.name, ok: a.ok, pts: a.raw, answered: !!a.a }; }).sort(byName);
+}
+
+// Alles wat de tv (openbaar) over de huidige stap mag tonen
+function publicStep(step) {
+  const s = ss(step);
+  const base = { kind: step.kind, id: step.id, round: step.round };
+  switch (step.kind) {
+    case 'info':
+      return { ...base, emoji: step.emoji, title: step.title, text: step.text, roundIntro: !!step.roundIntro, points: step.roundIntro ? roundPoints(roundById[step.round]) : null, roundNo: step.roundIntro ? roundById[step.round].no : null };
+    case 'mc': {
+      const showAnswer = s.status === 'closed' && revealsOnClose(step);
+      return {
+        ...base, variant: step.variant, test: step.test, category: step.category, question: step.question, options: step.options, media: step.media,
+        status: s.status, blurStep: s.blurStep, blurMax: settings.blurPoints.length - 1, blurPoints: step.variant === 'blur' ? settings.blurPoints : null, hide: step.hide,
+        answer: showAnswer ? step.answer : null, results: showAnswer ? mcResultTeams(step) : null, explanation: showAnswer ? step.explanation : null,
+        teams: teamChips(step), timer: s.status === 'open' ? timerInfo('mc') : null
+      };
+    }
+    case 'memory': {
+      const entries = s.entries;
+      const out = { ...base, status: s.status, prompt: step.prompt, timer: timerInfo('memory'), teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, count: (entries[t.teamId] || []).length })) };
+      if (s.status === 'done') {
+        out.items = step.items.map((i) => i.text);
+        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, good: (entries[t.teamId] || []).filter((e) => e.ok).length, total: step.items.length }));
+      }
+      return out;
+    }
+    case 'song': {
+      const song = songs[step.songId];
+      const out = { ...base, status: s.status, audio: song.audio, placed: Object.keys(s.placements).filter((id) => teams[id]).length, active: activeTeams().length,
+        teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, cards: ensureTimeline(t).length, answered: hasAnswered(t, step), connected: teamConnected(t) })) };
+      if (s.status === 'revealed') {
+        out.song = { title: song.title, artist: song.artist, year: song.year };
+        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, ok: s.results && s.results[t.teamId] ? s.results[t.teamId].ok : null }));
+      }
+      return out;
+    }
+    case 'price': {
+      const out = { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, teams: teamChips(step) };
+      if (s.status === 'revealed') {
+        const aw = priceAwards(step);
+        out.truth = { now: step.now, ago: step.ago };
+        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, now: aw[t.teamId] && aw[t.teamId].now, ago: aw[t.teamId] && aw[t.teamId].ago }));
+      }
+      return out;
+    }
+    case 'draw': {
+      const turn = s.turns[s.turn];
+      const out = { ...base, status: s.status, turn: s.turn + 1, total: s.total || 0, timer: timerInfo('draw'), teams: [] };
+      if (turn) {
+        out.teams = Object.values(teams).sort(byName).map((t) => ({
+          name: t.name, drawer: turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] ? devices[turn.drawers[t.teamId]].label : null,
+          solved: !!turn.solved[t.teamId],
+          word: s.status === 'result' && turn.words[t.teamId] ? turn.words[t.teamId].word : null,
+          strokes: s.status === 'result' ? turn.strokes[t.teamId] || [] : null
+        }));
+      }
+      return out;
+    }
+    case 'thirty': {
+      const o = s.order && s.order[s.turn];
+      const turn = s.turns[s.turn];
+      const showWords = turn && (s.status === 'judging' || s.status === 'result');
+      return {
+        ...base, status: s.status, turn: s.turn + 1, total: s.order ? s.order.length : 0, timer: timerInfo('thirty'),
+        team: o && teams[o.teamId] ? teams[o.teamId].name : null,
+        explainer: o && devices[o.deviceId] ? devices[o.deviceId].label : null,
+        words: showWords ? turn.words : null, ok: showWords ? turn.ok : null
+      };
+    }
+    case 'roundresult': {
+      const round = roundById[step.round];
+      return { ...base, title: `Ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
+    }
+    case 'joker':
+      return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined })) };
+    case 'final': {
+      const out = { ...base, status: s.status, category: step.category, wagered: Object.keys(s.wagers).filter((id) => teams[id]).length, teamCount: Object.keys(teams).length, teams: teamChips(step) };
+      if (s.status !== 'wager') { out.question = step.question; out.options = step.options; out.media = step.media; }
+      if (s.status === 'revealed') {
+        out.answer = step.answer;
+        out.explanation = step.explanation;
+        out.results = Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] || 0, ok: s.answers[t.teamId] === step.answer, answered: s.answers[t.teamId] !== undefined, delta: finalDelta(t) }));
+      }
+      return out;
+    }
+    default:
+      return base;
   }
-  return meta;
+}
+
+// Wat de quizmaster extra ziet: antwoorden, woorden, knoppen
+function hostPanel(step) {
+  const s = ss(step);
+  switch (step.kind) {
+    case 'mc':
+      return {
+        type: 'mc', variant: step.variant, answer: step.answer, options: step.options, question: step.question, voided: s.voided, status: s.status,
+        blurStep: s.blurStep, blurMax: settings.blurPoints.length - 1, media: step.media, explanation: step.explanation,
+        teams: Object.values(teams).sort(byName).map((t) => ({ teamId: t.teamId, name: t.name, connected: teamConnected(t), answered: !!s.answers[t.teamId], value: s.answers[t.teamId] ? s.answers[t.teamId].v : null }))
+      };
+    case 'memory':
+      return {
+        type: 'memory', status: s.status, items: step.items.map((i) => i.text),
+        teams: Object.values(teams).sort(byName).map((t) => ({ teamId: t.teamId, name: t.name, entries: (s.entries[t.teamId] || []).map((e) => ({ id: e.id, text: e.text, ok: e.ok })) }))
+      };
+    case 'song': {
+      const song = songs[step.songId];
+      return { type: 'song', status: s.status, song: { title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
+    }
+    case 'price':
+      return { type: 'price', status: s.status, name: step.name, unit: step.unit, now: step.now, ago: step.ago, agoYears: step.agoYears };
+    case 'draw': {
+      const turn = s.turns[s.turn];
+      const small = Object.values(teams).filter((t) => (s.plan ? drawPlanTurns(s, t) : 0) < 2).map((t) => t.name);
+      return {
+        type: 'draw', status: s.status, turn: s.turn + 1, total: s.total || 0, smallTeams: small,
+        teams: turn ? Object.values(teams).sort(byName).filter((t) => turn.words[t.teamId]).map((t) => ({
+          name: t.name, word: turn.words[t.teamId].word, drawer: devices[turn.drawers[t.teamId]] ? devices[turn.drawers[t.teamId]].label : '?',
+          solved: !!turn.solved[t.teamId], guesses: (turn.guesses[t.teamId] || []).slice(-5)
+        })) : []
+      };
+    }
+    case 'thirty': {
+      const o = s.order && s.order[s.turn];
+      const turn = s.turns[s.turn];
+      return {
+        type: 'thirty', status: s.status, turn: s.turn + 1, total: s.order ? s.order.length : 0,
+        team: o && teams[o.teamId] ? teams[o.teamId].name : null, explainer: o && devices[o.deviceId] ? devices[o.deviceId].label : null,
+        words: turn ? turn.words : null, ok: turn ? turn.ok : null
+      };
+    }
+    case 'joker':
+      return { type: 'joker', teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, round: t.jokerRound ? roundById[t.jokerRound].title : null })) };
+    case 'final':
+      return {
+        type: 'final', status: s.status, answer: step.answer, options: step.options, question: step.question,
+        teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] ?? null, max: Math.max(0, totalBeforeFinal(t)), answer: s.answers[t.teamId] ?? null }))
+      };
+    default:
+      return null;
+  }
+}
+
+// De hoofdknop van de quizmaster: label, of hij werkt, en wat hij doet
+function mainAction() {
+  const none = (label, hint) => ({ label, enabled: false, hint: hint || '', run: null });
+  const go = (label, run, hint) => ({ label, enabled: true, hint: hint || '', run });
+  if (phase === 'LOBBY') {
+    if (!steps.length) return none('Geen quiz geladen', 'Controleer questions.json');
+    if (!Object.keys(teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
+    return go('▶️ Start de quiz', () => { phase = 'PLAY'; stepIndex = 0; enterStep(); });
+  }
+  if (phase === 'END') {
+    if (reveal === 'idle') return go('🥁 Start de ontknoping', () => { reveal = 'running'; });
+    if (reveal === 'running') return go('⏭️ Ontknoping overslaan', () => { reveal = 'done'; });
+    return go('🔍 Nakijken: alle rondes', () => { review = { scope: 'all', page: 0 }; });
+  }
+  const step = cur();
+  const s = ss(step);
+  const wait = () => { const w = waitingFor(step); return w.length ? `Wacht nog op: ${w.join(', ')}` : 'Wacht op de teams…'; };
+  switch (step.kind) {
+    case 'info':
+    case 'roundresult':
+      return go('Volgende ▶️', next);
+    case 'mc':
+    case 'price':
+    case 'song':
+      if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
+      return go('Volgende ▶️', next);
+    case 'memory':
+      if (s.status === 'idle') return go(`▶️ Start schrijven (${step.seconds || settings.memorySeconds} s)`, () => startWriting(step));
+      if (s.status === 'writing') return go('⏹️ Stop met schrijven', () => stopWriting(step));
+      if (s.status === 'judging') return go('✅ Nakijken klaar', () => { s.status = 'done'; });
+      return go('Volgende ▶️', next);
+    case 'draw':
+      if (s.status === 'ready') return go(`▶️ Start beurt ${s.turn + 1} van ${s.total}`, () => startDrawTurn(step));
+      if (s.status === 'drawing') return go('⏹️ Beurt stoppen', () => endDrawTurn(step));
+      if (s.status === 'result' && s.turn + 1 < (s.total || 0)) return go(`▶️ Volgende beurt (${s.turn + 2} van ${s.total})`, () => { s.turn++; s.status = 'ready'; });
+      return go('Ronde afsluiten ▶️', next);
+    case 'thirty':
+      if (s.status === 'ready') return go(`▶️ Start: ${teams[s.order[s.turn].teamId] ? teams[s.order[s.turn].teamId].name : '?'}`, () => startThirty(step));
+      if (s.status === 'running') return go('⏹️ Stop (tijd om)', () => stopThirty(step));
+      if (s.status === 'judging') return go('✅ Uitslag bevestigen', () => { s.turns[s.turn].done = true; s.status = 'result'; });
+      if (s.status === 'result' && s.turn + 1 < s.order.length) return go('Volgende beurt ▶️', () => { s.turn++; s.status = 'ready'; });
+      return go('Ronde afsluiten ▶️', next);
+    case 'joker': {
+      const w = activeTeams().filter((t) => !hasAnswered(t, step)).map((t) => t.name);
+      return w.length ? none('⏳ Teams kiezen hun joker…', `Wacht nog op: ${w.join(', ')}`) : go('Volgende ▶️', next);
+    }
+    case 'final':
+      if (s.status === 'wager') {
+        const w = activeTeams().filter((t) => s.wagers[t.teamId] === undefined).map((t) => t.name);
+        return w.length ? none('⏳ Teams zetten in…', `Wacht nog op: ${w.join(', ')}`) : go('❓ Toon de vraag', () => { s.status = 'question'; });
+      }
+      if (s.status === 'question') return none('⏳ Wachten op antwoorden…', wait());
+      if (s.status === 'closed') return go('🎯 Toon het antwoord', () => { s.status = 'revealed'; });
+      return go('🏁 Naar de eindstand', next);
+  }
+  return none('…');
+}
+
+// Knoppen die alleen bij sommige stappen horen
+function forceAction() {
+  const step = cur();
+  if (!step) return null;
+  const s = ss(step);
+  if (['mc', 'price', 'song'].includes(step.kind) && s.status === 'open') return { label: '⏭️ Toch afsluiten zonder te wachten', run: () => closeStep(step) };
+  if (step.kind === 'joker') return { label: '⏭️ Toch doorgaan', run: next };
+  if (step.kind === 'final' && s.status === 'wager') return { label: '⏭️ Toch de vraag tonen', run: () => { s.status = 'question'; } };
+  if (step.kind === 'final' && s.status === 'question') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
+  return null;
 }
 
 function broadcastState() {
-  const st = currentStep();
-  const ss = st ? getSS(st) : null;
-  const h = st ? H[st.rtype] : null;
-  const inPlay = gameState === 'PLAY' && !!st;
-  const active = activeTeams();
-  const showScores = gameState === 'END';
-  const meta = st && gameState !== 'LOBBY' && gameState !== 'END' ? stepMeta(st) : null;
-  const prog = inPlay && h.progress ? h.progress(st, ss) : null;
-  const viewFor = (who) => (inPlay ? { sid: st.sid, rtype: st.rtype, ...h.view(st, ss, who) } : null);
-  const mainBtn = inPlay ? (h.label ? h.label(st, ss) : { label: 'Volgende ➡️' }) : null;
-  const away = awayList();
-  const standingsList = gameState === 'STANDINGS' ? ranking() : null;
+  const step = cur();
+  const pages = review ? reviewPages(review.scope) : null;
+  if (review && pages) review.page = Math.min(Math.max(review.page, 0), Math.max(0, pages.length - 1));
+  const reviewPayload = review ? { scope: review.scope, page: review.page, total: pages.length, data: pages[review.page] || null } : null;
+  const round = step && roundById[step.round];
 
   const common = {
-    gameState, meta, totalSteps: steps.length, timer: timerInfo(), standings: standingsList, revealState,
-    away, progress: prog ? { done: prog.done, total: prog.total, text: prog.text || null } : null
+    phase, paused, showStandings, review: reviewPayload,
+    header: {
+      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'final' ? 'Slotvraag' : 'Familiequiz',
+      progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
+    },
+    standings: showStandings || phase === 'END' ? ranking() : null,
+    alerts: Object.values(alerts),
+    end: phase === 'END' ? { reveal, endView, scores: reveal !== 'idle' ? ranking() : null, breakdown: reveal === 'done' ? breakdown() : null } : null
   };
-  const teamList = Object.values(teams).map((t) => ({
-    teamId: t.teamId, name: t.name, connected: teamConnected(t),
-    answered: inPlay && st.kind === 'item' && h.answered ? !!h.answered(st, ss, t) : false, members: teamDevices(t).length
-  })).sort(byName);
 
   io.to('tv_room').emit('state_update', {
-    ...common, view: viewFor({ role: 'tv' }), teamList,
-    finalScores: showScores && revealState !== 'idle' ? ranking() : null,
-    breakdown: showScores && breakdownShown ? breakdown() : null
+    ...common,
+    step: step ? publicStep(step) : null,
+    teamList: Object.values(teams).map((t) => ({ name: t.name, connected: teamConnected(t), members: teamDevices(t).length })).sort(byName)
   });
 
+  const main = mainAction();
+  const force = forceAction();
   io.to('remote_room').emit('state_update', {
-    ...common, view: viewFor({ role: 'host' }),
-    host: mainBtn ? { ...mainBtn, waiting: prog ? prog.waiting || [] : [], canForce: inPlay && !(h.done && h.done(st, ss)) } : null,
-    targetSid: st ? (st.kind === 'review' ? steps[st.ref].sid : st.sid) : null,
-    voided: st ? voided[st.kind === 'review' ? steps[st.ref].sid : st.sid] || null : null,
-    rounds: rounds.map((r) => ({ idx: r.idx, name: r.name, first: (steps.find((s) => s.roundIdx === r.idx) || {}).index })),
+    ...common,
+    step: step ? publicStep(step) : null,
+    panel: step ? hostPanel(step) : null,
+    controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null },
     teams: Object.values(teams).map((t) => ({
-      teamId: t.teamId, name: t.name, connected: teamConnected(t),
-      answered: inPlay && st.kind === 'item' && h.answered ? !!h.answered(st, ss, t) : false,
-      joker: t.joker ? E.roundName(t.joker) : null,
+      teamId: t.teamId, name: t.name, connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
       members: teamDevices(t).map((d) => ({ deviceId: d.deviceId, label: d.label, role: d.deviceId === t.baseDeviceId ? 'base' : 'member', connected: d.connected }))
     })).sort(byName),
-    settings, settingsLocked: gameState !== 'LOBBY',
-    finalScores: showScores ? ranking() : null, breakdownShown, hasBreakdown: showScores,
-    canGoBack: inPlay && currentIndex > 0
+    rounds: rounds.map((r) => ({ id: r.id, no: r.no, title: r.title, introId: `${r.id}_intro` })),
+    settings, settingsLocked: phase !== 'LOBBY',
+    stepNo: stepIndex + 1, stepTotal: steps.length,
+    warnings: content.warnings
   });
 
   Object.values(devices).forEach((d) => {
@@ -526,11 +989,14 @@ function broadcastState() {
     if (!t) return;
     const isBase = t.baseDeviceId === d.deviceId;
     io.to(d.socketId).emit('state_update', {
-      gameState, meta, timer: inPlay ? timerInfo() : null, standings: standingsList, view: viewFor({ role: 'phone', team: t, device: d, isBase }),
+      phase, paused, showStandings, reviewing: !!review,
+      standings: showStandings ? ranking() : null,
+      roundName: common.header.round,
+      timer: null,
+      view: phase === 'PLAY' ? phoneView(step, t, d, isBase) : phase === 'END' ? { type: 'end' } : { type: 'lobby' },
       me: {
         memberId: d.memberId, teamId: t.teamId, teamName: t.name, label: d.label, role: isBase ? 'base' : 'member',
-        baseLabel: devices[t.baseDeviceId] ? devices[t.baseDeviceId].label : '',
-        proposal: proposalFor(t, d),
+        baseLabel: devices[t.baseDeviceId] ? devices[t.baseDeviceId].label : '', proposal: proposalFor(t, d),
         members: teamDevices(t).map((m) => ({ memberId: m.memberId, label: m.label, role: m.deviceId === t.baseDeviceId ? 'base' : 'member', connected: m.connected }))
       }
     });
@@ -538,27 +1004,86 @@ function broadcastState() {
   scheduleSave();
 }
 
-function enterStep() {
-  const st = currentStep();
-  if (!st) return;
-  const h = H[st.rtype];
-  if (h.enter) h.enter(st, getSS(st));
-}
-
-function advance() {
-  timerStop();
-  timer.active = false; timer.sid = null; timer.totalMs = 0; timer.remainingMs = 0;
-  if (currentIndex + 1 >= steps.length) {
-    currentIndex = steps.length;
-    gameState = 'END';
-    revealState = 'idle';
-    breakdownShown = false;
-  } else {
-    currentIndex++;
-    enterStep();
+function phoneView(step, team, device, isBase) {
+  const s = ss(step);
+  const id = team.teamId;
+  const base = { type: step.kind, id: step.id, isBase, cheat: cheatSensitive(step) };
+  switch (step.kind) {
+    case 'info':
+      return { ...base, emoji: step.emoji, title: step.title, text: step.text };
+    case 'mc': {
+      const a = s.answers[id];
+      return {
+        ...base, variant: step.variant, test: step.test, category: step.category, question: step.question, options: step.options,
+        media: step.variant === 'text' ? step.media : null, status: s.status, answered: !!a, given: a ? a.v : null,
+        timer: s.status === 'open' ? timerInfo('mc') : null
+      };
+    }
+    case 'memory':
+      return { ...base, status: s.status, prompt: step.prompt, entries: (s.entries[id] || []).map((e) => ({ id: e.id, text: e.text, by: e.by })), timer: timerInfo('memory') };
+    case 'song': {
+      const tl = ensureTimeline(team).map((sid) => ({ id: sid, year: songs[sid].year, title: songs[sid].title, artist: songs[sid].artist }));
+      const r = s.results && s.results[id];
+      return { ...base, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, result: r ? { ok: r.ok } : null,
+        song: s.status === 'revealed' ? { title: songs[step.songId].title, artist: songs[step.songId].artist, year: songs[step.songId].year } : null };
+    }
+    case 'price': {
+      const a = s.answers[id];
+      return { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, answered: !!a, given: a || null };
+    }
+    case 'draw': {
+      const turn = s.turns[s.turn];
+      let role = 'idle';
+      if (turn && turn.drawers[id]) role = turn.drawers[id] === device.deviceId ? 'drawer' : 'guesser';
+      const solved = !!(turn && turn.solved[id]);
+      return {
+        ...base, status: s.status, role, solved, turn: s.turn + 1, total: s.total || 0, timer: timerInfo('draw'),
+        word: role === 'drawer' && turn ? turn.words[id].word : null,
+        drawerLabel: turn && turn.drawers[id] && devices[turn.drawers[id]] ? devices[turn.drawers[id]].label : null,
+        answerWord: s.status === 'result' && turn && turn.words[id] ? turn.words[id].word : null,
+        guesses: role === 'guesser' && turn ? (turn.guesses[id] || []).slice(-8) : []
+      };
+    }
+    case 'thirty': {
+      const o = s.order && s.order[s.turn];
+      const turn = s.turns[s.turn];
+      let role = 'other';
+      if (o && o.teamId === id) role = o.deviceId === device.deviceId ? 'explainer' : 'teammate';
+      return {
+        ...base, status: s.status, role, turn: s.turn + 1, total: s.order ? s.order.length : 0, timer: timerInfo('thirty'),
+        team: o && teams[o.teamId] ? teams[o.teamId].name : null, explainer: o && devices[o.deviceId] ? devices[o.deviceId].label : null,
+        words: role === 'explainer' && turn && (s.status === 'running' || s.status === 'judging') ? turn.words : null
+      };
+    }
+    case 'roundresult':
+      return { ...base };
+    case 'joker':
+      return { ...base, rounds: rounds.map((r) => ({ id: r.id, title: `Ronde ${r.no}: ${r.title}` })), chosen: team.jokerRound };
+    case 'final': {
+      const a = s.answers[id];
+      return {
+        ...base, status: s.status, category: step.category, maxWager: Math.max(0, totalBeforeFinal(team)), wager: s.wagers[id] ?? null,
+        question: s.status !== 'wager' ? step.question : null, options: s.status !== 'wager' ? step.options : null,
+        answered: a !== undefined, given: a !== undefined ? a : null,
+        result: s.status === 'revealed' ? { ok: a === step.answer, delta: finalDelta(team) } : null
+      };
+    }
   }
+  return base;
 }
 
+function proposalFor(team, device) {
+  const p = team.proposal;
+  const candidate = p && devices[p.candidateId];
+  if (!candidate) return null;
+  const proposer = devices[p.proposerId];
+  const need = connectedDevices(team);
+  return {
+    candidateMemberId: candidate.memberId, candidateLabel: candidate.label, proposerLabel: proposer ? proposer.label : '',
+    youApproved: p.approvals.includes(device.deviceId), youAreProposer: p.proposerId === device.deviceId, youAreCandidate: candidate.deviceId === device.deviceId,
+    approved: need.filter((x) => p.approvals.includes(x.deviceId)).length, needed: need.length
+  };
+}
 function evaluateProposal(team) {
   const p = team.proposal;
   if (!p) return;
@@ -570,14 +1095,9 @@ function evaluateProposal(team) {
     notifyTeam(team, `${candidate.label} is nu de basistelefoon van het team.`);
   }
 }
-
 function sync() {
   Object.values(teams).forEach(evaluateProposal);
-  const st = currentStep();
-  if (gameState === 'PLAY' && st && H[st.rtype].check) H[st.rtype].check(st, getSS(st));
-  // Spiekmeldingen verdwijnen zodra er geen vraag meer open staat
-  if (!inItemStep()) Object.values(devices).forEach((d) => { d.away = null; });
-  timerEnsure();
+  settle();
   broadcastState();
 }
 
@@ -589,7 +1109,6 @@ function deviceOf(socket) {
   const d = devices[socket.data.deviceId];
   return d && d.socketId === socket.id ? d : null;
 }
-
 const PIN_MAX_FAILS = 20;
 const PIN_WINDOW_MS = 10 * 60 * 1000;
 const pinFailures = new Map();
@@ -625,12 +1144,28 @@ function removeTeam(teamId) {
       const s = io.sockets.sockets.get(d.socketId);
       if (s) { s.data.deviceId = null; s.emit('kicked'); }
     }
+    delete alerts[d.deviceId];
     delete devices[d.deviceId];
   }
+  Object.values(ssAll).forEach((s) => {
+    ['answers', 'placements', 'entries', 'wagers', 'choices'].forEach((k) => { if (s[k]) delete s[k][teamId]; });
+  });
   delete teams[teamId];
 }
 
+// Alleen de basistelefoon mag antwoorden doorgeven
+function baseContext(socket, kind) {
+  const device = deviceOf(socket);
+  const team = device && teams[device.teamId];
+  const step = cur();
+  if (!team || !step || step.kind !== kind || paused) return null;
+  return { device, team, step, s: ss(step), isBase: team.baseDeviceId === device.deviceId };
+}
+
+const num = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
+
 io.on('connection', (socket) => {
+  // ---------- Schermen registreren ----------
   socket.on('register_remote', ({ pin } = {}) => {
     if (!checkPin(socket, pin)) return;
     socket.data.role = 'remote';
@@ -646,12 +1181,12 @@ io.on('connection', (socket) => {
   });
 
   // ---------- Telefoons: team maken of aansluiten ----------
-  socket.on('hello', ({ deviceId, visible } = {}) => {
+  socket.on('hello', ({ deviceId } = {}) => {
     const device = typeof deviceId === 'string' ? devices[deviceId] : null;
     if (!device || !teams[device.teamId]) return socket.emit('need_join');
     attachSocket(socket, device);
-    if (visible !== false) device.away = null;
     socket.emit('session', { deviceId: device.deviceId });
+    reopenIfMissed(teams[device.teamId]);
     sync();
   });
   socket.on('list_teams', (_, cb) => {
@@ -660,14 +1195,14 @@ io.on('connection', (socket) => {
   });
   socket.on('create_team', ({ teamName, label } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
-    if (gameState === 'END') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
-    const myName = cleanName(label, MAX_LABEL);
+    if (phase === 'END') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
+    const myName = cleanText(label, MAX_LABEL);
     if (!myName) return reply({ ok: false, message: 'Vul eerst je eigen naam in.' });
-    const name = cleanName(teamName, MAX_TEAM_NAME);
+    const name = cleanText(teamName, MAX_TEAM_NAME);
     if (!name) return reply({ ok: false, message: 'Vul een teamnaam in.' });
     if (findTeamByName(name)) return reply({ ok: false, message: `De teamnaam "${name}" is al in gebruik.` });
-    const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: null, label: myName, socketId: null, connected: false, away: null };
-    const team = { teamId: newId('t_'), name, answers: {}, joker: null, baseDeviceId: device.deviceId };
+    const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: null, label: myName, seq: ++seq, socketId: null, connected: false };
+    const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: device.deviceId, jokerRound: null, timeline: null, proposal: null };
     device.teamId = team.teamId;
     teams[team.teamId] = team;
     devices[device.deviceId] = device;
@@ -677,27 +1212,26 @@ io.on('connection', (socket) => {
   });
   socket.on('join_team', ({ teamId, label } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
-    if (gameState === 'END') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
-    const myName = cleanName(label, MAX_LABEL);
+    if (phase === 'END') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
+    const myName = cleanText(label, MAX_LABEL);
     if (!myName) return reply({ ok: false, message: 'Vul eerst je eigen naam in.' });
     const team = teams[teamId];
     if (!team) return reply({ ok: false, message: 'Dat team bestaat niet meer.' });
     if (teamDevices(team).length >= MAX_DEVICES_PER_TEAM) return reply({ ok: false, message: 'Dit team zit vol.' });
     if (labelTaken(team, myName)) return reply({ ok: false, message: `In dit team zit al iemand die ${myName} heet. Voeg bijvoorbeeld een letter toe.` });
-    const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: team.teamId, label: myName, socketId: null, connected: false, away: null };
+    const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: team.teamId, label: myName, seq: ++seq, socketId: null, connected: false };
     devices[device.deviceId] = device;
     attachSocket(socket, device);
     reply({ ok: true, deviceId: device.deviceId });
     sync();
   });
-
   socket.on('propose_base', ({ memberId } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const device = deviceOf(socket);
     const team = device && teams[device.teamId];
     if (!team) return reply({ ok: false });
     const candidate = memberId ? teamDevices(team).find((d) => d.memberId === memberId) : device;
-    if (!candidate || candidate.teamId !== team.teamId || !candidate.connected) return reply({ ok: false, message: 'Die telefoon is niet verbonden.' });
+    if (!candidate || !candidate.connected) return reply({ ok: false, message: 'Die telefoon is niet verbonden.' });
     if (team.baseDeviceId === candidate.deviceId) return reply({ ok: false, message: `${candidate.label} is al de basistelefoon.` });
     team.proposal = { candidateId: candidate.deviceId, proposerId: device.deviceId, approvals: [device.deviceId] };
     reply({ ok: true });
@@ -709,14 +1243,11 @@ io.on('connection', (socket) => {
     const team = device && teams[device.teamId];
     const p = team && team.proposal;
     if (!p) return reply({ ok: false });
-    if (approve) {
-      if (!p.approvals.includes(device.deviceId)) p.approvals.push(device.deviceId);
-    } else {
+    if (approve) { if (!p.approvals.includes(device.deviceId)) p.approvals.push(device.deviceId); }
+    else {
       team.proposal = null;
       const base = devices[team.baseDeviceId];
-      notifyTeam(team, p.proposerId === device.deviceId
-        ? `${device.label} heeft het voorstel ingetrokken.`
-        : `${device.label} is niet akkoord. De basistelefoon blijft ${base ? base.label : 'zoals hij was'}.`);
+      notifyTeam(team, p.proposerId === device.deviceId ? `${device.label} heeft het voorstel ingetrokken.` : `${device.label} is niet akkoord. De basistelefoon blijft ${base ? base.label : 'zoals hij was'}.`);
     }
     reply({ ok: true });
     sync();
@@ -728,202 +1259,368 @@ io.on('connection', (socket) => {
     if (!team) return reply({ ok: false });
     if (team.baseDeviceId === device.deviceId) return reply({ ok: false, message: 'De basistelefoon kan het team niet verlaten. Kies eerst samen een andere basistelefoon.' });
     if (team.proposal && (team.proposal.candidateId === device.deviceId || team.proposal.proposerId === device.deviceId)) team.proposal = null;
+    delete alerts[device.deviceId];
     delete devices[device.deviceId];
     socket.data.deviceId = null;
     reply({ ok: true });
     sync();
   });
 
-  // ---------- Antwoorden en spelerinvoer (per rondetype) ----------
-  socket.on('step_submit', ({ sid, payload } = {}, cb) => {
+  // ---------- Antwoorden: meerkeuze, foto's en logo's ----------
+  socket.on('submit_answer', ({ stepId, value } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
-    const device = deviceOf(socket);
-    const team = device && teams[device.teamId];
-    const st = currentStep();
-    if (!team || !st || gameState !== 'PLAY') return reply({ ok: false, reason: 'not_open' });
-    if (sid !== st.sid) return reply({ ok: false, reason: 'wrong_question' });
-    const h = H[st.rtype];
-    if (!h.submit) return reply({ ok: false, reason: 'not_open' });
-    const res = h.submit(st, getSS(st), team, device, payload || {}) || { ok: false };
-    reply(res);
-    if (res.ok) sync();
+    const step = cur();
+    if (step && step.kind === 'final') return submitFinalAnswer(socket, stepId, value, reply);
+    const c = baseContext(socket, 'mc');
+    if (!c || c.s.status !== 'open') return reply({ ok: false, reason: 'not_open' });
+    if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
+    if (stepId !== c.step.id) return reply({ ok: false, reason: 'wrong_question' });
+    if (!Number.isInteger(value) || value < 0 || value >= c.step.options.length) return reply({ ok: false, reason: 'invalid' });
+    if (c.s.answers[c.team.teamId]) return reply({ ok: true, already: true });
+    c.s.answers[c.team.teamId] = { v: value, step: c.s.blurStep, t: Date.now() };
+    reply({ ok: true });
+    sync();
   });
-  socket.on('step_event', ({ sid, type, data } = {}) => {
-    const device = deviceOf(socket);
-    const team = device && teams[device.teamId];
-    const st = currentStep();
-    if (!team || !st || gameState !== 'PLAY' || sid !== st.sid || !H[st.rtype].event) return;
-    H[st.rtype].event(st, getSS(st), team, device, type, data);
-    if (type === 'clear') scheduleSave();
-  });
-  socket.on('step_fetch', ({ sid } = {}, cb) => {
-    const device = deviceOf(socket);
-    const team = device && teams[device.teamId];
-    const st = currentStep();
-    if (typeof cb !== 'function' || !team || !st || sid !== st.sid || !H[st.rtype].fetch) return;
-    cb(H[st.rtype].fetch(st, getSS(st), team, device));
+  function submitFinalAnswer(sock, stepId, value, reply) {
+    const c = baseContext(sock, 'final');
+    if (!c || c.s.status !== 'question') return reply({ ok: false, reason: 'not_open' });
+    if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
+    if (!Number.isInteger(value) || value < 0 || value >= c.step.options.length) return reply({ ok: false, reason: 'invalid' });
+    if (c.s.answers[c.team.teamId] !== undefined) return reply({ ok: true, already: true });
+    c.s.answers[c.team.teamId] = value;
+    reply({ ok: true });
+    sync();
+  }
+
+  // ---------- Prijzen ----------
+  socket.on('submit_price', ({ stepId, now, ago } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'price');
+    if (!c || c.s.status !== 'open') return reply({ ok: false, reason: 'not_open' });
+    if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
+    if (stepId !== c.step.id) return reply({ ok: false, reason: 'wrong_question' });
+    if (!num(now, 0, 100000) || !num(ago, 0, 100000)) return reply({ ok: false, reason: 'invalid' });
+    if (c.s.answers[c.team.teamId]) return reply({ ok: true, already: true });
+    c.s.answers[c.team.teamId] = { now: Math.round(now * 100) / 100, ago: Math.round(ago * 100) / 100 };
+    reply({ ok: true });
+    sync();
   });
 
-  // ---------- Anti-spiek: melding blijft staan tot de speler terug is ----------
-  socket.on('player_blurred', ({ reason } = {}) => {
-    if (!inItemStep()) return;
+  // ---------- Muziek: kaart in de tijdlijn leggen ----------
+  socket.on('place_card', ({ stepId, slot } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'song');
+    if (!c || c.s.status !== 'open') return reply({ ok: false, reason: 'not_open' });
+    if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
+    const tl = ensureTimeline(c.team);
+    if (stepId !== c.step.id || !Number.isInteger(slot) || slot < 0 || slot > tl.length) return reply({ ok: false, reason: 'invalid' });
+    if (c.s.placements[c.team.teamId] !== undefined) return reply({ ok: true, already: true });
+    c.s.placements[c.team.teamId] = slot;
+    reply({ ok: true });
+    sync();
+  });
+
+  // ---------- Geheugen: samen opschrijven ----------
+  socket.on('memory_add', ({ text } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'memory');
+    if (!c || c.s.status !== 'writing') return reply({ ok: false });
+    const clean = cleanText(text, 60);
+    if (!clean) return reply({ ok: false });
+    const list = (c.s.entries[c.team.teamId] = c.s.entries[c.team.teamId] || []);
+    if (list.length >= 80) return reply({ ok: false, message: 'Dat zijn er genoeg!' });
+    if (list.some((e) => norm(e.text) === norm(clean))) return reply({ ok: false, message: 'Dat staat er al.' });
+    list.push({ id: newId('e_'), text: clean, by: c.device.label, ok: null });
+    reply({ ok: true });
+    sync();
+  });
+  socket.on('memory_remove', ({ id } = {}) => {
+    const c = baseContext(socket, 'memory');
+    if (!c || c.s.status !== 'writing') return;
+    const list = c.s.entries[c.team.teamId] || [];
+    const i = list.findIndex((e) => e.id === id);
+    if (i >= 0) { list.splice(i, 1); sync(); }
+  });
+
+  // ---------- Tekenen ----------
+  function drawTurnFor(sock) {
+    const c = baseContext(sock, 'draw');
+    if (!c || c.s.status !== 'drawing') return null;
+    const turn = c.s.turns[c.s.turn];
+    return turn ? { ...c, turn } : null;
+  }
+  const cleanOp = (op) => {
+    if (!op || typeof op !== 'object') return null;
+    if (op.t === 'u' || op.t === 'x') return { t: op.t };
+    if (op.t !== 'p' || typeof op.id !== 'string' || op.id.length > 20 || !Array.isArray(op.p)) return null;
+    const pts = op.p.slice(0, 200).filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])).map((p) => [Math.min(1000, Math.max(0, Math.round(p[0]))), Math.min(1000, Math.max(0, Math.round(p[1])))]);
+    if (!pts.length) return null;
+    return { t: 'p', id: op.id, c: /^#[0-9a-f]{6}$/i.test(op.c) ? op.c : '#000000', w: num(op.w, 1, 40) ? Math.round(op.w) : 4, p: pts };
+  };
+  function applyOp(strokes, op) {
+    if (op.t === 'x') strokes.length = 0;
+    else if (op.t === 'u') strokes.pop();
+    else {
+      let st = strokes.find((x) => x.id === op.id);
+      if (!st) { if (strokes.length >= 300) return; st = { id: op.id, c: op.c, w: op.w, p: [] }; strokes.push(st); }
+      if (st.p.length < 4000) st.p.push(...op.p);
+    }
+  }
+  socket.on('draw_ops', ({ ops } = {}) => {
+    const c = drawTurnFor(socket);
+    if (!c || !Array.isArray(ops)) return;
+    if (c.turn.drawers[c.team.teamId] !== c.device.deviceId) return;
+    const clean = ops.slice(0, 40).map(cleanOp).filter(Boolean);
+    if (!clean.length) return;
+    const strokes = c.turn.strokes[c.team.teamId];
+    clean.forEach((op) => applyOp(strokes, op));
+    for (const d of connectedDevices(c.team)) if (d.deviceId !== c.device.deviceId && d.socketId) io.to(d.socketId).emit('draw_ops', { ops: clean });
+    scheduleSave();
+  });
+  // Nieuwe of herstelde telefoon vraagt de hele tekening op
+  socket.on('draw_get', (_, cb) => {
+    if (typeof cb !== 'function') return;
+    const device = deviceOf(socket);
+    const step = cur();
+    const team = device && teams[device.teamId];
+    if (!team || !step || step.kind !== 'draw') return cb({ strokes: [] });
+    const s = ss(step);
+    const turn = s.turns[s.turn];
+    cb({ strokes: turn && turn.strokes[team.teamId] ? turn.strokes[team.teamId] : [] });
+  });
+  socket.on('draw_guess', ({ text } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = drawTurnFor(socket);
+    if (!c) return reply({ ok: false });
+    const id = c.team.teamId;
+    if (!c.turn.words[id] || c.turn.drawers[id] === c.device.deviceId || c.turn.solved[id]) return reply({ ok: false });
+    const clean = cleanText(text, 40);
+    if (!clean) return reply({ ok: false });
+    const good = drawGuessOk(c.turn.words[id], clean);
+    c.turn.guesses[id].push({ label: c.device.label, text: clean, ok: good });
+    if (good) {
+      c.turn.solved[id] = true;
+      c.turn.pts[id] = Math.round(2 + (DRAW_MAX - 2) * Math.min(1, remainingNow() / Math.max(1, timer.totalMs)));
+    }
+    reply({ ok: true, good });
+    sync();
+  });
+
+  // ---------- Joker en slotvraag ----------
+  socket.on('joker_choose', ({ roundId } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'joker');
+    if (!c || !c.isBase) return reply({ ok: false });
+    if (!roundById[roundId]) return reply({ ok: false });
+    c.team.jokerRound = roundId;
+    c.s.choices[c.team.teamId] = roundId;
+    reply({ ok: true });
+    sync();
+  });
+  socket.on('final_wager', ({ amount } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'final');
+    if (!c || !c.isBase || c.s.status !== 'wager') return reply({ ok: false });
+    const max = Math.max(0, totalBeforeFinal(c.team));
+    if (!Number.isInteger(amount) || amount < 0 || amount > max) return reply({ ok: false, message: `Je kunt tussen 0 en ${max} punten inzetten.` });
+    c.s.wagers[c.team.teamId] = amount;
+    reply({ ok: true });
+    sync();
+  });
+
+  // ---------- Anti-spiek: de melding blijft staan tot de speler terug is ----------
+  socket.on('player_blurred', ({ reason, t } = {}) => {
+    const step = cur();
+    if (!step || !cheatSensitive(step) || paused) return;
     const device = deviceOf(socket);
     const team = device && teams[device.teamId];
     if (!team) return;
-    const r = reason === 'locked' ? 'locked' : 'app_switch';
-    const isNew = !device.away;
-    const upgraded = !isNew && device.away.reason !== 'locked' && r === 'locked';
-    if (isNew) device.away = { reason: r, since: Date.now() };
-    else if (upgraded) device.away.reason = 'locked';
-    else return;
-    const alert = { teamName: team.name, label: device.label, reason: device.away.reason, timestamp: new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
-    io.to('remote_room').emit('cheat_warning', alert);
+    if (Number.isFinite(t) && device.lastBackT && t < device.lastBackT) return; // te laat aangekomen bericht
+    alerts[device.deviceId] = {
+      key: device.deviceId, teamName: team.name, label: device.label,
+      reason: reason === 'locked' ? 'locked' : 'app_switch',
+      timestamp: new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' })
+    };
+    io.to('remote_room').emit('cheat_beep', alerts[device.deviceId]);
     broadcastState();
   });
-  socket.on('player_returned', () => {
+  socket.on('player_back', ({ t } = {}) => {
     const device = deviceOf(socket);
-    if (device && device.away) { device.away = null; broadcastState(); }
+    if (!device) return;
+    if (Number.isFinite(t)) device.lastBackT = t;
+    if (alerts[device.deviceId]) { delete alerts[device.deviceId]; broadcastState(); }
   });
 
   // ---------- Bediening: spelverloop ----------
-  socket.on('next_question', () => {
+  socket.on('host_main', () => {
     if (!isRemote(socket)) return;
-    if (gameState === 'LOBBY') {
-      if (!steps.length) return socket.emit('host_error', { message: 'Er is geen programma geladen. Controleer questions.json.' });
-      if (!Object.keys(teams).length) return socket.emit('host_error', { message: 'Er is nog geen team aangemeld.' });
-      currentIndex = 0;
-      gameState = 'PLAY';
-      enterStep();
-    } else if (gameState === 'PLAY') {
-      const st = currentStep();
-      const h = H[st.rtype];
-      const r = h.next ? h.next(st, getSS(st)) : 'step';
-      if (r && r.error) return socket.emit('host_error', { message: r.error });
-      if (r === 'step') advance();
-    } else return;
+    if (review) return;
+    const a = mainAction();
+    if (!a.enabled || !a.run) return socket.emit('host_error', { message: a.hint || 'Dat kan nu nog niet.' });
+    a.run();
     sync();
   });
-  // Noodknop: stap afsluiten of toch doorgaan zonder te wachten
-  socket.on('force_next', () => {
-    if (!isRemote(socket) || gameState !== 'PLAY') return;
-    const st = currentStep();
-    const h = H[st.rtype];
-    if (h.done && !h.done(st, getSS(st)) && h.force) h.force(st, getSS(st));
-    else advance();
-    sync();
-  });
-  socket.on('prev_question', () => {
-    if (!isRemote(socket) || gameState !== 'PLAY' || currentIndex === 0) return;
-    timerStop(); timer.active = false; timer.sid = null; timer.totalMs = 0; timer.remainingMs = 0;
-    currentIndex--;
-    enterStep();
-    sync();
-  });
-  socket.on('skip_review', () => {
-    if (!isRemote(socket) || gameState !== 'PLAY') return;
-    const st = currentStep();
-    if (!st || !st.reviewGroup) return;
-    let i = currentIndex;
-    while (i < steps.length && steps[i].reviewGroup === st.reviewGroup) i++;
-    currentIndex = Math.min(i, steps.length) - 1;
-    advance();
-    sync();
-  });
-  socket.on('goto_round', ({ idx } = {}) => {
-    if (!isRemote(socket) || gameState === 'LOBBY') return;
-    const first = steps.find((s) => s.roundIdx === idx);
-    if (!first) return;
-    timerStop(); timer.active = false; timer.sid = null; timer.totalMs = 0; timer.remainingMs = 0;
-    currentIndex = first.index;
-    gameState = 'PLAY';
-    revealState = 'idle';
-    enterStep();
-    sync();
-  });
-  socket.on('step_action', ({ type, payload } = {}) => {
-    if (!isRemote(socket) || gameState !== 'PLAY') return;
-    const st = currentStep();
-    const h = H[st.rtype];
-    if (h.action) h.action(st, getSS(st), type, payload || {});
+  socket.on('host_force', () => {
+    if (!isRemote(socket)) return;
+    const f = forceAction();
+    if (!f) return;
+    f.run();
     sync();
   });
   socket.on('toggle_pause', () => {
-    if (!isRemote(socket)) return;
-    if (gameState === 'PAUSED') { gameState = stateBeforePause; io.emit('resumed'); }
-    else if (gameState === 'PLAY') { stateBeforePause = 'PLAY'; gameState = 'PAUSED'; io.emit('paused'); }
-    else return;
+    if (!isRemote(socket) || phase !== 'PLAY') return;
+    paused = !paused;
+    if (paused) timerStop(); else timerRun();
+    io.emit(paused ? 'paused' : 'resumed');
     sync();
   });
   socket.on('toggle_standings', () => {
-    if (!isRemote(socket)) return;
-    if (gameState === 'STANDINGS') gameState = 'PLAY';
-    else if (gameState === 'PLAY') gameState = 'STANDINGS';
-    else return;
+    if (!isRemote(socket) || phase === 'LOBBY') return;
+    showStandings = !showStandings;
+    sync();
+  });
+  socket.on('goto_step', ({ stepId } = {}) => {
+    if (!isRemote(socket) || phase === 'LOBBY') return;
+    const i = steps.findIndex((s) => s.id === stepId);
+    if (i < 0) return;
+    phase = 'PLAY';
+    stepIndex = i;
+    enterStep();
+    sync();
+  });
+  socket.on('skip_step', () => {
+    if (!isRemote(socket) || phase !== 'PLAY') return;
+    next();
+    sync();
+  });
+  socket.on('prev_step', () => {
+    if (!isRemote(socket) || phase !== 'PLAY' || stepIndex === 0) return;
+    stepIndex--;
+    enterStep();
     sync();
   });
 
-  // ---------- Bediening: ontknoping ----------
-  socket.on('start_reveal', () => {
-    if (!isRemote(socket) || gameState !== 'END' || revealState !== 'idle') return;
-    revealState = 'running';
-    broadcastState();
+  // ---------- Bediening: nakijken en einduitslag ----------
+  socket.on('review_open', ({ scope } = {}) => {
+    if (!isRemote(socket) || phase === 'LOBBY') return;
+    const step = cur();
+    const s = scope === 'all' || roundById[scope] ? scope : step && roundById[step.round] ? step.round : 'all';
+    review = { scope: s, page: 0 };
+    sync();
+  });
+  socket.on('review_nav', ({ dir } = {}) => {
+    if (!isRemote(socket) || !review) return;
+    review.page += dir > 0 ? 1 : -1;
+    sync();
+  });
+  socket.on('review_close', () => {
+    if (!isRemote(socket)) return;
+    review = null;
+    sync();
+  });
+  socket.on('end_view', ({ view } = {}) => {
+    if (!isRemote(socket) || phase !== 'END') return;
+    endView = view === 'breakdown' ? 'breakdown' : 'ranking';
+    sync();
   });
   socket.on('reveal_done', () => {
-    if ((!isRemote(socket) && socket.data.role !== 'tv') || revealState !== 'running') return;
-    revealState = 'done';
-    broadcastState();
-  });
-  socket.on('toggle_breakdown', () => {
-    if (!isRemote(socket) || gameState !== 'END' || revealState !== 'done') return;
-    breakdownShown = !breakdownShown;
-    broadcastState();
+    if ((!isRemote(socket) && socket.data.role !== 'tv') || reveal !== 'running') return;
+    reveal = 'done';
+    sync();
   });
 
-  socket.on('update_settings', (partial) => {
+  // ---------- Bediening: per ronde ----------
+  socket.on('blur_next', ({ all } = {}) => {
     if (!isRemote(socket)) return;
-    if (gameState !== 'LOBBY') return socket.emit('host_error', { message: 'Instellingen kunnen alleen vóór de start worden gewijzigd.' });
-    settings = sanitizeSettings(partial, settings);
+    const step = cur();
+    if (!step || step.kind !== 'mc' || step.variant !== 'blur') return;
+    const s = ss(step);
+    if (s.status !== 'open') return;
+    s.blurStep = all ? settings.blurPoints.length - 1 : Math.min(settings.blurPoints.length - 1, s.blurStep + 1);
+    sync();
+  });
+  socket.on('song_replay', () => {
+    if (!isRemote(socket)) return;
+    io.to('tv_room').emit('play_audio');
+  });
+  socket.on('memory_judge', ({ teamId, entryId, ok } = {}) => {
+    if (!isRemote(socket)) return;
+    const step = cur();
+    if (!step || step.kind !== 'memory') return;
+    const e = (ss(step).entries[teamId] || []).find((x) => x.id === entryId);
+    if (e) { e.ok = !!ok; sync(); }
+  });
+  socket.on('thirty_toggle', ({ index } = {}) => {
+    if (!isRemote(socket)) return;
+    const step = cur();
+    if (!step || step.kind !== 'thirty') return;
+    const s = ss(step);
+    const turn = s.turns[s.turn];
+    if (!turn || s.status !== 'judging' || !Number.isInteger(index) || index < 0 || index > 4) return;
+    turn.ok[index] = !turn.ok[index];
+    sync();
+  });
+  socket.on('draw_judge', ({ teamId, ok } = {}) => {
+    // Noodknop: een tekenaar-team alsnog goed of fout rekenen
+    if (!isRemote(socket)) return;
+    const step = cur();
+    if (!step || step.kind !== 'draw') return;
+    const s = ss(step);
+    const turn = s.turns[s.turn];
+    if (!turn || !turn.words[teamId]) return;
+    turn.solved[teamId] = !!ok;
+    turn.pts[teamId] = ok ? Math.round((2 + DRAW_MAX) / 2) : 0;
+    sync();
+  });
+  socket.on('add_time', () => {
+    if (!isRemote(socket) || !timer.tag) return;
+    const wasRunning = !!timer.handle;
+    timerStop();
+    timer.remainingMs += 10000;
+    timer.totalMs = Math.max(timer.totalMs, timer.remainingMs);
+    if (wasRunning && !paused) timerRun();
     sync();
   });
 
   // ---------- Bediening: noodknoppen ----------
-  socket.on('add_time', () => {
-    if (!isRemote(socket) || gameState !== 'PLAY') return;
-    const st = currentStep();
-    if (!st || timer.sid !== st.sid) return;
-    timerStop();
-    timer.remainingMs += 10000;
-    timer.totalMs = Math.max(timer.totalMs, timer.remainingMs);
-    timer.active = true;
-    const h = H[st.rtype];
-    const ss = getSS(st);
-    if (h.reopen && h.done && h.done(st, ss)) h.reopen(st, ss);
+  socket.on('update_settings', (partial) => {
+    if (!isRemote(socket)) return;
+    if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'Instellingen kunnen alleen vóór de start worden gewijzigd.' });
+    settings = sanitizeSettings(partial, settings);
     sync();
   });
   socket.on('clear_answer', ({ teamId } = {}) => {
-    if (!isRemote(socket) || gameState !== 'PLAY') return;
+    if (!isRemote(socket)) return;
     const team = teams[teamId];
-    const st = currentStep();
-    if (!team || !st || st.kind !== 'item') return;
-    const h = H[st.rtype];
-    const ss = getSS(st);
-    delete team.answers[st.sid];
-    if (ss.done) delete ss.done[team.teamId];
-    if (h.reopen && h.done && h.done(st, ss)) h.reopen(st, ss);
+    const step = cur();
+    if (!team || !step || !['mc', 'price', 'final'].includes(step.kind)) return;
+    const s = ss(step);
+    if (step.kind === 'final') { if (s.status === 'question') delete s.answers[teamId]; }
+    else if (s.status === 'open' || (step.kind === 'mc' && s.status === 'closed')) {
+      delete s.answers[teamId];
+      if (step.kind === 'mc' && s.status === 'closed') s.status = 'open';
+    }
     sync();
   });
-  socket.on('void_question', ({ sid, mode } = {}) => {
-    if (!isRemote(socket) || gameState === 'LOBBY') return;
-    if (stepIndexBySid[sid] === undefined) return;
-    if (mode === 'void' || mode === 'all_correct') voided[sid] = mode;
-    else if (mode === null) delete voided[sid];
+  socket.on('void_question', ({ mode } = {}) => {
+    if (!isRemote(socket)) return;
+    const step = cur();
+    if (!step || step.kind !== 'mc') return;
+    const s = ss(step);
+    if (mode === 'void' || mode === 'all_correct') s.voided = mode;
+    else if (mode === null) s.voided = null;
     else return;
+    sync();
+  });
+  socket.on('alert_dismiss', ({ key } = {}) => {
+    if (!isRemote(socket)) return;
+    if (key === 'all') alerts = {}; else delete alerts[key];
     sync();
   });
   socket.on('rename_team', ({ teamId, name } = {}) => {
     if (!isRemote(socket)) return;
     const team = teams[teamId];
-    const clean = cleanName(name, MAX_TEAM_NAME);
+    const clean = cleanText(name, MAX_TEAM_NAME);
     if (!team || !clean) return;
     if (findTeamByName(clean, teamId)) return socket.emit('host_error', { message: `De teamnaam "${clean}" is al in gebruik.` });
     team.name = clean;
@@ -933,7 +1630,7 @@ io.on('connection', (socket) => {
     if (!isRemote(socket)) return;
     const device = devices[deviceId];
     const team = device && teams[device.teamId];
-    const clean = cleanName(name, MAX_LABEL);
+    const clean = cleanText(name, MAX_LABEL);
     if (!team || !clean) return;
     if (labelTaken(team, clean, device.deviceId)) return socket.emit('host_error', { message: `In team ${team.name} zit al iemand die ${clean} heet.` });
     device.label = clean;
@@ -950,12 +1647,13 @@ io.on('connection', (socket) => {
     if (labelTaken(to, device.label)) return socket.emit('host_error', { message: `In team ${to.name} zit al iemand die ${device.label} heet. Wijzig eerst een van de namen.` });
     const wasBase = from.baseDeviceId === device.deviceId;
     device.teamId = to.teamId;
-    from.proposal = null; to.proposal = null;
+    from.proposal = null;
+    to.proposal = null;
     if (wasBase) {
       const rest = teamDevices(from);
-      const next = rest.find((d) => d.connected) || rest[0];
-      from.baseDeviceId = next.deviceId;
-      notifyTeam(from, `${device.label} is verplaatst. ${next.label} is nu de basistelefoon.`);
+      const nextBase = rest.find((d) => d.connected) || rest[0];
+      from.baseDeviceId = nextBase.deviceId;
+      notifyTeam(from, `${device.label} is verplaatst. ${nextBase.label} is nu de basistelefoon.`);
     } else notifyTeam(from, `${device.label} is verplaatst naar een ander team.`);
     if (device.connected && device.socketId) io.to(device.socketId).emit('team_notice', { text: `De quizmaster heeft je verplaatst naar team ${to.name}.` });
     notifyTeam(to, `${device.label} is toegevoegd aan jullie team.`);
@@ -978,44 +1676,47 @@ io.on('connection', (socket) => {
   });
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
-    gameState = 'LOBBY'; stateBeforePause = 'PLAY'; currentIndex = 0;
-    revealState = 'idle'; breakdownShown = false;
-    voided = {}; teams = {}; devices = {}; stepState = {};
-    timerStop(); timer.active = false; timer.sid = null; timer.totalMs = 0; timer.remainingMs = 0;
+    phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; endView = 'ranking';
+    ssAll = {}; teams = {}; devices = {}; alerts = {};
+    timerClear();
     io.emit('quiz_reset');
     broadcastState();
   });
 
   socket.on('disconnect', () => {
     const device = devices[socket.data.deviceId];
-    if (device && device.socketId === socket.id) { device.connected = false; sync(); }
+    if (device && device.socketId === socket.id) {
+      device.connected = false;
+      sync();
+    }
   });
 });
 
 // ---------------------------------------------------------------
 // Opstarten
 // ---------------------------------------------------------------
-buildProgram();
 const restored = loadSaved();
-
 function shutdown() { saveNow(); process.exit(0); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-server.listen(PORT, () => {
-  const url = getJoinUrl();
-  console.log(`Quiz server actief op http://localhost:${PORT}`);
-  console.log(`Telefoons (zelfde wifi):  ${url}`);
-  console.log(`Tv-scherm:                ${url}/host.html`);
-  console.log(`Bediening:                ${url}/bediening.html`);
-  console.log(`Pincode bediening:        ${HOST_PIN}`);
-  if (pinWasGenerated) {
-    console.log('Let op: HOST_PIN is niet ingesteld, dus deze code is willekeurig gekozen en verandert bij elke start.');
-    console.log('Zet HOST_PIN in de instellingen van Render om hem vast te leggen.');
-  }
-  console.log(`${steps.length} stappen geladen in ${rounds.length} rondes.`);
-  if (restored) {
-    console.log(`Vorige quiz hersteld uit ${STATE_FILE}: ${Object.keys(teams).length} teams, status ${gameState}.`);
-    console.log('Teams komen vanzelf terug. Hervat de quiz met de pauzeknop, of begin opnieuw met Reset.');
-  }
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    const url = getJoinUrl();
+    console.log(`Quiz server actief op http://localhost:${PORT}`);
+    console.log(`Telefoons (zelfde wifi):  ${url}`);
+    console.log(`Tv-scherm:                ${url}/host.html`);
+    console.log(`Bediening:                ${url}/bediening.html`);
+    console.log(`Pincode bediening:        ${HOST_PIN}`);
+    if (pinWasGenerated) {
+      console.log('Let op: HOST_PIN is niet ingesteld, dus deze code is willekeurig gekozen en verandert bij elke start.');
+      console.log('Zet HOST_PIN in de instellingen van Render om hem vast te leggen.');
+    }
+    console.log(`${steps.length} schermen geladen in ${rounds.length} rondes.`);
+    if (restored) {
+      console.log(`Vorige quiz hersteld uit ${STATE_FILE}: ${Object.keys(teams).length} teams. De quiz staat op pauze.`);
+      console.log('Hervat met de pauzeknop, of begin opnieuw met Reset.');
+    }
+  });
+}
+module.exports = { server, io };

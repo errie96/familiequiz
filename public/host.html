@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
-  <script src="rounds-ui.js"></script>
   <script>
     // Eerst de lokale kopie uit public/vendor/ (npm run vendor), anders het CDN
     function loadLib(local, cdn) {
@@ -20,22 +19,28 @@
     loadLib("vendor/confetti.browser.min.js", "https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js");
   </script>
   <style>
+    /* Gemaakt voor een tv: alles schaalt mee met de breedte van het scherm */
     html, body { height: 100%; }
     body.tv { display: block; padding: 0; overflow: hidden; cursor: none; }
-    #audio-banner { position: fixed; top: 2vh; right: 3vw; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(12px, 1.4vw, 26px); padding: 0.4em 1.2em; border-radius: 999px; z-index: 50; }
-    /* Spiekmeldingen blijven onderin staan totdat de speler weer naar de quiz kijkt */
-    #tv-alerts { position: fixed; left: 3vw; right: 3vw; bottom: 1.5vw; display: flex; flex-direction: column; gap: 0.8vw; z-index: 45; }
-    .tv-alert { color: #fff; font-weight: bold; font-size: clamp(16px, 2.6vw, 48px); padding: 0.5em 1em; border-radius: 14px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
-    .tv-alert.fresh { animation: shake 0.4s; }
+    #audio-banner { margin-left: auto; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(11px, 1.2vw, 22px); padding: 0.3em 1em; border-radius: 999px; }
+    #tv-alerts { position: fixed; left: 3vw; right: 3vw; bottom: 1vw; display: flex; flex-direction: column; gap: 0.8vw; z-index: 45; }
+    .tv-alert { color: #fff; font-weight: bold; font-size: clamp(16px, 2.6vw, 48px); padding: 0.5em 1em; border-radius: 14px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,0.5); animation: shake 0.4s; }
     .tv-alert.app { background: #dc2626; border: 3px solid #f87171; }
     .tv-alert.locked { background: #d97706; border: 3px solid #fbbf24; }
     #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 1.1vh; background: #1e293b; z-index: 40; }
     #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.3s; }
     #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; flex-wrap: wrap; }
     .pill { background: #334155; border-radius: 999px; padding: 0.3em 1.2em; font-size: clamp(14px, 1.9vw, 36px); font-weight: bold; }
-    main { padding: 1vh 4vw 16vh; height: calc(100% - 9vh); overflow: hidden; }
+    .pill.points { background: #b45309; }
+    main { padding: 0.5vh 4vw 4vh; height: calc(100% - 9vh); overflow: hidden; }
     .tv-title { font-size: clamp(36px, 6vw, 110px); margin-bottom: 2vh; }
+    .tv-q { font-size: clamp(24px, 3.6vw, 70px); line-height: 1.15; margin: 0.5vh 0 1.5vh; }
     .tv-sub { color: #94a3b8; font-size: clamp(16px, 2.2vw, 40px); text-align: center; margin: 1vh 0; }
+    .tv-center { text-align: center; padding-top: 8vh; }
+    .huge { font-size: clamp(60px, 12vw, 220px); }
+    .cat { display: inline-block; background: #0e7490; border-radius: 999px; padding: 0.2em 1em; font-size: clamp(14px, 1.8vw, 34px); font-weight: bold; margin-bottom: 1vh; }
+    #tv-media { text-align: center; margin-bottom: 2vh; }
+    #tv-media img { max-height: 32vh; border-radius: 12px; }
     .chips-row { display: flex; flex-wrap: wrap; gap: 1vw; justify-content: center; margin-top: 3vh; }
     .tchip { background: #334155; border-radius: 999px; padding: 0.3em 1.1em; font-size: clamp(14px, 2vw, 38px); }
     .tchip.done { background: #15803d; }
@@ -45,31 +50,41 @@
     #join-url { color: #38bdf8; font-weight: bold; font-size: clamp(14px, 2vw, 36px); margin-top: 1vh; }
     .big-list { max-width: 70vw; margin: 2vh auto; font-size: clamp(22px, 3.6vw, 68px); }
     .big-list li { padding: 0.35em 0.8em; }
-    #v-pause, #end-wait { text-align: center; padding-top: 12vh; }
-    .huge { font-size: clamp(60px, 12vw, 220px); }
     #winner-banner { margin-top: 3vh; padding: 2vw; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 16px; color: #fff; animation: pulse 1s infinite alternate; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6); text-align: center; }
-    table.bd { width: 100%; border-collapse: collapse; font-size: clamp(14px, 1.9vw, 36px); }
-    table.bd th, table.bd td { padding: 0.35em 0.6em; border-bottom: 1px solid #334155; text-align: center; }
-    table.bd td:first-child, table.bd th:first-child { text-align: left; }
-    table.bd .jk { background: #7c3aed; border-radius: 8px; }
+    .bigtimer { font-size: clamp(80px, 18vw, 340px); font-weight: 900; text-align: center; line-height: 1; font-variant-numeric: tabular-nums; }
+    .stepdots { display: flex; gap: 0.8vw; justify-content: center; margin: 1vh 0; }
+    .stepdots i { width: 1.4vw; height: 1.4vw; border-radius: 50%; background: #334155; display: block; }
+    .stepdots i.on { background: #38bdf8; }
+    .pointsnow { text-align: center; font-size: clamp(16px, 2.2vw, 40px); color: #fbbf24; font-weight: bold; }
+    .words { display: flex; flex-direction: column; gap: 1.2vh; max-width: 60vw; margin: 3vh auto; }
+    .word { background: #334155; border-radius: 14px; padding: 0.5em 1em; font-size: clamp(22px, 3.6vw, 66px); display: flex; justify-content: space-between; }
+    .word.ok { background: #15803d; }
+    .word.no { background: #7f1d1d; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(22vw, 1fr)); gap: 1.5vw; margin-top: 2vh; }
+    .gcard { background: #1e293b; border-radius: 14px; padding: 1vw; text-align: center; font-size: clamp(14px, 1.8vw, 34px); }
+    .gcard .padwrap { margin-bottom: 0.6vw; }
+    .bar { height: 1.4vw; background: #38bdf8; border-radius: 999px; min-width: 2px; }
+    .rrow { display: grid; grid-template-columns: 4vw 18vw 1fr 12vw 12vw; gap: 1.5vw; align-items: center; font-size: clamp(16px, 2.6vw, 50px); padding: 0.4em 0; }
+    #v-review { overflow: auto; }
+    #review-sub { text-align: center; color: #fbbf24; font-size: clamp(16px, 2.2vw, 40px); margin-bottom: 1.5vh; }
+    #v-pause { text-align: center; padding-top: 12vh; }
   </style>
 </head>
 <body class="tv">
 
   <div id="tv-alerts"></div>
-  <div id="audio-banner">🔊 Druk één keer op OK of klik op het scherm om het geluid te activeren</div>
   <div id="tv-timerbar" class="hidden"><div id="tv-timerfill"></div></div>
 
   <header id="tv-top">
     <span class="pill" id="tv-round">Familiequiz</span>
-    <span class="pill hidden" id="tv-qnum" style="background:#3b82f6;"></span>
-    <span class="pill hidden" id="tv-practice" style="background:#7c3aed;">Oefenvraag: telt niet mee</span>
-    <span class="pill hidden" id="tv-progress"></span>
+    <span class="pill hidden" id="tv-prog" style="background:#3b82f6;"></span>
+    <span class="pill points hidden" id="tv-points"></span>
     <span class="pill hidden" id="tv-timer"></span>
+    <span id="audio-banner">🔊 Druk één keer op OK om het geluid te activeren</span>
   </header>
 
   <main>
-    <section id="v-lobby">
+    <section id="v-lobby" class="view">
       <h1 class="tv-title">Familiequiz 🏆</h1>
       <div class="lobby-grid">
         <div style="text-align:center;">
@@ -85,51 +100,125 @@
       </div>
     </section>
 
-    <section id="v-play" class="hidden">
-      <div id="play-root"></div>
-      <div id="tv-teams" class="chips-row"></div>
+    <section id="v-info" class="view hidden tv-center">
+      <div class="huge" id="info-emoji"></div>
+      <h1 class="tv-title" id="info-title"></h1>
+      <p class="tv-sub" id="info-text" style="max-width:70vw; margin:0 auto;"></p>
+      <p class="pointsnow hidden" id="info-points" style="margin-top:4vh; font-size:clamp(28px,4.4vw,84px);"></p>
     </section>
 
-    <section id="v-pause" class="hidden">
-      <div class="huge">☕ 🍕 🍷</div>
-      <h1 class="tv-title" style="color:#f59e0b;">Pauze!</h1>
-      <p class="tv-sub">Even bijkletsen en de glazen bijvullen.</p>
+    <section id="v-mc" class="view hidden">
+      <div style="text-align:center;"><span class="cat hidden" id="mc-cat"></span></div>
+      <h1 id="mc-question" class="tv-q"></h1>
+      <div id="mc-media"></div>
+      <div id="mc-dots" class="stepdots hidden"></div>
+      <p id="mc-pointsnow" class="pointsnow hidden"></p>
+      <div id="mc-options"></div>
+      <p id="mc-explain" class="tv-sub" style="color:#fde68a;"></p>
+      <div id="mc-teams" class="chips-row"></div>
     </section>
 
-    <section id="v-standings" class="hidden">
-      <h1 class="tv-title" style="color:#38bdf8;">📊 Tussenstand</h1>
-      <ul id="standings-list" class="big-list"></ul>
+    <section id="v-memory" class="view hidden">
+      <h1 id="mem-title" class="tv-q" style="text-align:center;"></h1>
+      <div id="mem-body"></div>
     </section>
 
-    <section id="v-end" class="hidden">
-      <div id="end-wait">
+    <section id="v-song" class="view hidden tv-center" style="padding-top:2vh;">
+      <div class="huge" id="song-emoji">🎵</div>
+      <h1 class="tv-title" id="song-title">Welk jaar komt dit liedje uit?</h1>
+      <div id="song-audio"></div>
+      <p class="tv-sub" id="song-sub"></p>
+      <div id="song-teams" class="chips-row"></div>
+      <div id="song-result"></div>
+    </section>
+
+    <section id="v-price" class="view hidden tv-center" style="padding-top:2vh;">
+      <div class="huge" id="price-emoji"></div>
+      <h1 class="tv-title" id="price-name"></h1>
+      <p class="tv-sub" id="price-sub"></p>
+      <div id="price-teams" class="chips-row"></div>
+      <div id="price-result"></div>
+    </section>
+
+    <section id="v-draw" class="view hidden">
+      <h1 class="tv-title" id="draw-title" style="text-align:center; font-size:clamp(30px,5vw,90px);"></h1>
+      <div id="draw-body"></div>
+    </section>
+
+    <section id="v-thirty" class="view hidden">
+      <h1 class="tv-title" id="th-title" style="text-align:center; font-size:clamp(30px,5vw,90px);"></h1>
+      <div id="th-body"></div>
+    </section>
+
+    <section id="v-roundresult" class="view hidden">
+      <h1 class="tv-title" id="rr-title" style="font-size:clamp(30px,5vw,90px);"></h1>
+      <div id="rr-body"></div>
+    </section>
+
+    <section id="v-joker" class="view hidden tv-center">
+      <div class="huge">🃏</div>
+      <h1 class="tv-title">Zet je joker in!</h1>
+      <p class="tv-sub" style="max-width:70vw; margin:0 auto;">Kies op de basistelefoon één ronde waarin jullie punten verdubbeld worden. Denk goed na: dit kan maar één keer.</p>
+      <div id="joker-teams" class="chips-row"></div>
+    </section>
+
+    <section id="v-final" class="view hidden tv-center" style="padding-top:3vh;">
+      <div class="huge" id="final-emoji" style="font-size:clamp(50px,9vw,160px);">🎰</div>
+      <h1 class="tv-title" id="final-title"></h1>
+      <p class="tv-sub" id="final-sub" style="max-width:75vw; margin:0 auto;"></p>
+      <div id="final-q" style="text-align:left;"></div>
+      <div id="final-teams" class="chips-row"></div>
+      <div id="final-result"></div>
+    </section>
+
+    <section id="v-end" class="view hidden">
+      <div id="end-wait" class="tv-center">
         <div class="huge">🏁</div>
         <h1 class="tv-title">De quiz is afgelopen!</h1>
         <p class="tv-sub">De ontknoping begint zo...</p>
       </div>
       <div id="end-reveal" class="hidden">
-        <div id="end-board">
-          <h1 class="tv-title" style="color:#f59e0b; text-align:center;">🏆 De Einduitslag 🏆</h1>
-          <ul id="tv-scoreboard" class="big-list"></ul>
-          <div id="winner-banner" class="hidden">
-            <h2 style="font-size: clamp(28px, 4.5vw, 84px); margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
-            <p id="winner-name-text" style="font-size: clamp(22px, 3.4vw, 64px); font-weight: bold; margin-top: 0.4em;"></p>
-          </div>
-        </div>
-        <div id="end-breakdown" class="hidden">
-          <h1 class="tv-title" style="color:#38bdf8; text-align:center;">📋 Punten per ronde</h1>
-          <div id="bd-table"></div>
+        <h1 class="tv-title" style="color:#f59e0b; text-align:center;">🏆 De Einduitslag 🏆</h1>
+        <ul id="tv-scoreboard" class="big-list"></ul>
+        <div id="winner-banner" class="hidden">
+          <h2 style="font-size: clamp(28px, 4.5vw, 84px); margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
+          <p id="winner-name-text" style="font-size: clamp(22px, 3.4vw, 64px); font-weight: bold; margin-top: 0.4em;"></p>
         </div>
       </div>
+      <div id="end-breakdown" class="hidden">
+        <h1 class="tv-title" style="text-align:center; font-size:clamp(30px,5vw,90px);">Punten per ronde</h1>
+        <div id="breakdown-table"></div>
+        <p class="tv-sub">🃏 = joker ingezet (dubbele punten)</p>
+      </div>
+    </section>
+
+    <section id="v-review" class="view hidden">
+      <h1 id="review-title" class="tv-title" style="text-align:center; font-size:clamp(28px,4.4vw,80px);"></h1>
+      <p id="review-sub"></p>
+      <div id="review-table"></div>
+      <p id="review-page" class="tv-sub"></p>
+    </section>
+
+    <section id="v-standings" class="view hidden">
+      <h1 class="tv-title" style="color:#38bdf8; text-align:center;">📊 Tussenstand</h1>
+      <ul id="standings-list" class="big-list"></ul>
+    </section>
+
+    <section id="v-pause" class="view hidden">
+      <div class="huge">☕ 🍕 🍷</div>
+      <h1 class="tv-title" style="color:#f59e0b;">Pauze!</h1>
+      <p class="tv-sub">Even bijkletsen en de glazen bijvullen.</p>
     </section>
   </main>
 
   <script>
     const socket = io();
     const $ = (id) => document.getElementById(id);
-    const VIEWS = ["v-lobby", "v-play", "v-pause", "v-standings", "v-end"];
-    const showView = (id) => VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id));
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    const VIEWS = ["v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
+    function showView(id) { VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id)); }
 
+    // ---------- Geluid: de browser wil eerst één klik of toetsdruk ----------
     let audioUnlocked = false;
     function unlock() {
       if (audioUnlocked) return;
@@ -139,42 +228,337 @@
       document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
     }
     ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, unlock));
+    const allAudio = () => Array.from(document.querySelectorAll("audio"));
+
     socket.on("connect", () => socket.emit("register_tv"));
+    socket.on("play_audio", () => allAudio().forEach((a) => { a.currentTime = 0; a.play().catch(() => {}); }));
 
-    // ---------- QR-code ----------
-    async function showJoinUrl() {
-      let url = window.location.origin;
-      if (["localhost", "127.0.0.1", "[::1]", "::1"].includes(window.location.hostname)) {
-        try { const res = await fetch("/api/join-url"); if (res.ok) url = (await res.json()).url || url; } catch (e) {}
-      }
-      $("join-url").textContent = url;
-      const size = Math.round(window.innerWidth * 0.2);
-      let tries = 0;
-      (function draw() {
-        if (typeof QRCode === "undefined") { if (tries++ < 40) setTimeout(draw, 250); return; }
-        $("qrcode").replaceChildren();
-        new QRCode($("qrcode"), { text: url, width: size, height: size, colorDark: "#0f172a", colorLight: "#ffffff" });
-      })();
-    }
-    showJoinUrl();
-
-    // ---------- Spiekmeldingen: blijven staan totdat de speler terug is ----------
-    let shownAway = new Set();
-    function renderAway(list) {
-      const holder = $("tv-alerts");
-      holder.replaceChildren();
-      const now = new Set();
-      list.forEach((a) => {
-        now.add(a.deviceId);
-        const box = document.createElement("div");
-        box.className = "tv-alert " + (a.reason === "locked" ? "locked" : "app") + (shownAway.has(a.deviceId) ? "" : " fresh");
-        box.textContent = a.reason === "locked" ? `🔒 ${a.teamName} · ${a.label}: scherm vergrendeld` : `🚨 ${a.teamName} · ${a.label} heeft de quiz verlaten`;
-        holder.appendChild(box);
+    // ---------- Spiekmeldingen: blijven staan tot de speler weer kijkt ----------
+    let shownAlerts = new Set();
+    function renderAlerts(list) {
+      const box = $("tv-alerts");
+      box.replaceChildren();
+      const keys = new Set();
+      (list || []).forEach((a) => {
+        keys.add(a.key);
+        const d = el("div", "tv-alert " + (a.reason === "locked" ? "locked" : "app"));
+        d.textContent = a.reason === "locked"
+          ? `🔒 ${a.label} (${a.teamName}) heeft het scherm vergrendeld`
+          : `🚨 ${a.label} (${a.teamName}) heeft de app verlaten`;
+        box.appendChild(d);
+        if (!shownAlerts.has(a.key)) QuizFX.alarm(a.reason === "locked");
       });
-      shownAway = now;
+      shownAlerts = keys;
     }
 
-    // ---------- Ontknoping ----------
+    // ---------- Hulpjes ----------
+    function chips(box, list, showStatus, label) {
+      box.replaceChildren();
+      list.forEach((t) => {
+        const c = el("span", "tchip" + (showStatus && t.answered ? " done" : "") + (t.connected === false ? " off" : ""));
+        c.textContent = (showStatus && t.answered ? "✓ " : "") + t.name + (label ? label(t) : "");
+        box.appendChild(c);
+      });
+    }
+    function lettersGrid(box, options, correct, extraFn) {
+      box.replaceChildren();
+      const grid = el("div", "qgrid");
+      options.forEach((opt, i) => {
+        const d = el("div", "qo" + (correct === i ? " correct" : ""));
+        const l = el("b", "letter", QuizFX.letter(i));
+        d.append(l, document.createTextNode(opt));
+        if (correct === i) d.append(el("b", "", "  ✅"));
+        grid.appendChild(d);
+      });
+      box.appendChild(grid);
+    }
+    const medal = (rank) => (rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`);
+    function standingsList(ul, rows) {
+      ul.replaceChildren();
+      (rows || []).forEach((row) => {
+        const li = el("li");
+        li.append(el("span", "", `${medal(row.rank)}  ${row.name}`));
+        const b = el("b", "", `${row.score} pt`);
+        b.style.color = "#38bdf8";
+        li.append(b);
+        ul.appendChild(li);
+      });
+    }
+    let lastSecs = null;
+    let curTimer = null;
+    function bigTimer(info, el2) {
+      if (el2) el2.textContent = info ? info.secs : "";
+    }
+
+    // ---------- Weergave per stap ----------
+    let renderedMedia = null;
+    const mediaKey = (...a) => a.join("|");
+
+    function renderInfo(s) {
+      showView("v-info");
+      $("info-emoji").textContent = s.emoji || "";
+      $("info-title").textContent = s.title;
+      $("info-text").textContent = s.text || "";
+      const p = $("info-points");
+      p.classList.toggle("hidden", !s.roundIntro);
+      if (s.roundIntro) p.textContent = `💯 Hier kun je ${s.points} punten verdienen`;
+    }
+
+    function renderMc(s) {
+      showView("v-mc");
+      $("mc-cat").classList.toggle("hidden", !s.category || s.test);
+      $("mc-cat").textContent = s.category || "";
+      $("mc-question").textContent = s.question;
+      const isBlur = s.variant === "blur", isLogo = s.variant === "logo";
+      const key = mediaKey(s.id, s.variant, s.status === "closed" ? "rev" : "q");
+      if (isBlur) {
+        const box = $("mc-media");
+        const maxStep = s.blurMax;
+        const step = s.status === "closed" ? maxStep : s.blurStep;
+        QuizFX.renderBlur(box, s.media, step, maxStep, s.media ? s.media.src : "Foto ontbreekt");
+        $("mc-dots").classList.toggle("hidden", s.status === "closed");
+        const dots = $("mc-dots");
+        dots.replaceChildren();
+        for (let i = 0; i <= maxStep; i++) dots.appendChild(el("i", i <= s.blurStep ? "on" : ""));
+        const pts = s.blurPoints && s.blurPoints[Math.min(s.blurStep, s.blurPoints.length - 1)];
+        $("mc-pointsnow").classList.toggle("hidden", s.status === "closed" || s.test);
+        $("mc-pointsnow").textContent = `Nu goed = ${pts} punten${s.blurStep < maxStep ? ", maar de foto wordt nog scherper…" : ""}`;
+      } else if (isLogo) {
+        if (renderedMedia !== key) { QuizFX.renderLogo($("mc-media"), s.media, s.hide, s.status === "closed", s.media ? s.media.src : "Logo ontbreekt"); renderedMedia = key; }
+        $("mc-dots").classList.add("hidden");
+        $("mc-pointsnow").classList.add("hidden");
+      } else {
+        if (renderedMedia !== key) { QuizFX.renderMedia($("mc-media"), s.media); renderedMedia = key; }
+        $("mc-dots").classList.add("hidden");
+        $("mc-pointsnow").classList.add("hidden");
+      }
+      lettersGrid($("mc-options"), s.options, s.answer);
+      $("mc-explain").textContent = s.status === "closed" && s.explanation ? `💡 ${s.explanation}` : "";
+      if (s.status === "closed" && s.results) {
+        const box = $("mc-teams");
+        box.replaceChildren();
+        s.results.forEach((r) => {
+          const c = el("span", "tchip " + (r.ok ? "done" : ""));
+          c.style.background = r.ok ? "#15803d" : "#7f1d1d";
+          c.textContent = `${r.ok ? "✔" : "✘"} ${r.name}${r.ok && r.pts > 1 ? " +" + r.pts : ""}`;
+          box.appendChild(c);
+        });
+      } else {
+        chips($("mc-teams"), s.teams, true);
+      }
+    }
+
+    function renderMemory(s) {
+      showView("v-memory");
+      $("mem-title").textContent = s.prompt;
+      const body = $("mem-body");
+      body.replaceChildren();
+      if (s.status === "idle") {
+        body.append(el("p", "tv-sub", "Pak jullie telefoon klaar… de quizmaster start zo."));
+      } else if (s.status === "writing") {
+        body.append(el("p", "tv-sub", "Schrijf zoveel mogelijk op via de telefoon (iedereen in het team mag meeschrijven)."));
+        const row = el("div", "chips-row");
+        s.teams.forEach((t) => row.append(el("span", "tchip", `${t.name}: ${t.count}`)));
+        body.append(row);
+      } else if (s.status === "judging") {
+        body.append(el("div", "huge tv-center", "🧐"), el("p", "tv-sub", "De quizmaster keurt de antwoorden na…"));
+      } else if (s.status === "done") {
+        body.append(el("p", "tv-sub", "Dit stond er op het bord:"));
+        const list = el("div", "chips-row");
+        s.items.forEach((i) => list.append(el("span", "tchip", i)));
+        body.append(list);
+        const res = el("div", "chips-row");
+        s.results.forEach((r) => { const c = el("span", "tchip done", `${r.name}: ${r.good} van ${r.total} goed`); res.append(c); });
+        body.append(res);
+      }
+    }
+
+    let songKey = null;
+    function renderSong(s) {
+      showView("v-song");
+      const key = s.id;
+      if (songKey !== key) {
+        songKey = key;
+        const a = QuizFX.renderMedia($("song-audio"), s.audio, { autoplay: true });
+        if (a && !audioUnlocked) a.play().catch(() => {});
+      }
+      const rev = s.status === "revealed";
+      $("song-title").textContent = rev ? `${s.song.year}` : "Welk jaar komt dit liedje uit?";
+      $("song-title").style.fontSize = rev ? "clamp(80px,14vw,260px)" : "";
+      $("song-emoji").textContent = rev ? "🎶" : "🎵";
+      $("song-sub").textContent = rev
+        ? `${s.song.title} – ${s.song.artist}`
+        : (s.audio ? "Luister goed en leg het liedje op de juiste plek in jullie tijdlijn." : "De quizmaster speelt het liedje af. Leg het op de juiste plek in jullie tijdlijn.");
+      const box = $("song-teams");
+      box.replaceChildren();
+      s.teams.forEach((t) => {
+        const r = rev && s.results ? s.results.find((x) => x.name === t.name) : null;
+        const c = el("span", "tchip");
+        if (rev) {
+          c.style.background = r && r.ok ? "#15803d" : "#7f1d1d";
+          c.textContent = `${r && r.ok ? "✔" : "✘"} ${t.name}`;
+        } else {
+          if (t.answered) c.classList.add("done");
+          if (!t.connected) c.classList.add("off");
+          c.textContent = `${t.answered ? "✓ " : ""}${t.name} · ${t.cards} kaarten`;
+        }
+        box.appendChild(c);
+      });
+    }
+
+    function renderPrice(s) {
+      showView("v-price");
+      $("price-emoji").textContent = s.emoji;
+      $("price-name").textContent = s.name + (s.unit ? ` (${s.unit})` : "");
+      $("price-sub").textContent = s.status === "revealed" ? "" : `Wat kost dit NU, en wat kostte het ${s.agoYears} jaar geleden?`;
+      chips($("price-teams"), s.teams, true);
+      $("price-teams").classList.toggle("hidden", s.status === "revealed");
+      const box = $("price-result");
+      box.replaceChildren();
+      if (s.status === "revealed") {
+        const head = el("div", "chips-row");
+        head.append(el("span", "tchip", `Nu: ${QuizFX.euro(s.truth.now)}`), el("span", "tchip", `${s.agoYears} jaar geleden: ${QuizFX.euro(s.truth.ago)}`));
+        head.style.fontWeight = "bold";
+        box.append(head);
+        const page = {
+          columns: ["Team", "Schatting nu", "Punten", `Schatting ${s.agoYears} jaar geleden`, "Punten"],
+          rows: s.results.map((r) => [
+            r.name,
+            r.now ? { t: QuizFX.euro(r.now.v), ok: r.now.rank === 0 ? true : null } : { t: "–", ok: false },
+            r.now ? "+" + r.now.pts : "0",
+            r.ago ? { t: QuizFX.euro(r.ago.v), ok: r.ago.rank === 0 ? true : null } : { t: "–", ok: false },
+            r.ago ? "+" + r.ago.pts : "0"
+          ])
+        };
+        const t = el("div");
+        t.style.marginTop = "2vh";
+        QuizFX.renderTable(t, page);
+        box.append(t);
+      }
+    }
+
+    function renderDraw(s, state) {
+      showView("v-draw");
+      const body = $("draw-body");
+      body.replaceChildren();
+      if (s.status === "ready") {
+        $("draw-title").textContent = `✏️ Tekenen · beurt ${s.turn} van ${s.total}`;
+        body.append(el("p", "tv-sub", s.total ? "De tekenaars komen aan de tafel van de quizmaster zitten. De rest van het team raadt mee op de telefoon." : "Er zijn geen teams met minstens twee spelers: deze ronde wordt overgeslagen."));
+      } else if (s.status === "drawing") {
+        $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}`;
+        const row = el("div", "chips-row");
+        s.teams.forEach((t) => {
+          const c = el("span", "tchip" + (t.solved ? " done" : ""));
+          c.textContent = `${t.solved ? "✔ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}`;
+          row.append(c);
+        });
+        body.append(row, el("div", "bigtimer", ""));
+        body.lastChild.id = "draw-bigtimer";
+        body.append(el("p", "tv-sub", "Raad mee op je telefoon! Hoe sneller, hoe meer punten."));
+      } else if (s.status === "result") {
+        $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}: dit was het woord`;
+        const g = el("div", "gallery");
+        s.teams.forEach((t) => {
+          if (!t.strokes) return;
+          const card = el("div", "gcard");
+          const wrap = el("div", "padwrap");
+          const cv = el("canvas");
+          wrap.append(cv);
+          card.append(wrap, el("div", "", `${t.solved ? "✔" : "✘"} ${t.name}: ${t.word || ""}`), el("div", "", t.drawer ? `getekend door ${t.drawer}` : ""));
+          card.style.outline = t.solved ? "3px solid #22c55e" : "3px solid #7f1d1d";
+          g.append(card);
+          requestAnimationFrame(() => QuizFX.paintStrokes(cv, t.strokes));
+        });
+        body.append(g);
+      }
+    }
+
+    function renderThirty(s) {
+      showView("v-thirty");
+      const body = $("th-body");
+      body.replaceChildren();
+      const who = s.team ? `${s.team} · ${s.explainer}` : "";
+      if (s.status === "ready") {
+        $("th-title").textContent = `⏱️ 30 Seconds · beurt ${s.turn} van ${s.total}`;
+        body.append(el("p", "tv-sub", `${who} is aan de beurt en legt zo vijf dingen uit aan het eigen team.`), el("div", "huge tv-center", "🎲"));
+      } else if (s.status === "running") {
+        $("th-title").textContent = `${who} legt uit!`;
+        const t = el("div", "bigtimer", "");
+        t.id = "th-bigtimer";
+        body.append(t);
+      } else if (s.status === "judging" || s.status === "result") {
+        $("th-title").textContent = s.status === "judging" ? `Tijd om! De quizmaster keurt de antwoorden van ${s.team} goed…` : `${s.team}: ${s.ok.filter(Boolean).length} van 5 goed`;
+        const w = el("div", "words");
+        s.words.forEach((word, i) => {
+          const r = el("div", "word" + (s.status === "result" ? (s.ok[i] ? " ok" : " no") : ""));
+          r.append(el("span", "", word), el("span", "", s.status === "result" ? (s.ok[i] ? "✔" : "✘") : ""));
+          w.append(r);
+        });
+        body.append(w);
+      } else {
+        $("th-title").textContent = "⏱️ 30 Seconds";
+      }
+    }
+
+    function renderRoundResult(s) {
+      showView("v-roundresult");
+      $("rr-title").textContent = `${s.title}: uitslag`;
+      const body = $("rr-body");
+      body.replaceChildren();
+      const max = s.max || 1;
+      s.rows.forEach((r, i) => {
+        const row = el("div", "rrow");
+        row.append(el("span", "", medal(i + 1)), el("span", "", r.name));
+        const barWrap = el("div");
+        const bar = el("div", "bar");
+        bar.style.width = `${Math.max(1, (r.round / max) * 100)}%`;
+        barWrap.append(bar);
+        const a = el("b", "", `+${r.round}`);
+        a.style.color = "#fbbf24";
+        const b = el("span", "", `${r.total} totaal`);
+        b.style.color = "#94a3b8";
+        row.append(barWrap, a, b);
+        body.append(row);
+      });
+      body.append(el("p", "tv-sub", `Maximaal ${s.max} punten per ronde. De joker wordt pas aan het eind ingezet.`));
+    }
+
+    function renderFinal(s) {
+      showView("v-final");
+      $("final-title").textContent = `Slotvraag: ${s.category}`;
+      const q = $("final-q");
+      q.replaceChildren();
+      const teamsBox = $("final-teams");
+      $("final-result").replaceChildren();
+      if (s.status === "wager") {
+        $("final-sub").textContent = "Hoeveel punten zetten jullie in? Goed = je inzet erbij. Fout = je inzet kwijt!";
+        teamsBox.replaceChildren();
+        s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
+      } else {
+        $("final-sub").textContent = "";
+        const h = el("h1", "tv-q", s.question);
+        h.style.textAlign = "center";
+        q.append(h);
+        const o = el("div");
+        q.append(o);
+        lettersGrid(o, s.options, s.status === "revealed" ? s.answer : null);
+        if (s.status === "revealed") {
+          teamsBox.replaceChildren();
+          s.results.forEach((r) => {
+            const c = el("span", "tchip");
+            c.style.background = r.ok ? "#15803d" : "#7f1d1d";
+            c.textContent = `${r.ok ? "✔" : "✘"} ${r.name}: ${r.delta >= 0 ? "+" : ""}${r.delta}`;
+            teamsBox.append(c);
+          });
+          if (s.explanation) $("final-sub").textContent = `💡 ${s.explanation}`;
+        } else {
+          teamsBox.replaceChildren();
+          s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
+        }
+      }
+    }
+
+    // ---------- Einduitslag ----------
     let revealAnimating = false, revealShown = false, prevReveal = null, cancelReveal = null;
     function resetReveal() {
       if (cancelReveal) cancelReveal();
@@ -184,49 +568,39 @@
     }
     const revealOptions = (onFinish) => ({ table: $("tv-scoreboard"), banner: $("winner-banner"), winnerText: $("winner-name-text"), onFinish });
 
-    function renderBreakdown(bd) {
-      const box = $("bd-table");
-      box.replaceChildren();
-      const t = document.createElement("table");
-      t.className = "bd";
-      const head = document.createElement("tr");
-      ["Team", ...bd.rounds.map((n) => n.replace(/^Ronde \d+:\s*/, "")), ...(bd.hasFinal ? ["Slotvraag"] : []), "Totaal"].forEach((h) => { const th = document.createElement("th"); th.textContent = h; head.appendChild(th); });
-      t.appendChild(head);
-      bd.rows.forEach((r) => {
-        const tr = document.createElement("tr");
-        const add = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); };
-        add(`#${r.rank} ${r.name}`);
-        r.rounds.forEach((x) => add(x.joker ? `${x.pts} ×2 🃏` : String(x.pts), x.joker ? "jk" : ""));
-        if (bd.hasFinal) add(r.final > 0 ? `+${r.final}` : String(r.final));
-        add(String(r.total));
-        tr.lastChild.style.fontWeight = "bold";
-        t.appendChild(tr);
-      });
-      box.appendChild(t);
-    }
-
-    function handleEnd(state) {
+    function renderEnd(end) {
       showView("v-end");
-      const rs = state.revealState;
+      const rs = end.reveal;
       $("end-wait").classList.toggle("hidden", rs !== "idle");
-      $("end-reveal").classList.toggle("hidden", rs === "idle");
-      const showBd = !!state.breakdown;
-      $("end-board").classList.toggle("hidden", showBd);
-      $("end-breakdown").classList.toggle("hidden", !showBd);
-      if (showBd) renderBreakdown(state.breakdown);
-
+      const showBreak = rs === "done" && end.endView === "breakdown" && end.breakdown;
+      $("end-reveal").classList.toggle("hidden", rs === "idle" || showBreak);
+      $("end-breakdown").classList.toggle("hidden", !showBreak);
+      if (showBreak) {
+        const b = end.breakdown;
+        const page = {
+          columns: ["Team", ...b.rounds.map((r) => r.title), "Slot", "Totaal"],
+          rows: b.rows.map((r) => [
+            r.name,
+            ...r.rounds.map((x) => `${x.pts}${x.joker ? " 🃏" : ""}`),
+            r.final === null ? "–" : { t: `${r.final >= 0 ? "+" : ""}${r.final}`, ok: r.final > 0 ? true : r.final < 0 ? false : null },
+            `${r.total}`
+          ])
+        };
+        QuizFX.renderTable($("breakdown-table"), page);
+        return;
+      }
       if (revealAnimating) { prevReveal = rs; return; }
-      if (rs === "running" && state.finalScores) {
+      if (rs === "running" && end.scores) {
         if (prevReveal === "idle") {
           revealAnimating = true;
-          cancelReveal = QuizFX.runReveal(state.finalScores, revealOptions(() => { revealAnimating = false; revealShown = true; socket.emit("reveal_done"); }));
+          cancelReveal = QuizFX.runReveal(end.scores, revealOptions(() => { revealAnimating = false; revealShown = true; socket.emit("reveal_done"); }));
         } else {
-          QuizFX.runReveal(state.finalScores, { ...revealOptions(null), instant: true });
+          QuizFX.runReveal(end.scores, { ...revealOptions(null), instant: true });
           revealShown = true;
           socket.emit("reveal_done");
         }
-      } else if (rs === "done" && state.finalScores && !revealShown) {
-        QuizFX.runReveal(state.finalScores, { ...revealOptions(null), instant: true });
+      } else if (rs === "done" && end.scores && !revealShown) {
+        QuizFX.runReveal(end.scores, { ...revealOptions(null), instant: true });
         revealShown = true;
       } else if (rs === "idle") {
         revealShown = false;
@@ -236,92 +610,98 @@
       prevReveal = rs;
     }
 
-    // ---------- Weergave ----------
-    let wasPaused = false, audioWasPlaying = false;
-    const allAudio = () => Array.from(document.querySelectorAll("audio"));
-
+    // ---------- Hoofdlus ----------
+    let wasPaused = false;
+    let lastStepId = null;
+    let lastBeep = null;
     socket.on("state_update", (state) => {
-      const gs = state.gameState;
-      const meta = state.meta || {};
-      const playing = gs === "PLAY";
-      const isItem = playing && meta.kind === "item";
+      const step = state.step;
+      const inQuiz = state.phase === "PLAY";
 
-      $("tv-round").textContent = meta.roundName || "Familiequiz";
-      $("tv-qnum").classList.toggle("hidden", !(isItem && meta.itemTotal && !["draw", "thirty", "memory"].includes(meta.rtype)));
-      $("tv-qnum").textContent = `Vraag ${meta.itemNo} van ${meta.itemTotal}`;
-      $("tv-practice").classList.toggle("hidden", !(isItem && meta.practice));
-      const p = state.progress;
-      $("tv-progress").classList.toggle("hidden", !(isItem && p && (p.text || p.total)));
-      if (p) $("tv-progress").textContent = p.text || `${p.done} van ${p.total} teams`;
+      $("tv-round").textContent = state.header.round || "Familiequiz";
+      const prog = state.header.progress;
+      $("tv-prog").classList.toggle("hidden", !prog);
+      if (prog) $("tv-prog").textContent = prog.label ? prog.label : `Vraag ${prog.n} van ${prog.total}`;
+      $("tv-points").classList.toggle("hidden", !state.header.points);
+      if (state.header.points) $("tv-points").textContent = `💯 ${state.header.points} punten te verdienen`;
 
-      QuizFX.countdown("tv", playing ? state.timer : null, (info) => {
+      // Aftelklok bovenin en (bij tekenen en 30 seconds) groot in beeld
+      QuizFX.countdown("tv", step && step.timer ? step.timer : null, (info) => {
         $("tv-timerbar").classList.toggle("hidden", !info);
         $("tv-timer").classList.toggle("hidden", !info);
+        curTimer = info;
         if (!info) return;
         $("tv-timer").textContent = `⏱ ${info.secs}s`;
         $("tv-timerfill").style.width = `${Math.round(info.fraction * 100)}%`;
-        $("tv-timerfill").style.background = info.secs <= 5 && info.running ? "#ef4444" : "#22c55e";
+        const low = info.secs <= 5 && info.running;
+        $("tv-timerfill").style.background = low ? "#ef4444" : "#22c55e";
+        bigTimer(info, $("draw-bigtimer"));
+        bigTimer(info, $("th-bigtimer"));
+        if (low && lastSecs !== info.secs) QuizFX.tick();
+        lastSecs = info.secs;
       });
 
-      if (gs === "PAUSED") {
-        if (!wasPaused) audioWasPlaying = allAudio().some((a) => !a.paused && !a.ended);
-        allAudio().forEach((a) => a.pause());
-      } else if (wasPaused && audioWasPlaying && playing) {
-        allAudio().forEach((a) => a.play().catch(() => {}));
-      } else if (!playing) allAudio().forEach((a) => a.pause());
-      wasPaused = gs === "PAUSED";
+      renderAlerts(state.alerts);
 
-      renderAway(state.away || []);
+      // Geluid: pauzeren bij pauze, stoppen buiten de muziekvragen
+      if (state.paused) allAudio().forEach((a) => a.pause());
+      else if (wasPaused && step && step.kind === "song") allAudio().forEach((a) => a.play().catch(() => {}));
+      wasPaused = state.paused;
+      if (step && step.kind !== "song") { allAudio().forEach((a) => a.pause()); songKey = null; }
 
-      if (gs === "LOBBY") {
-        showView("v-lobby");
-        const chips = $("lobby-teams");
-        chips.replaceChildren();
-        (state.teamList || []).forEach((t) => {
-          const c = document.createElement("span");
-          c.className = "tchip" + (!t.connected ? " off" : "");
-          c.textContent = t.name;
-          chips.appendChild(c);
-        });
-        $("lobby-empty").classList.toggle("hidden", (state.teamList || []).length > 0);
-        $("play-root")._key = null;
-        resetReveal();
-      } else if (gs === "PAUSED") {
-        showView("v-pause");
-      } else if (gs === "STANDINGS") {
-        showView("v-standings");
-        const list = $("standings-list");
-        list.replaceChildren();
-        (state.standings || []).forEach((row) => {
-          const li = document.createElement("li");
-          const left = document.createElement("span");
-          left.textContent = `${row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : "#" + row.rank}  ${row.name}`;
-          const pts = document.createElement("b");
-          pts.style.color = "#38bdf8";
-          pts.textContent = `${row.score} pt`;
-          li.append(left, pts);
-          list.appendChild(li);
-        });
-      } else if (playing && state.view) {
-        showView("v-play");
-        const r = Rounds[state.view.rtype];
-        const render = r && (r.tv || r.phone);
-        if (render) render($("play-root"), state.view, {});
-        // Teamchips tonen wie al geantwoord heeft
-        const chips = $("tv-teams");
-        chips.replaceChildren();
-        if (isItem && ["mc", "logo", "blur", "prices", "final"].includes(meta.rtype) && state.view.phase === "open") {
-          (state.teamList || []).forEach((t) => {
-            const c = document.createElement("span");
-            c.className = "tchip" + (t.answered ? " done" : "") + (!t.connected ? " off" : "");
-            c.textContent = (t.answered ? "✓ " : "") + t.name;
-            chips.appendChild(c);
-          });
-        }
-      } else if (gs === "END") {
-        handleEnd(state);
+      if (step && step.id !== lastStepId) { lastStepId = step.id; renderedMedia = null; }
+
+      // Overlays hebben voorrang op de gewone schermen
+      if (state.phase === "PLAY" && state.paused) return showView("v-pause");
+      if (state.review && state.review.data) {
+        showView("v-review");
+        $("review-title").textContent = state.review.data.title;
+        $("review-sub").textContent = state.review.data.subtitle || "";
+        QuizFX.renderTable($("review-table"), state.review.data);
+        $("review-page").textContent = `Pagina ${state.review.page + 1} van ${state.review.total}`;
+        return;
       }
+      if (state.showStandings && state.standings) {
+        showView("v-standings");
+        standingsList($("standings-list"), state.standings);
+        return;
+      }
+
+      if (state.phase === "LOBBY") {
+        showView("v-lobby");
+        chips($("lobby-teams"), state.teamList, false, (t) => ` (${t.members})`);
+        $("lobby-empty").classList.toggle("hidden", state.teamList.length > 0);
+        resetReveal();
+        return;
+      }
+      if (state.phase === "END") return renderEnd(state.end);
+      if (!inQuiz || !step) return;
+
+      switch (step.kind) {
+        case "info": renderInfo(step); break;
+        case "mc": renderMc(step); break;
+        case "memory": renderMemory(step); break;
+        case "song": renderSong(step); break;
+        case "price": renderPrice(step); break;
+        case "draw": renderDraw(step, state); break;
+        case "thirty": renderThirty(step); break;
+        case "roundresult": renderRoundResult(step); break;
+        case "joker":
+          showView("v-joker");
+          chips($("joker-teams"), step.chosen.map((c) => ({ name: c.name, answered: c.done })), true);
+          break;
+        case "final": renderFinal(step); break;
+      }
+      bigTimer(curTimer, $("draw-bigtimer"));
+      bigTimer(curTimer, $("th-bigtimer"));
     });
+
+    // ---------- QR-code ----------
+    fetch("/api/join-url").then((r) => r.json()).then((d) => {
+      $("join-url").textContent = d.url;
+      const make = () => { if (window.QRCode) new QRCode($("qrcode"), { text: d.url, width: 260, height: 260 }); else setTimeout(make, 400); };
+      make();
+    }).catch(() => {});
   </script>
 </body>
 </html>

@@ -1,7 +1,6 @@
-// Gedeelde hulpfuncties voor alle pagina's
-// (geluiden, confetti, media, aftelklok en de onthulling van de einduitslag)
+// Gedeelde hulpfuncties voor alle pagina's: geluid, confetti, aftelklok, media (foto blur, logo's),
+// tekeningen, tabellen met vinkjes en de onthulling van de einduitslag.
 window.QuizFX = (function () {
-  // Eén AudioContext hergebruiken; browsers laten er maar een paar tegelijk toe
   let ctx = null;
   function audio() {
     try {
@@ -10,14 +9,9 @@ window.QuizFX = (function () {
       if (!ctx) ctx = new AC();
       if (ctx.state === "suspended") ctx.resume();
       return ctx;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
-  // Moet vanuit een klik of toetsdruk aangeroepen worden (tv-scherm)
-  function unlockAudio() {
-    audio();
-  }
+  function unlockAudio() { audio(); }
 
   const style = document.createElement("style");
   style.textContent = `
@@ -28,105 +22,82 @@ window.QuizFX = (function () {
   document.head.appendChild(style);
 
   function drumHit() {
-    const c = audio();
-    if (!c) return;
-    const osc = c.createOscillator();
-    const gain = c.createGain();
+    const c = audio(); if (!c) return;
+    const osc = c.createOscillator(), gain = c.createGain();
     osc.frequency.setValueAtTime(150, c.currentTime);
     osc.frequency.exponentialRampToValueAtTime(40, c.currentTime + 0.15);
     gain.gain.setValueAtTime(0.4, c.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, c.currentTime + 0.15);
-    osc.connect(gain);
-    gain.connect(c.destination);
-    osc.start();
-    osc.stop(c.currentTime + 0.15);
+    osc.connect(gain); gain.connect(c.destination);
+    osc.start(); osc.stop(c.currentTime + 0.15);
   }
-
   function fanfare() {
-    const c = audio();
-    if (!c) return;
-    const notes = [261.63, 329.63, 392.0, 523.25, 659.25, 783.99];
-    notes.forEach((freq, idx) => {
+    const c = audio(); if (!c) return;
+    [261.63, 329.63, 392.0, 523.25, 659.25, 783.99].forEach((freq, idx) => {
       const t = c.currentTime + idx * 0.12;
-      const osc = c.createOscillator();
-      const gain = c.createGain();
+      const osc = c.createOscillator(), gain = c.createGain();
       osc.type = "triangle";
       osc.frequency.setValueAtTime(freq, t);
       gain.gain.setValueAtTime(0.3, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-      osc.connect(gain);
-      gain.connect(c.destination);
-      osc.start(t);
-      osc.stop(t + 0.6);
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(t); osc.stop(t + 0.6);
     });
   }
-
   function alarm(isLocked) {
-    const c = audio();
-    if (!c) return;
-    const osc = c.createOscillator();
-    const gain = c.createGain();
+    const c = audio(); if (!c) return;
+    const osc = c.createOscillator(), gain = c.createGain();
     osc.type = isLocked ? "sine" : "sawtooth";
     osc.frequency.setValueAtTime(isLocked ? 350 : 500, c.currentTime);
     osc.frequency.exponentialRampToValueAtTime(isLocked ? 200 : 900, c.currentTime + 0.25);
     gain.gain.setValueAtTime(0.25, c.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, c.currentTime + 0.25);
-    osc.connect(gain);
-    gain.connect(c.destination);
-    osc.start();
-    osc.stop(c.currentTime + 0.25);
+    osc.connect(gain); gain.connect(c.destination);
+    osc.start(); osc.stop(c.currentTime + 0.25);
   }
-
+  // Korte pieptoon bij een goed antwoord of als de tijd bijna om is
+  function tick() {
+    const c = audio(); if (!c) return;
+    const osc = c.createOscillator(), gain = c.createGain();
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.12);
+    osc.connect(gain); gain.connect(c.destination);
+    osc.start(); osc.stop(c.currentTime + 0.12);
+  }
   function launchConfetti() {
     if (typeof confetti !== "function") return;
     const end = Date.now() + 7000;
     const interval = setInterval(() => {
       if (Date.now() >= end) return clearInterval(interval);
-      confetti({
-        particleCount: 50,
-        spread: 360,
-        startVelocity: 30,
-        origin: { x: Math.random(), y: Math.random() - 0.2 }
-      });
+      confetti({ particleCount: 50, spread: 360, startVelocity: 30, origin: { x: Math.random(), y: Math.random() - 0.2 } });
     }, 250);
   }
 
-  // Aftelklok. info = { remainingMs, totalMs, running } of null.
-  // onTick krijgt { secs, fraction, running } (of null om te verbergen).
+  // Aftelklok. info = { remainingMs, totalMs, running } of null. onTick krijgt { secs, fraction, running } of null.
   const clocks = {};
   function countdown(key, info, onTick) {
-    if (clocks[key]) {
-      clearInterval(clocks[key]);
-      delete clocks[key];
-    }
+    if (clocks[key]) { clearInterval(clocks[key]); delete clocks[key]; }
     if (!info) return onTick(null);
     const total = info.totalMs || 1;
     const end = Date.now() + info.remainingMs;
-    const tick = () => {
+    const tickFn = () => {
       const left = info.running ? Math.max(0, end - Date.now()) : info.remainingMs;
       onTick({ secs: Math.ceil(left / 1000), fraction: Math.min(1, left / total), running: info.running });
-      if (left <= 0 && clocks[key]) {
-        clearInterval(clocks[key]);
-        delete clocks[key];
-      }
+      if (left <= 0 && clocks[key]) { clearInterval(clocks[key]); delete clocks[key]; }
     };
-    tick();
-    if (info.running) clocks[key] = setInterval(tick, 250);
+    tickFn();
+    if (info.running) clocks[key] = setInterval(tickFn, 250);
   }
+
+  const LETTERS = ["A", "B", "C", "D", "E", "F"];
+  const letter = (i) => LETTERS[i] || String(i + 1);
 
   // Plaatje of audio in een vak zetten. media = { kind: 'image' | 'audio', src }.
   function renderMedia(box, media, opts) {
     box.replaceChildren();
     if (!media || !media.src) return null;
     const options = opts || {};
-    if (media.kind === "image") {
-      const img = document.createElement("img");
-      img.src = media.src;
-      img.className = "media-img";
-      if (options.imgStyle) img.style.cssText = options.imgStyle;
-      box.appendChild(img);
-      return img;
-    }
     if (media.kind === "audio") {
       const a = document.createElement("audio");
       a.controls = true;
@@ -135,95 +106,202 @@ window.QuizFX = (function () {
       box.appendChild(a);
       return a;
     }
-    return null;
+    const img = document.createElement("img");
+    img.src = media.src;
+    img.className = "media-img";
+    if (options.imgStyle) img.style.cssText = options.imgStyle;
+    img.onerror = () => { img.replaceWith(placeholder("📷", "Plaatje ontbreekt", "width:100%;height:200px;border-radius:8px;")); };
+    box.appendChild(img);
+    return img;
   }
 
-  // Eén regel in de ranglijst
+  function placeholder(emoji, text, css) {
+    const d = document.createElement("div");
+    d.className = "ph";
+    d.style.cssText = css || "";
+    const e = document.createElement("div");
+    e.className = "pic";
+    e.style.fontSize = "3em";
+    e.textContent = emoji;
+    const t = document.createElement("div");
+    t.className = "cap";
+    t.style.cssText = "font-size:0.9rem; margin-top:0.5em; background:rgba(0,0,0,0.45); padding:0.2em 0.8em; border-radius:6px;";
+    t.textContent = text;
+    d.append(e, t);
+    return d;
+  }
+
+  // Foto die steeds scherper wordt: step 0 = heel wazig, step = max: helemaal scherp
+  function blurPx(step, max) {
+    if (!max) return 0;
+    const f = Math.max(0, 1 - step / max);
+    return Math.round(46 * Math.pow(f, 1.6) * 10) / 10;
+  }
+  function renderBlur(box, media, step, max, label) {
+    let wrap = box.querySelector(".blurbox");
+    if (!wrap || wrap.dataset.src !== (media && media.src)) {
+      box.replaceChildren();
+      wrap = document.createElement("div");
+      wrap.className = "blurbox";
+      wrap.dataset.src = (media && media.src) || "";
+      wrap.style.cssText = "width:min(60vw,900px); height:min(34vh,480px); margin:0 auto;";
+      const img = document.createElement("img");
+      img.src = media ? media.src : "";
+      img.alt = "";
+      img.onerror = () => { img.remove(); const ph = placeholder("📷", label || "Foto ontbreekt"); wrap.appendChild(ph); };
+      wrap.appendChild(img);
+      box.appendChild(wrap);
+    }
+    const target = wrap.querySelector("img") || wrap.querySelector(".ph .pic");
+    if (target) target.style.filter = `blur(${blurPx(step, max)}px)`;
+    return wrap;
+  }
+
+  // Logo met weggelaten stukjes: een raster waarvan een deel is afgedekt
+  function seeded(seedStr) {
+    let h = 2166136261;
+    for (let i = 0; i < seedStr.length; i++) { h ^= seedStr.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return () => { h += 0x6d2b79f5; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  function renderLogo(box, media, hide, revealed, label) {
+    box.replaceChildren();
+    const wrap = document.createElement("div");
+    wrap.className = "blurbox logobox";
+    wrap.style.cssText = "width:min(46vw,640px); height:min(36vh,420px); margin:0 auto; background:#fff;";
+    box.appendChild(wrap);
+    const canvas = document.createElement("canvas");
+    wrap.appendChild(canvas);
+    const img = new Image();
+    img.onload = () => {
+      const W = 900, H = Math.round(900 * (img.height / img.width)) || 600;
+      canvas.width = W; canvas.height = H;
+      const c = canvas.getContext("2d");
+      c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
+      c.drawImage(img, 0, 0, W, H);
+      if (!revealed) {
+        const cols = 6, rows = Math.max(3, Math.round(6 * H / W));
+        const rnd = seeded(media.src);
+        const tiles = [];
+        for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) tiles.push([q, r]);
+        tiles.sort(() => rnd() - 0.5);
+        const n = Math.round(tiles.length * hide);
+        c.fillStyle = "#e2e8f0";
+        tiles.slice(0, n).forEach(([q, r]) => c.fillRect(Math.floor(q * W / cols), Math.floor(r * H / rows), Math.ceil(W / cols), Math.ceil(H / rows)));
+      }
+    };
+    img.onerror = () => { wrap.replaceChildren(placeholder("🏷️", label || "Logo ontbreekt")); };
+    img.src = media ? media.src : "";
+  }
+
+  // Tekening (lijst streken met punten 0..1000) op een canvas schilderen
+  function paintStrokes(canvas, strokes) {
+    const w = canvas.clientWidth || canvas.width, h = canvas.clientHeight || canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    const c = canvas.getContext("2d");
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    c.lineCap = "round"; c.lineJoin = "round";
+    (strokes || []).forEach((s) => {
+      if (!s.p || !s.p.length) return;
+      c.strokeStyle = s.c; c.fillStyle = s.c; c.lineWidth = (s.w * w) / 600;
+      if (s.p.length === 1) { c.beginPath(); c.arc(s.p[0][0] * w / 1000, s.p[0][1] * h / 1000, c.lineWidth / 2, 0, Math.PI * 2); c.fill(); return; }
+      c.beginPath();
+      c.moveTo(s.p[0][0] * w / 1000, s.p[0][1] * h / 1000);
+      for (let i = 1; i < s.p.length; i++) c.lineTo(s.p[i][0] * w / 1000, s.p[i][1] * h / 1000);
+      c.stroke();
+    });
+  }
+
+  const euro = (n) => "€" + Number(n).toFixed(2).replace(".", ",");
+
+  // Tabel met vinkjes: columns = [..], rows = [[cel, ...]], cel = tekst of { t, ok }
+  function renderTable(box, page) {
+    box.replaceChildren();
+    if (!page) return;
+    const table = document.createElement("table");
+    table.className = "rtable";
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    page.columns.forEach((c) => { const th = document.createElement("th"); th.textContent = c; hr.appendChild(th); });
+    thead.appendChild(hr);
+    const tbody = document.createElement("tbody");
+    page.rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      row.forEach((cell) => {
+        const td = document.createElement("td");
+        if (cell && typeof cell === "object") {
+          if (cell.ok === true) { td.className = "good"; const i = document.createElement("span"); i.className = "ico-ok"; i.textContent = "✔ "; td.append(i); }
+          else if (cell.ok === false) { td.className = "bad"; const i = document.createElement("span"); i.className = "ico-no"; i.textContent = "✘ "; td.append(i); }
+          else td.className = "dim";
+          td.append(document.createTextNode(cell.t));
+        } else td.textContent = cell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.append(thead, tbody);
+    box.appendChild(table);
+  }
+
   function rankRow(player) {
     const li = document.createElement("li");
     li.className = "rank-card";
     li.style.padding = "0.6em 0.9em";
     li.style.borderRadius = "8px";
     li.style.marginBottom = "8px";
-
     const isWinner = player.rank === 1;
     let badge = `#${player.rank}`;
-    if (player.rank === 1) {
-      badge = "🥇 WINNAAR";
-      li.style.background = "#2563eb";
-      li.style.border = "2px solid #60a5fa";
-    } else if (player.rank === 2) {
-      badge = "🥈 #2";
-      li.style.background = "#1e293b";
-    } else if (player.rank === 3) {
-      badge = "🥉 #3";
-      li.style.background = "#1e293b";
-    } else {
-      li.style.background = "#0f172a";
-    }
-
+    if (player.rank === 1) { badge = "🥇 WINNAAR"; li.style.background = "#2563eb"; li.style.border = "2px solid #60a5fa"; }
+    else if (player.rank === 2) { badge = "🥈 #2"; li.style.background = "#1e293b"; }
+    else if (player.rank === 3) { badge = "🥉 #3"; li.style.background = "#1e293b"; }
+    else li.style.background = "#0f172a";
     const label = document.createElement("span");
     const b = document.createElement("b");
     b.textContent = badge;
     label.append(b, document.createTextNode("\u00a0 " + player.name));
-
     const pts = document.createElement("b");
     pts.textContent = `${player.score} pt`;
     pts.style.color = isWinner ? "#fde047" : "#38bdf8";
     pts.style.fontSize = isWinner ? "1.2em" : "1em";
-
     li.append(label, pts);
     return li;
   }
-
   function showWinners(scores, banner, winnerText) {
     const winners = scores.filter((s) => s.rank === 1).map((s) => s.name);
     if (!winners.length) return;
-    winnerText.textContent =
-      `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
+    winnerText.textContent = `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
     banner.classList.remove("hidden");
   }
-
-  // Onthult de ranglijst van laatste naar eerste plaats (of meteen, met instant).
-  // scores: [{ name, score, rank }] gesorteerd van hoog naar laag.
-  // Geeft een functie terug waarmee je de onthulling kunt annuleren.
+  // Onthult de ranglijst van laatste naar eerste plaats (of meteen, met instant)
   function runReveal(scores, opts) {
     const { table, banner, winnerText, onFinish, instant } = opts;
     table.replaceChildren();
     banner.classList.add("hidden");
-
     if (instant) {
-      scores.forEach((player) => {
-        const li = rankRow(player);
-        li.classList.add("show");
-        table.appendChild(li);
-      });
+      scores.forEach((player) => { const li = rankRow(player); li.classList.add("show"); table.appendChild(li); });
       showWinners(scores, banner, winnerText);
       if (onFinish) onFinish();
       return () => {};
     }
-
     const timers = [];
     const reversed = [...scores].reverse();
     reversed.forEach((player, i) => {
-      timers.push(
-        setTimeout(() => {
-          drumHit();
-          const li = rankRow(player);
-          table.prepend(li);
-          timers.push(setTimeout(() => li.classList.add("show"), 50));
-
-          if (i === reversed.length - 1) {
-            showWinners(scores, banner, winnerText);
-            fanfare();
-            launchConfetti();
-            if (onFinish) onFinish();
-          }
-        }, (i + 1) * 2200)
-      );
+      timers.push(setTimeout(() => {
+        drumHit();
+        const li = rankRow(player);
+        table.prepend(li);
+        timers.push(setTimeout(() => li.classList.add("show"), 50));
+        if (i === reversed.length - 1) {
+          showWinners(scores, banner, winnerText);
+          fanfare();
+          launchConfetti();
+          if (onFinish) onFinish();
+        }
+      }, (i + 1) * 2200));
     });
     return () => timers.forEach(clearTimeout);
   }
 
-  return { unlockAudio, drumHit, fanfare, alarm, launchConfetti, countdown, renderMedia, runReveal };
+  return { unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal };
 })();
