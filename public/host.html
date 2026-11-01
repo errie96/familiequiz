@@ -54,28 +54,10 @@
       <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
     </div>
 
-    <!-- 4. Gezamenlijk Vraag-voor-Vraag Nakijken (ZONDER teamantwoorden) -->
-    <div id="host-review-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; border: 2px solid #38bdf8; margin-bottom: 20px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-        <span class="badge" id="review-round-title" style="background: #f59e0b;">Ronde</span>
-        <span class="badge" id="review-counter-badge" style="background: #3b82f6;">Vraag 1 van X</span>
-      </div>
-
-      <h2 id="review-question-text" style="font-size: 26px; margin: 15px 0;">Vraagtekst...</h2>
-      <div id="review-media" style="text-align: center; margin: 15px 0;"></div>
-      <div id="review-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px;"></div>
-
-      <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center;">
-        <button id="btn-review-prev" class="btn-option" style="width: auto; padding: 10px 18px; margin: 0; background: #334155;">⬅️ Vorige Vraag</button>
-        <button id="btn-skip-to-scores" class="btn-option" style="width: auto; padding: 10px 14px; margin: 0; color: #94a3b8; font-size: 13px; text-decoration: underline;">Direct naar Uitslag ⏩</button>
-        <button id="btn-review-next" class="btn-primary" style="width: auto; padding: 10px 24px; margin: 0; background: #22c55e;">Volgende Vraag ➡️</button>
-      </div>
-    </div>
-
-    <!-- 5. De Grote Ontknoping (Uitslag op het Hostscherm) -->
+    <!-- 4. EERST: De Grote Ontknoping -->
     <div id="host-end-view" class="hidden" style="margin-top: 20px; text-align: center;">
-      <h2 style="color: #f59e0b; font-size: 32px; margin-bottom: 6px;">🏆 De Grote Ontknoping 🏆</h2>
-      <p style="color: #94a3b8; margin-bottom: 20px;">Alle vragen zijn besproken! Tijd voor de ranglijst van onder naar boven.</p>
+      <h2 style="color: #f59e0b; font-size: 34px; margin-bottom: 6px;">🏆 De Grote Ontknoping 🏆</h2>
+      <p style="color: #94a3b8; margin-bottom: 20px;">Alle vragen zijn beantwoord! Klik hieronder om de ranglijst van onder naar boven te onthullen.</p>
 
       <button id="btn-start-reveal" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #ef4444); font-size: 20px; padding: 14px 28px; width: auto; box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4); margin-bottom: 20px;">
         🎬 Start Ontknoping (Slechtste ➔ Beste)
@@ -87,11 +69,36 @@
         <h2 style="font-size: 34px; margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
         <p id="winner-name-text" style="font-size: 28px; font-weight: bold; margin-top: 8px;">TEAM</p>
       </div>
+
+      <!-- Knop die direct na de ontknoping verschijnt -->
+      <div id="review-trigger-container" class="hidden" style="margin-top: 28px;">
+        <button id="btn-go-to-review" class="btn-primary" style="background: #2563eb; font-size: 19px; padding: 14px 28px; width: auto; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);">
+          📝 Vragen & Antwoorden Nakijken ➡️
+        </button>
+      </div>
+    </div>
+
+    <!-- 5. DAARNA: Gezamenlijk Vraag-voor-Vraag Nakijken -->
+    <div id="host-review-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; border: 2px solid #38bdf8; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <span class="badge" id="review-round-title" style="background: #f59e0b;">Ronde</span>
+        <span class="badge" id="review-counter-badge" style="background: #3b82f6;">Vraag 1 van X</span>
+      </div>
+
+      <h2 id="review-question-text" style="font-size: 26px; margin: 15px 0;">Vraagtekst...</h2>
+      <div id="review-media" style="text-align: center; margin: 15px 0;"></div>
+      <div id="review-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px;"></div>
+
+      <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <button id="btn-review-prev" class="btn-option" style="width: auto; padding: 10px 18px; margin: 0; background: #334155;">⬅️ Vorige Vraag</button>
+        <button id="btn-back-to-scoreboard" class="btn-option" style="width: auto; padding: 10px 14px; margin: 0; color: #94a3b8; font-size: 14px; text-decoration: underline;">Terug naar Uitslag 🏆</button>
+        <button id="btn-review-next" class="btn-primary" style="width: auto; padding: 10px 24px; margin: 0; background: #22c55e;">Volgende Vraag ➡️</button>
+      </div>
     </div>
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
-    <!-- Deelnemerslijst Status (ZONDER scores tijdens het spel) -->
+    <!-- Deelnemerslijst Status -->
     <div>
       <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
       <ul id="players-status-list"></ul>
@@ -143,7 +150,7 @@
       colorLight: "#ffffff"
     });
 
-    // Geluiden
+    // Geluidseffecten
     function playAlarmSound(isLocked) {
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -246,10 +253,11 @@
       }
     });
 
-    // Knoppen nakijk-scherm
+    // Knoppen nakijken
+    document.getElementById("btn-go-to-review").addEventListener("click", () => socket.emit("start_review"));
     document.getElementById("btn-review-next").addEventListener("click", () => socket.emit("next_review_question"));
     document.getElementById("btn-review-prev").addEventListener("click", () => socket.emit("prev_question"));
-    document.getElementById("btn-skip-to-scores").addEventListener("click", () => socket.emit("trigger_final_results"));
+    document.getElementById("btn-back-to-scoreboard").addEventListener("click", () => socket.emit("back_to_scores"));
 
     // Spiekalarm
     socket.on("cheat_warning", (data) => {
@@ -296,7 +304,6 @@
       const reviewView = document.getElementById("host-review-view");
       const endView = document.getElementById("host-end-view");
 
-      // Schermen resetten
       lobbyBox.classList.add("hidden");
       pauseView.classList.add("hidden");
       mainView.classList.add("hidden");
@@ -347,11 +354,16 @@
             optionsBox.appendChild(div);
           });
         }
+      } else if (state.gameState === "END") {
+        // Eerst de uitslag onthullen
+        endView.classList.remove("hidden");
+        btnNext.disabled = true;
+        btnPrev.disabled = true;
       } else if (state.gameState === "REVIEW" && state.reviewQuestion) {
-        // Gezamenlijk vraag-voor-vraag nakijken
+        // Daarna rustig nakijken
         reviewView.classList.remove("hidden");
-        btnNext.textContent = "Volgende ➡️";
-        btnPrev.disabled = false;
+        btnNext.disabled = true;
+        btnPrev.disabled = true;
 
         const rq = state.reviewQuestion;
         document.getElementById("review-round-title").textContent = rq.roundName;
@@ -378,26 +390,22 @@
           div.innerHTML = `${['A', 'B', 'C', 'D'][idx]}: ${opt} ${isCorrect ? ' &nbsp;<b>✅ JUIST</b>' : ''}`;
           rOptions.appendChild(div);
         });
-
-      } else if (state.gameState === "END") {
-        endView.classList.remove("hidden");
-        btnNext.disabled = true;
-        btnPrev.disabled = true;
       }
 
       renderPlayerStatuses(state.playerList, state.gameState);
     });
 
-    // Einduitslag data ontvangen
+    // Uitslagdata binnenkrijgen
     socket.on("game_over", (data) => {
       cachedFinalScores = data.finalScores;
       isRevealing = false;
       document.getElementById("scoreboard-table").innerHTML = "";
       document.getElementById("winner-banner").classList.add("hidden");
+      document.getElementById("review-trigger-container").classList.add("hidden");
       document.getElementById("btn-start-reveal").classList.remove("hidden");
     });
 
-    // Start de ontknoping (van onder naar boven)
+    // Ontknoping starten van onder naar boven
     document.getElementById("btn-start-reveal").addEventListener("click", () => {
       if (isRevealing || cachedFinalScores.length === 0) return;
       isRevealing = true;
@@ -452,6 +460,9 @@
             const banner = document.getElementById("winner-banner");
             document.getElementById("winner-name-text").textContent = `🏆 ${player.name} WINT DE FAMILIEQUIZ! 🏆`;
             banner.classList.remove("hidden");
+            
+            // Knop voor het nakijken van de antwoorden verschijnt nu direct onder de winnaarsbanner
+            document.getElementById("review-trigger-container").classList.remove("hidden");
           }
 
         }, (i + 1) * 2200);
