@@ -7,15 +7,16 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <script src="shared.js"></script>
 </head>
 <body style="max-width: 960px; margin: 0 auto; padding: 20px;">
   <div class="card" style="max-width: 100%;">
-    
+
     <!-- Bedieningsbalk -->
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 20px;">
       <div>
         <h1 style="text-align: left; margin: 0;">Quiz Master Regie</h1>
-        <small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
+        <small id="connection-status" style="color: #94a3b8;">○ Verbinden...</small>
       </div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Reset</button>
@@ -25,10 +26,10 @@
       </div>
     </div>
 
-    <!-- Live Meldingen Container -->
+    <!-- Live meldingen -->
     <div id="cheat-alerts"></div>
 
-    <!-- 1. Lobby & QR Code -->
+    <!-- 1. Lobby & QR-code -->
     <div id="lobby-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
       <h2>Laat de familie scannen om mee te doen 📱</h2>
       <p style="color: #94a3b8; margin-bottom: 12px;">Link: <b id="join-url-text" style="color:#38bdf8;"></b></p>
@@ -42,10 +43,13 @@
       <p style="color: #94a3b8;">Alle telefoons staan op pauze. Meldingen zijn tijdelijk uitgeschakeld.</p>
     </div>
 
-    <!-- 3. Huidige Vraagweergave (tijdens het spelen) -->
+    <!-- 3. Huidige vraag (tijdens het spelen) -->
     <div id="host-main-view">
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-        <span class="badge" id="host-round-title">Familiequiz</span>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="badge" id="host-round-title">Familiequiz</span>
+          <span class="badge hidden" id="host-question-number" style="background: #3b82f6;"></span>
+        </div>
         <span class="badge" id="submission-status-badge" style="background: #334155;">Iedereen kiest...</span>
       </div>
 
@@ -54,7 +58,7 @@
       <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
     </div>
 
-    <!-- 4. EERST: De Grote Ontknoping -->
+    <!-- 4. Eerst: de grote ontknoping -->
     <div id="host-end-view" class="hidden" style="margin-top: 20px; text-align: center;">
       <h2 style="color: #f59e0b; font-size: 34px; margin-bottom: 6px;">🏆 De Grote Ontknoping 🏆</h2>
       <p style="color: #94a3b8; margin-bottom: 20px;">Alle vragen zijn beantwoord! Klik hieronder om de ranglijst van onder naar boven te onthullen.</p>
@@ -70,7 +74,6 @@
         <p id="winner-name-text" style="font-size: 28px; font-weight: bold; margin-top: 8px;">TEAM</p>
       </div>
 
-      <!-- Knop die direct na de ontknoping verschijnt -->
       <div id="review-trigger-container" class="hidden" style="margin-top: 28px;">
         <button id="btn-go-to-review" class="btn-primary" style="background: #2563eb; font-size: 19px; padding: 14px 28px; width: auto; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);">
           📝 Vragen & Antwoorden Nakijken ➡️
@@ -78,7 +81,7 @@
       </div>
     </div>
 
-    <!-- 5. DAARNA: Gezamenlijk Vraag-voor-Vraag Nakijken -->
+    <!-- 5. Daarna: gezamenlijk vraag voor vraag nakijken -->
     <div id="host-review-view" class="hidden" style="background: #0f172a; padding: 24px; border-radius: 12px; border: 2px solid #38bdf8; margin-bottom: 20px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
         <span class="badge" id="review-round-title" style="background: #f59e0b;">Ronde</span>
@@ -98,7 +101,7 @@
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
-    <!-- Deelnemerslijst Status -->
+    <!-- Deelnemerslijst -->
     <div>
       <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
       <ul id="players-status-list"></ul>
@@ -107,19 +110,7 @@
   </div>
 
   <style>
-    @keyframes pulse {
-      0% { transform: scale(0.98); }
-      100% { transform: scale(1.02); }
-    }
-    .rank-card {
-      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-      transform: translateY(20px);
-      opacity: 0;
-    }
-    .rank-card.show {
-      transform: translateY(0);
-      opacity: 1;
-    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
     .correct-answer-card {
       background: #15803d !important;
       border: 2px solid #4ade80 !important;
@@ -131,371 +122,333 @@
 
   <script>
     const socket = io();
+    const $ = (id) => document.getElementById(id);
 
-    // Host Token
-    let hostToken = localStorage.getItem("quiz_host_token");
-    if (!hostToken) {
-      hostToken = "host_" + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem("quiz_host_token", hostToken);
+    // ------------------------------------------------------------
+    // Pincode (staat in de console van de server)
+    // ------------------------------------------------------------
+    function setStatus(text, color) {
+      $("connection-status").textContent = text;
+      $("connection-status").style.color = color;
     }
 
-    // QR Code
-    const joinUrl = window.location.origin;
-    document.getElementById("join-url-text").textContent = joinUrl;
-    new QRCode(document.getElementById("qrcode"), {
-      text: joinUrl,
-      width: 160,
-      height: 160,
-      colorDark: "#0f172a",
-      colorLight: "#ffffff"
+    function registerHost() {
+      let pin = localStorage.getItem("quiz_host_pin");
+      if (!pin) {
+        pin = (prompt("Host-pincode (staat in de console van de server):") || "").trim();
+        if (pin) localStorage.setItem("quiz_host_pin", pin);
+      }
+      if (pin) {
+        socket.emit("register_host", { pin });
+      } else {
+        setStatus("● Geen pincode ingevoerd. Ververs de pagina.", "#ef4444");
+      }
+    }
+
+    socket.on("connect", registerHost);
+    socket.on("host_confirmed", () => setStatus("● Verbonden als Host", "#4ade80"));
+    socket.on("auth_denied", () => {
+      localStorage.removeItem("quiz_host_pin");
+      alert("Onjuiste pincode.");
+      registerHost();
     });
+    socket.on("disconnect", () => setStatus("○ Verbinding verbroken...", "#ef4444"));
+    socket.on("host_error", (data) => alert(data.message));
 
-    // Geluidseffecten
-    function playAlarmSound(isLocked) {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = isLocked ? "sine" : "sawtooth";
-        const startFreq = isLocked ? 350 : 500;
-        const endFreq = isLocked ? 200 : 900;
-        osc.frequency.setValueAtTime(startFreq, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(endFreq, audioCtx.currentTime + 0.25);
-        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.25);
-      } catch (e) {}
+    // ------------------------------------------------------------
+    // QR-code: op localhost werkt de link niet voor telefoons,
+    // dus vraag dan het wifi-adres van de server op.
+    // ------------------------------------------------------------
+    async function showJoinUrl() {
+      let url = window.location.origin;
+      if (["localhost", "127.0.0.1", "[::1]", "::1"].includes(window.location.hostname)) {
+        try {
+          const res = await fetch("/api/join-url");
+          if (res.ok) url = (await res.json()).url || url;
+        } catch (e) {}
+      }
+      $("join-url-text").textContent = url;
+      $("qrcode").replaceChildren();
+      new QRCode($("qrcode"), { text: url, width: 160, height: 160, colorDark: "#0f172a", colorLight: "#ffffff" });
     }
+    showJoinUrl();
 
-    function playVictoryFanfare() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99];
-        notes.forEach((freq, idx) => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = "triangle";
-          osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.12);
-          gain.gain.setValueAtTime(0.3, audioCtx.currentTime + idx * 0.12);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.12 + 0.6);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start(audioCtx.currentTime + idx * 0.12);
-          osc.stop(audioCtx.currentTime + idx * 0.12 + 0.6);
-        });
-      } catch (e) {}
-    }
-
-    function playDrumHit() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
-      } catch (e) {}
-    }
-
-    function launchMassiveConfetti() {
-      const duration = 7 * 1000;
-      const animationEnd = Date.now() + duration;
-
-      const interval = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
-        if (timeLeft <= 0) {
-          return clearInterval(interval);
-        }
-        confetti({
-          particleCount: 50,
-          spread: 360,
-          startVelocity: 30,
-          origin: { x: Math.random(), y: Math.random() - 0.2 }
-        });
-      }, 250);
-    }
-
-    socket.on("connect", () => {
-      document.getElementById("connection-status").textContent = "● Verbonden als Host";
-      document.getElementById("connection-status").style.color = "#4ade80";
-      socket.emit("register_host", { token: hostToken });
-    });
-
-    socket.on("disconnect", () => {
-      document.getElementById("connection-status").textContent = "○ Verbinding verbroken...";
-      document.getElementById("connection-status").style.color = "#ef4444";
-    });
-
-    socket.on("host_confirmed", (data) => {
-      if (data.token) localStorage.setItem("quiz_host_token", data.token);
-    });
-
-    // Knoppen bediening
-    const btnNext = document.getElementById("btn-next");
-    const btnPrev = document.getElementById("btn-prev");
-    const btnPause = document.getElementById("btn-pause");
-    const btnReset = document.getElementById("btn-reset");
+    // ------------------------------------------------------------
+    // Knoppen
+    // ------------------------------------------------------------
+    const btnNext = $("btn-next");
+    const btnPrev = $("btn-prev");
+    const btnPause = $("btn-pause");
 
     btnNext.addEventListener("click", () => socket.emit("next_question"));
     btnPrev.addEventListener("click", () => socket.emit("prev_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
-    btnReset.addEventListener("click", () => {
+    $("btn-reset").addEventListener("click", () => {
       if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden gewist en we keren terug naar de startpagina.")) {
         socket.emit("reset_quiz");
       }
     });
 
-    // Knoppen nakijken
-    document.getElementById("btn-go-to-review").addEventListener("click", () => socket.emit("start_review"));
-    document.getElementById("btn-review-next").addEventListener("click", () => socket.emit("next_review_question"));
-    document.getElementById("btn-review-prev").addEventListener("click", () => socket.emit("prev_question"));
-    document.getElementById("btn-back-to-scoreboard").addEventListener("click", () => socket.emit("back_to_scores"));
+    $("btn-go-to-review").addEventListener("click", () => socket.emit("start_review"));
+    $("btn-review-next").addEventListener("click", () => socket.emit("next_review_question"));
+    $("btn-review-prev").addEventListener("click", () => socket.emit("prev_review_question"));
+    $("btn-back-to-scoreboard").addEventListener("click", () => socket.emit("back_to_scores"));
 
+    // ------------------------------------------------------------
     // Spiekalarm
+    // ------------------------------------------------------------
     socket.on("cheat_warning", (data) => {
       const isLocked = data.reason === "locked";
-      playAlarmSound(isLocked);
+      QuizFX.alarm(isLocked);
 
-      const container = document.getElementById("cheat-alerts");
-      const alert = document.createElement("div");
-      alert.className = "alert-box";
+      const box = document.createElement("div");
+      box.className = "alert-box";
+      box.style.backgroundColor = isLocked ? "#d97706" : "#dc2626";
+      box.style.border = isLocked ? "2px solid #fbbf24" : "2px solid #f87171";
 
-      if (isLocked) {
-        alert.style.backgroundColor = "#d97706";
-        alert.style.border = "2px solid #fbbf24";
-        alert.innerHTML = `🔒 <b>TELEFOON VERGRENDELD:</b> <u>${data.playerName}</u> vergrendelde het scherm om ${data.timestamp}`;
-      } else {
-        alert.style.backgroundColor = "#dc2626";
-        alert.style.border = "2px solid #f87171";
-        alert.innerHTML = `🚨 <b>ANDERE APP GEOPEND:</b> <u>${data.playerName}</u> verliet de quiz om ${data.timestamp}!`;
-      }
+      const label = document.createElement("b");
+      label.textContent = isLocked ? "TELEFOON VERGRENDELD:" : "ANDERE APP GEOPEND:";
+      const name = document.createElement("u");
+      name.textContent = data.playerName;
+      box.append(
+        isLocked ? "🔒 " : "🚨 ",
+        label,
+        " ",
+        name,
+        isLocked
+          ? ` vergrendelde het scherm om ${data.timestamp}`
+          : ` verliet de quiz om ${data.timestamp}!`
+      );
 
-      container.prepend(alert);
+      $("cheat-alerts").prepend(box);
       setTimeout(() => {
-        alert.style.transition = "opacity 0.4s ease";
-        alert.style.opacity = "0";
-        setTimeout(() => alert.remove(), 400);
+        box.style.transition = "opacity 0.4s ease";
+        box.style.opacity = "0";
+        setTimeout(() => box.remove(), 400);
       }, 7000);
     });
 
-    socket.on("all_submitted", () => {
-      document.getElementById("submission-status-badge").textContent = "✅ Iedereen heeft ingediend!";
-      document.getElementById("submission-status-badge").style.background = "#22c55e";
-    });
-
+    // ------------------------------------------------------------
+    // Weergave
+    // ------------------------------------------------------------
+    let renderedQuestionId = null; // vraag die nu in de hoofdweergave staat
+    let renderedReviewId = null;   // vraag die nu in de nakijkweergave staat
+    let wasPaused = false;
+    let audioWasPlaying = false;
     let cachedFinalScores = [];
-    let isRevealing = false;
+    let revealStatus = "idle";     // idle | running | done
+    let cancelReveal = null;
 
-    // State Synchronisatie
-    socket.on("state_update", (state) => {
-      const mediaBox = document.getElementById("host-media");
-      const optionsBox = document.getElementById("host-options");
-      const lobbyBox = document.getElementById("lobby-container");
-      const pauseView = document.getElementById("host-pause-view");
-      const mainView = document.getElementById("host-main-view");
-      const reviewView = document.getElementById("host-review-view");
-      const endView = document.getElementById("host-end-view");
+    function allAudio() {
+      return Array.from(document.querySelectorAll("audio"));
+    }
 
-      lobbyBox.classList.add("hidden");
-      pauseView.classList.add("hidden");
-      mainView.classList.add("hidden");
-      reviewView.classList.add("hidden");
-      endView.classList.add("hidden");
-
-      if (state.gameState === "LOBBY") {
-        lobbyBox.classList.remove("hidden");
-        mainView.classList.remove("hidden");
-        btnNext.textContent = "Start Quiz 🚀";
-        btnPrev.disabled = true;
-        document.getElementById("host-question").textContent = "Wachten op de start...";
-        document.getElementById("submission-status-badge").textContent = "Wachten...";
-        document.getElementById("submission-status-badge").style.background = "#334155";
-        mediaBox.innerHTML = "";
-        optionsBox.innerHTML = "";
-      } else if (state.gameState === "PAUSED") {
-        pauseView.classList.remove("hidden");
-        btnPause.textContent = "▶️ Hervat Quiz";
-        btnPause.style.background = "#22c55e";
-      } else if (state.gameState === "QUESTION" || state.gameState === "WAITING_NEXT") {
-        mainView.classList.remove("hidden");
-        btnNext.textContent = "Volgende ➡️";
-        btnPrev.disabled = false;
-        btnPause.textContent = "☕ Pauzeer";
-        btnPause.style.background = "#f59e0b";
-
-        document.getElementById("host-round-title").textContent = state.roundName || "Familiequiz";
-        if (state.gameState === "QUESTION" && state.currentQuestion) {
-          document.getElementById("submission-status-badge").textContent = "Bezig met antwoorden...";
-          document.getElementById("submission-status-badge").style.background = "#334155";
-          document.getElementById("host-question").textContent = state.currentQuestion.question;
-          mediaBox.innerHTML = "";
-          optionsBox.innerHTML = "";
-
-          if (state.currentQuestion.type === "location" && state.currentQuestion.imageUrl) {
-            mediaBox.innerHTML = `<img src="${state.currentQuestion.imageUrl}" style="max-height: 250px; border-radius: 8px;">`;
-          }
-          if (state.currentQuestion.type === "audio" && state.currentQuestion.audioUrl) {
-            mediaBox.innerHTML = `<audio controls autoplay src="${state.currentQuestion.audioUrl}"></audio>`;
-          }
-
-          state.currentQuestion.options.forEach((opt, idx) => {
-            const div = document.createElement("div");
-            div.className = "btn-option";
-            div.style.padding = "10px";
-            div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
-            optionsBox.appendChild(div);
-          });
-        }
-      } else if (state.gameState === "END") {
-        // Eerst de uitslag onthullen
-        endView.classList.remove("hidden");
-        btnNext.disabled = true;
-        btnPrev.disabled = true;
-      } else if (state.gameState === "REVIEW" && state.reviewQuestion) {
-        // Daarna rustig nakijken
-        reviewView.classList.remove("hidden");
-        btnNext.disabled = true;
-        btnPrev.disabled = true;
-
-        const rq = state.reviewQuestion;
-        document.getElementById("review-round-title").textContent = rq.roundName;
-        document.getElementById("review-counter-badge").textContent = `Vraag ${state.reviewProgress.current} van ${state.reviewProgress.total}`;
-        document.getElementById("review-question-text").textContent = rq.question;
-
-        const rMedia = document.getElementById("review-media");
-        rMedia.innerHTML = "";
-        if (rq.type === "location" && rq.imageUrl) {
-          rMedia.innerHTML = `<img src="${rq.imageUrl}" style="max-height: 250px; border-radius: 8px;">`;
-        }
-        if (rq.type === "audio" && rq.audioUrl) {
-          rMedia.innerHTML = `<audio controls autoplay src="${rq.audioUrl}"></audio>`;
-        }
-
-        const rOptions = document.getElementById("review-options");
-        rOptions.innerHTML = "";
-        rq.options.forEach((opt, idx) => {
-          const div = document.createElement("div");
-          const isCorrect = (idx === rq.answer);
-          div.className = `btn-option ${isCorrect ? 'correct-answer-card' : ''}`;
-          div.style.padding = "14px";
-          div.style.borderRadius = "8px";
-          div.innerHTML = `${['A', 'B', 'C', 'D'][idx]}: ${opt} ${isCorrect ? ' &nbsp;<b>✅ JUIST</b>' : ''}`;
-          rOptions.appendChild(div);
-        });
+    // Plaatje of audio opbouwen. Alleen aanroepen als de vraag wisselt,
+    // anders start het nummer opnieuw bij elke melding.
+    function buildMedia(box, q) {
+      box.replaceChildren();
+      if (q.type === "location" && q.imageUrl) {
+        const img = document.createElement("img");
+        img.src = q.imageUrl;
+        img.style.cssText = "max-height: 250px; border-radius: 8px;";
+        box.appendChild(img);
       }
+      if (q.type === "audio" && q.audioUrl) {
+        const a = document.createElement("audio");
+        a.controls = true;
+        a.autoplay = true;
+        a.src = q.audioUrl;
+        box.appendChild(a);
+      }
+    }
 
-      renderPlayerStatuses(state.playerList, state.gameState);
-    });
+    function resetReveal() {
+      if (cancelReveal) cancelReveal();
+      cancelReveal = null;
+      revealStatus = "idle";
+      $("scoreboard-table").replaceChildren();
+      $("winner-banner").classList.add("hidden");
+      $("review-trigger-container").classList.add("hidden");
+      $("btn-start-reveal").classList.remove("hidden");
+    }
 
-    // Uitslagdata binnenkrijgen
-    socket.on("game_over", (data) => {
-      cachedFinalScores = data.finalScores;
-      isRevealing = false;
-      document.getElementById("scoreboard-table").innerHTML = "";
-      document.getElementById("winner-banner").classList.add("hidden");
-      document.getElementById("review-trigger-container").classList.add("hidden");
-      document.getElementById("btn-start-reveal").classList.remove("hidden");
-    });
-
-    // Ontknoping starten van onder naar boven
-    document.getElementById("btn-start-reveal").addEventListener("click", () => {
-      if (isRevealing || cachedFinalScores.length === 0) return;
-      isRevealing = true;
-      document.getElementById("btn-start-reveal").classList.add("hidden");
-
-      const table = document.getElementById("scoreboard-table");
-      table.innerHTML = "";
-
-      const reversedList = [...cachedFinalScores].reverse();
-
-      reversedList.forEach((player, i) => {
-        const trueRank = cachedFinalScores.length - i;
-        const isWinner = (trueRank === 1);
-
-        setTimeout(() => {
-          playDrumHit();
-
-          const li = document.createElement("li");
-          li.className = "rank-card";
-          li.style.padding = "14px 18px";
-          li.style.borderRadius = "8px";
-          li.style.marginBottom = "8px";
-          li.style.display = "flex";
-          li.style.justifyContent = "space-between";
-
-          let rankBadge = `#${trueRank}`;
-          if (trueRank === 1) {
-            rankBadge = "🥇 WINNAAR";
-            li.style.background = "#2563eb";
-            li.style.border = "2px solid #60a5fa";
-          } else if (trueRank === 2) {
-            rankBadge = "🥈 #2";
-            li.style.background = "#1e293b";
-          } else if (trueRank === 3) {
-            rankBadge = "🥉 #3";
-            li.style.background = "#1e293b";
-          } else {
-            li.style.background = "#0f172a";
-          }
-
-          li.innerHTML = `
-            <span><b>${rankBadge}</b> &nbsp; ${player.name}</span>
-            <b style="color: ${isWinner ? '#fde047' : '#38bdf8'}; font-size: ${isWinner ? '24px' : '20px'};">${player.score} pt</b>
-          `;
-
-          table.prepend(li);
-          setTimeout(() => li.classList.add("show"), 50);
-
-          if (isWinner) {
-            playVictoryFanfare();
-            launchMassiveConfetti();
-            const banner = document.getElementById("winner-banner");
-            document.getElementById("winner-name-text").textContent = `🏆 ${player.name} WINT DE FAMILIEQUIZ! 🏆`;
-            banner.classList.remove("hidden");
-            
-            // Knop voor het nakijken van de antwoorden verschijnt nu direct onder de winnaarsbanner
-            document.getElementById("review-trigger-container").classList.remove("hidden");
-          }
-
-        }, (i + 1) * 2200);
+    $("btn-start-reveal").addEventListener("click", () => {
+      if (revealStatus !== "idle" || cachedFinalScores.length === 0) return;
+      revealStatus = "running";
+      $("btn-start-reveal").classList.add("hidden");
+      cancelReveal = QuizFX.runReveal(cachedFinalScores, {
+        table: $("scoreboard-table"),
+        banner: $("winner-banner"),
+        winnerText: $("winner-name-text"),
+        onFinish: () => {
+          revealStatus = "done";
+          $("review-trigger-container").classList.remove("hidden");
+        }
       });
     });
 
     function renderPlayerStatuses(list, gameState) {
-      document.getElementById("player-count").textContent = list.length;
-      const listEl = document.getElementById("players-status-list");
-      listEl.innerHTML = "";
+      $("player-count").textContent = list.length;
+      const listEl = $("players-status-list");
+      listEl.replaceChildren();
 
-      list.forEach(p => {
+      list.forEach((p) => {
         const li = document.createElement("li");
-        let statusBadge = "";
+        const nameEl = document.createElement("span");
+        nameEl.textContent = p.name;
 
+        const status = document.createElement("span");
         if (!p.connected) {
-          statusBadge = `<span style="color:#94a3b8;">(offline)</span>`;
-        } else if (gameState === "QUESTION") {
-          statusBadge = p.answered 
-            ? `<span style="color:#4ade80; font-weight:bold;">✓ Ingediend</span>` 
-            : `<span style="color:#f59e0b;">⏳ Bezig met kiezen</span>`;
-        } else if (gameState === "WAITING_NEXT") {
-          statusBadge = `<span style="color:#4ade80; font-weight:bold;">✓ Klaar</span>`;
+          status.textContent = "(offline)";
+          status.style.color = "#94a3b8";
+        } else if (gameState === "QUESTION" || gameState === "WAITING_NEXT") {
+          if (p.answered) {
+            status.textContent = "✓ Ingediend";
+            status.style.cssText = "color:#4ade80; font-weight:bold;";
+          } else {
+            status.textContent = "⏳ Bezig met kiezen";
+            status.style.color = "#f59e0b";
+          }
         } else if (gameState === "PAUSED") {
-          statusBadge = `<span style="color:#f59e0b;">☕ Pauze</span>`;
+          status.textContent = "☕ Pauze";
+          status.style.color = "#f59e0b";
         } else {
-          statusBadge = `<span style="color:#38bdf8;">Klaar</span>`;
+          status.textContent = "Klaar";
+          status.style.color = "#38bdf8";
         }
 
-        li.innerHTML = `<span>${p.name}</span>${statusBadge}`;
+        li.append(nameEl, status);
         listEl.appendChild(li);
       });
     }
+
+    socket.on("state_update", (state) => {
+      const gs = state.gameState;
+      const inPlay = gs === "QUESTION" || gs === "WAITING_NEXT";
+
+      ["lobby-container", "host-pause-view", "host-main-view", "host-review-view", "host-end-view"]
+        .forEach((id) => $(id).classList.add("hidden"));
+
+      // Knoppen
+      btnNext.disabled = !(gs === "LOBBY" || inPlay);
+      btnPrev.disabled = !(inPlay && state.questionNumber > 1);
+      btnPause.disabled = !(inPlay || gs === "PAUSED");
+      btnPause.textContent = gs === "PAUSED" ? "▶️ Hervat Quiz" : "☕ Pauzeer";
+      btnPause.style.background = gs === "PAUSED" ? "#22c55e" : "#f59e0b";
+      if (gs === "LOBBY") {
+        btnNext.textContent = "Start Quiz 🚀";
+      } else if (inPlay && state.questionNumber === state.totalQuestions) {
+        btnNext.textContent = "Afronden 🏁";
+      } else {
+        btnNext.textContent = "Volgende ➡️";
+      }
+
+      // Audio: pauzeren bij pauze, hervatten na pauze, stoppen buiten de vragen
+      if (gs === "PAUSED") {
+        if (!wasPaused) audioWasPlaying = allAudio().some((a) => !a.paused && !a.ended);
+        allAudio().forEach((a) => a.pause());
+      } else if (wasPaused && audioWasPlaying && inPlay) {
+        allAudio().forEach((a) => a.play().catch(() => {}));
+      } else if (!inPlay && gs !== "REVIEW") {
+        allAudio().forEach((a) => a.pause());
+      }
+      wasPaused = gs === "PAUSED";
+
+      if (gs === "LOBBY") {
+        $("lobby-container").classList.remove("hidden");
+        $("host-main-view").classList.remove("hidden");
+        $("host-question").textContent = "Wachten op de start...";
+        $("host-question-number").classList.add("hidden");
+        $("host-round-title").textContent = "Familiequiz";
+        $("submission-status-badge").textContent = "Wachten...";
+        $("submission-status-badge").style.background = "#334155";
+        $("host-media").replaceChildren();
+        $("host-options").replaceChildren();
+        renderedQuestionId = null;
+        renderedReviewId = null;
+        resetReveal();
+      } else if (gs === "PAUSED") {
+        $("host-pause-view").classList.remove("hidden");
+      } else if (inPlay) {
+        $("host-main-view").classList.remove("hidden");
+        const q = state.currentQuestion;
+        if (q) {
+          $("host-round-title").textContent = state.roundName || "Familiequiz";
+          $("host-question-number").textContent = `Vraag ${state.questionNumber} van ${state.totalQuestions}`;
+          $("host-question-number").classList.remove("hidden");
+
+          if (renderedQuestionId !== q.id) {
+            renderedQuestionId = q.id;
+            $("host-question").textContent = q.question;
+            buildMedia($("host-media"), q);
+            const optionsBox = $("host-options");
+            optionsBox.replaceChildren();
+            q.options.forEach((opt, idx) => {
+              const div = document.createElement("div");
+              div.className = "btn-option";
+              div.style.padding = "10px";
+              div.textContent = `${["A", "B", "C", "D"][idx] || idx + 1}: ${opt}`;
+              optionsBox.appendChild(div);
+            });
+          }
+        }
+
+        const badge = $("submission-status-badge");
+        if (gs === "WAITING_NEXT") {
+          badge.textContent = "✅ Iedereen heeft ingediend!";
+          badge.style.background = "#22c55e";
+        } else {
+          badge.textContent = `${state.answeredCount} van ${state.connectedCount} ingediend`;
+          badge.style.background = "#334155";
+        }
+      } else if (gs === "END") {
+        $("host-end-view").classList.remove("hidden");
+        cachedFinalScores = state.finalScores || [];
+        renderedReviewId = null;
+        if (revealStatus === "idle") {
+          if (cachedFinalScores.length === 0) {
+            $("btn-start-reveal").classList.add("hidden");
+            $("scoreboard-table").textContent = "Er deden geen deelnemers mee.";
+            $("review-trigger-container").classList.remove("hidden");
+          } else {
+            $("btn-start-reveal").classList.remove("hidden");
+            $("review-trigger-container").classList.add("hidden");
+          }
+        }
+      } else if (gs === "REVIEW" && state.reviewQuestion) {
+        $("host-review-view").classList.remove("hidden");
+        cachedFinalScores = state.finalScores || cachedFinalScores;
+
+        const rq = state.reviewQuestion;
+        $("review-round-title").textContent = rq.roundName;
+        $("review-counter-badge").textContent = `Vraag ${state.reviewProgress.current} van ${state.reviewProgress.total}`;
+        $("review-question-text").textContent = rq.question;
+
+        if (renderedReviewId !== rq.id) {
+          renderedReviewId = rq.id;
+          buildMedia($("review-media"), rq);
+
+          const rOptions = $("review-options");
+          rOptions.replaceChildren();
+          rq.options.forEach((opt, idx) => {
+            const div = document.createElement("div");
+            const isCorrect = idx === rq.answer;
+            div.className = `btn-option ${isCorrect ? "correct-answer-card" : ""}`;
+            div.style.padding = "14px";
+            div.style.borderRadius = "8px";
+            div.textContent = `${["A", "B", "C", "D"][idx] || idx + 1}: ${opt}`;
+            if (isCorrect) {
+              const mark = document.createElement("b");
+              mark.textContent = "✅ JUIST";
+              div.append(document.createTextNode("\u00a0 "), mark);
+            }
+            rOptions.appendChild(div);
+          });
+        }
+      }
+
+      renderPlayerStatuses(state.playerList || [], gs);
+    });
   </script>
 </body>
 </html>
