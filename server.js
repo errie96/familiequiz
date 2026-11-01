@@ -7,9 +7,9 @@ const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
-// Pincode voor de host- en scoreboardpagina. Zet zelf een vaste met: HOST_PIN=1234 node server.js
-// Zonder HOST_PIN wordt er bij elke start een willekeurige code gekozen (staat in de console).
-const HOST_PIN = String(process.env.HOST_PIN || Math.floor(1000 + Math.random() * 9000)).trim();
+// Pincode voor de host- en scoreboardpagina. Standaard 1234.
+// Wil je een andere, start dan met: HOST_PIN=5678 node server.js
+const HOST_PIN = String(process.env.HOST_PIN || '1234').trim();
 const DEFAULT_POINTS = 10;
 
 const app = express();
