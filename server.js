@@ -19,7 +19,7 @@ try {
 }
 
 // Speler- & Host-status
-let players = {}; // playerId -> { playerId, socketId, name, score, answered, submittedAnswer, connected, lastAlertTime, answersHistory: [] }
+let players = {}; // playerId -> { playerId, socketId, name, score, answered, submittedAnswer, connected, lastAlertTime }
 let activeHostToken = null;
 let hostSocketId = null;
 let currentRoundIndex = 0;
@@ -39,6 +39,8 @@ function broadcastState() {
     gameState,
     roundName: rounds[currentRoundIndex]?.roundName || "Familiequiz",
     currentQuestion: (gameState === "QUESTION" || gameState === "PAUSED") ? currentQ : null,
+    currentRoundIndex,
+    currentQuestionIndex,
     playerList: Object.values(players).map(p => ({
       playerId: p.playerId,
       name: p.name,
@@ -55,19 +57,9 @@ function completeQuestion() {
 
   if (q) {
     Object.values(players).forEach(p => {
-      const isCorrect = (p.submittedAnswer === q.answer);
-      if (isCorrect) {
+      if (p.submittedAnswer === q.answer) {
         p.score += 10;
       }
-      if (!p.answersHistory) p.answersHistory = [];
-      p.answersHistory.push({
-        questionId: q.id,
-        question: q.question,
-        chosen: p.submittedAnswer,
-        correctAnswer: q.answer,
-        isCorrect
-      });
-
       p.answered = false;
       p.submittedAnswer = null;
     });
@@ -95,7 +87,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 3. Speler login / sessieherstel na F5
+  // 3. Speler login / herstel
   socket.on('init_player', ({ playerId, name }) => {
     if (playerId && players[playerId]) {
       const player = players[playerId];
@@ -119,8 +111,7 @@ io.on('connection', (socket) => {
         answered: false,
         submittedAnswer: null,
         connected: true,
-        lastAlertTime: 0,
-        answersHistory: []
+        lastAlertTime: 0
       };
 
       socket.emit('joined', {
@@ -149,7 +140,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 5. Anti-spiek: NIET in LOBBY of PAUSED
+  // 5. Anti-spiek (alleen buiten LOBBY en PAUSED)
   socket.on('player_blurred', ({ playerId, reason }) => {
     if (gameState === "LOBBY" || gameState === "PAUSED") return;
 
@@ -184,36 +175,24 @@ io.on('connection', (socket) => {
         currentQuestionIndex = 0;
       }
 
-      // Quiz is afgelopen
       if (currentRoundIndex >= rounds.length) {
         gameState = "END";
         
-        // Gedetailleerd overzicht per vraag inclusief de keuzes van elk team
-        let questionCounter = 0;
-        const finalAnswersOverview = rounds.map(r => ({
+        // Eenvoudig overzicht van alle vragen zonder teamkeuzes
+        const reviewOverview = rounds.map(r => ({
           roundName: r.roundName,
-          questions: r.questions.map(q => {
-            const qIndex = questionCounter++;
-            const playerResponses = Object.values(players).map(p => {
-              const hist = p.answersHistory ? p.answersHistory[qIndex] : null;
-              return {
-                playerName: p.name,
-                chosen: hist ? hist.chosen : null,
-                isCorrect: hist ? hist.isCorrect : false
-              };
-            });
-
-            return {
-              question: q.question,
-              options: q.options,
-              correctAnswer: q.answer,
-              playerResponses
-            };
-          })
+          questions: r.questions.map(q => ({
+            question: q.question,
+            options: q.options,
+            correctAnswer: q.answer,
+            type: q.type,
+            imageUrl: q.imageUrl || null,
+            audioUrl: q.audioUrl || null
+          }))
         }));
 
         io.emit('game_over', {
-          overview: finalAnswersOverview,
+          overview: reviewOverview,
           finalScores: Object.values(players).sort((a, b) => b.score - a.score)
         });
 
@@ -234,7 +213,31 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 7. Host: Pauze aan/uit
+  // 7. Host: Vraag teruggaan
+  socket.on('prev_question', () => {
+    if (socket.id !== hostSocketId) return;
+    if (gameState === "LOBBY") return;
+
+    if (currentQuestionIndex > 0) {
+      currentQuestionIndex--;
+      gameState = "QUESTION";
+    } else if (currentRoundIndex > 0) {
+      currentRoundIndex--;
+      currentQuestionIndex = rounds[currentRoundIndex].questions.length - 1;
+      gameState = "QUESTION";
+    }
+
+    const q = getCurrentQuestion();
+    if (q) {
+      Object.values(players).forEach(p => {
+        p.answered = false;
+        p.submittedAnswer = null;
+      });
+      broadcastState();
+    }
+  });
+
+  // 8. Host: Pauze aan/uit
   socket.on('toggle_pause', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -248,7 +251,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 8. Host: Geheel nieuwe quiz starten
+  // 9. Host: Geheel nieuwe quiz starten
   socket.on('reset_quiz', () => {
     if (socket.id !== hostSocketId) return;
 
@@ -261,7 +264,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // 9. Disconnect
+  // 10. Disconnect
   socket.on('disconnect', () => {
     if (socket.id !== hostSocketId) {
       const player = Object.values(players).find(p => p.socketId === socket.id);
