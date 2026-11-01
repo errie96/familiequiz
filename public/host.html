@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 </head>
 <body style="max-width: 960px; margin: 0 auto; padding: 20px;">
   <div class="card" style="max-width: 100%;">
@@ -16,10 +17,11 @@
         <h1 style="text-align: left; margin: 0;">Quiz Master Regie</h1>
         <small id="connection-status" style="color: #4ade80;">● Verbonden als Host</small>
       </div>
-      <div style="display: flex; gap: 10px;">
-        <button id="btn-reset" style="width: auto; padding: 10px 14px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Herstart Quiz</button>
-        <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 18px; margin: 0;">☕ Pauzeer</button>
-        <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 22px; margin: 0;">Start / Volgende ➡️</button>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button id="btn-reset" style="width: auto; padding: 10px 12px; margin: 0; background: #dc2626; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; border: none;">🔄 Herstart</button>
+        <button id="btn-prev" class="btn-option" style="width: auto; padding: 10px 14px; margin: 0; background: #475569;">⬅️ Vorige</button>
+        <button id="btn-pause" class="btn-pause" style="width: auto; padding: 10px 16px; margin: 0;">☕ Pauzeer</button>
+        <button id="btn-next" class="btn-primary" style="width: auto; padding: 10px 20px; margin: 0;">Start / Volgende ➡️</button>
       </div>
     </div>
 
@@ -40,7 +42,7 @@
       <p style="color: #94a3b8;">Alle telefoons staan op het pauzescherm. Meldingen zijn tijdelijk uitgeschakeld.</p>
     </div>
 
-    <!-- Huidige Vraagweergave -->
+    <!-- Huidige Vraagweergave tijdens de quiz -->
     <div id="host-main-view">
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
         <span class="badge" id="host-round-title">Familiequiz</span>
@@ -52,30 +54,79 @@
       <div id="host-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
     </div>
 
-    <!-- Eindoverzicht: Alle vragen + Antwoorden per Team -->
-    <div id="host-end-view" class="hidden" style="margin-top: 20px;">
-      <h2 style="color: #38bdf8; text-align: center; margin-bottom: 8px;">🏁 Quiz Afgelopen! 🏁</h2>
-      <p style="text-align: center; color: #cbd5e1; margin-bottom: 20px;">
-        Bekijk hieronder alle antwoorden per team, of open <a href="/scoreboard.html" target="_blank" style="color: #f59e0b; font-weight: bold; text-decoration: underline;">/scoreboard.html</a> op het grote scherm voor de spannende ontknoping van onder naar boven!
-      </p>
-      <div id="final-answers-list"></div>
+    <!-- EINDFASE 1: Vraag-voor-vraag Nabespreking -->
+    <div id="host-review-view" class="hidden" style="margin-top: 10px;">
+      <div style="background: #0f172a; border-radius: 12px; padding: 20px; border: 1px solid #334155;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <span class="badge" id="review-round-name" style="background: #f59e0b; color: #000;">Ronde</span>
+          <span id="review-question-index" style="color: #94a3b8; font-weight: bold;">Vraag 1 van X</span>
+        </div>
+
+        <h2 id="review-question-text" style="font-size: 24px; margin-bottom: 16px;">Vraagtekst</h2>
+        <div id="review-media" style="text-align: center; margin: 15px 0;"></div>
+        <div id="review-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"></div>
+
+        <!-- Bediening tijdens nabespreking -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid #334155; padding-top: 16px;">
+          <button id="btn-review-prev" class="btn-option" style="width: auto; padding: 10px 18px;">⬅️ Vorige Vraag</button>
+          <button id="btn-reveal-answer" class="btn-primary" style="width: auto; padding: 10px 24px; background: #38bdf8; color: #0f172a;">👁️ Onthul Juiste Antwoord</button>
+          <button id="btn-review-next" class="btn-primary" style="width: auto; padding: 10px 18px;">Volgende Vraag ➡️</button>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin-top: 20px;">
+        <button id="btn-go-to-podium" class="btn-primary" style="background: linear-gradient(135deg, #f59e0b, #ef4444); width: auto; font-size: 18px; padding: 12px 28px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);">
+          🏆 Naar de Grote Ontknoping (Scores) ➔
+        </button>
+      </div>
+    </div>
+
+    <!-- EINDFASE 2: De Ontknoping (Slechtste naar Beste) -->
+    <div id="host-podium-view" class="hidden" style="margin-top: 20px; text-align: center;">
+      <h2 style="font-size: 32px; color: #38bdf8; margin-bottom: 10px;">🏆 De Einduitslag 🏆</h2>
+      <p style="color: #94a3b8; margin-bottom: 20px;">We onthullen de scores van de hekkensluiter naar de winnaar!</p>
+
+      <button id="btn-start-countdown-reveal" class="btn-primary" style="background: linear-gradient(135deg, #22c55e, #16a34a); width: auto; font-size: 20px; padding: 14px 30px; margin-bottom: 24px;">
+        🎉 Start Finale Ranking
+      </button>
+
+      <ul id="podium-list" style="text-align: left; list-style: none; margin: 0 auto; max-width: 650px;"></ul>
+
+      <div id="winner-banner" class="hidden" style="margin-top: 24px; padding: 24px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; color: white; animation: pulse 1s infinite alternate; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.6);">
+        <h2 style="font-size: 32px; margin: 0;">🎉 GEFELICITEERD! 🎉</h2>
+        <p id="winner-name-text" style="font-size: 28px; font-weight: bold; margin-top: 8px;">TEAM</p>
+      </div>
     </div>
 
     <hr style="border-color: #334155; margin: 24px 0;">
 
     <!-- Deelnemerslijst met Live Status -->
-    <div>
+    <div id="participants-section">
       <h3>Deelnemers & Status (<span id="player-count">0</span>)</h3>
-      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">Scorebord bekijken: <a href="/scoreboard.html" target="_blank" style="color:#38bdf8;">/scoreboard.html</a></p>
       <ul id="players-status-list"></ul>
     </div>
 
   </div>
 
+  <style>
+    @keyframes pulse {
+      0% { transform: scale(0.98); }
+      100% { transform: scale(1.02); }
+    }
+    .rank-card {
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    .rank-card.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+
   <script>
     const socket = io();
 
-    // Host Token
     let hostToken = localStorage.getItem("quiz_host_token");
     if (!hostToken) {
       hostToken = "host_" + Math.random().toString(36).substr(2, 9);
@@ -93,7 +144,7 @@
       colorLight: "#ffffff"
     });
 
-    // Alarm
+    // Geluiden
     function playAlarmSound(isLocked) {
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -113,6 +164,58 @@
       } catch (e) {}
     }
 
+    function playVictoryFanfare() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99];
+        notes.forEach((freq, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.12);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime + idx * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.12 + 0.6);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(audioCtx.currentTime + idx * 0.12);
+          osc.stop(audioCtx.currentTime + idx * 0.12 + 0.6);
+        });
+      } catch (e) {}
+    }
+
+    function playDrumHit() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch (e) {}
+    }
+
+    function launchMassiveConfetti() {
+      const duration = 7 * 1000;
+      const animationEnd = Date.now() + duration;
+
+      const interval = setInterval(function() {
+        const timeLeft = animationEnd - Date.now();
+        if (timeLeft <= 0) return clearInterval(interval);
+        confetti({
+          particleCount: 50,
+          spread: 360,
+          startVelocity: 30,
+          origin: { x: Math.random(), y: Math.random() - 0.2 }
+        });
+      }, 250);
+    }
+
+    // Sockets
     socket.on("connect", () => {
       document.getElementById("connection-status").textContent = "● Verbonden als Host";
       document.getElementById("connection-status").style.color = "#4ade80";
@@ -130,12 +233,14 @@
       }
     });
 
-    // Knoppen
+    // Knoppen bediening
     const btnNext = document.getElementById("btn-next");
+    const btnPrev = document.getElementById("btn-prev");
     const btnPause = document.getElementById("btn-pause");
     const btnReset = document.getElementById("btn-reset");
 
     btnNext.addEventListener("click", () => socket.emit("next_question"));
+    btnPrev.addEventListener("click", () => socket.emit("prev_question"));
     btnPause.addEventListener("click", () => socket.emit("toggle_pause"));
     btnReset.addEventListener("click", () => {
       if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle scores worden gewist en we keren terug naar de startpagina.")) {
@@ -143,7 +248,7 @@
       }
     });
 
-    // Meldingen
+    // Spiekalarm
     socket.on("cheat_warning", (data) => {
       const isLocked = data.reason === "locked";
       playAlarmSound(isLocked);
@@ -163,7 +268,6 @@
       }
 
       container.prepend(alert);
-
       setTimeout(() => {
         alert.style.transition = "opacity 0.4s ease";
         alert.style.opacity = "0";
@@ -171,7 +275,6 @@
       }, 7000);
     });
 
-    // Iedereen ingediend
     socket.on("all_submitted", () => {
       document.getElementById("submission-status-badge").textContent = "✅ Iedereen heeft ingediend!";
       document.getElementById("submission-status-badge").style.background = "#22c55e";
@@ -186,33 +289,35 @@
       const lobbyBox = document.getElementById("lobby-container");
       const pauseView = document.getElementById("host-pause-view");
       const mainView = document.getElementById("host-main-view");
-      const endView = document.getElementById("host-end-view");
+      const reviewView = document.getElementById("host-review-view");
+      const podiumView = document.getElementById("host-podium-view");
 
       if (state.gameState === "LOBBY") {
         lobbyBox.classList.remove("hidden");
-        endView.classList.add("hidden");
+        reviewView.classList.add("hidden");
+        podiumView.classList.add("hidden");
         mainView.classList.remove("hidden");
         btnNext.textContent = "Start Quiz 🚀";
+        btnPrev.disabled = true;
         document.getElementById("host-question").textContent = "Wachten op de start...";
         document.getElementById("submission-status-badge").textContent = "Wachten...";
         document.getElementById("submission-status-badge").style.background = "#334155";
         mediaBox.innerHTML = "";
         optionsBox.innerHTML = "";
+      } else if (state.gameState === "END") {
+        lobbyBox.classList.add("hidden");
+        mainView.classList.add("hidden");
+        pauseView.classList.add("hidden");
+        reviewView.classList.remove("hidden");
+        btnNext.disabled = true;
+        btnPrev.disabled = true;
+        btnPause.disabled = true;
       } else {
         lobbyBox.classList.add("hidden");
         btnNext.textContent = "Volgende Vraag ➡️";
-      }
-
-      if (state.gameState === "END") {
-        mainView.classList.add("hidden");
-        pauseView.classList.add("hidden");
-        endView.classList.remove("hidden");
-        btnNext.disabled = true;
-        renderPlayerStatuses(state.playerList, state.gameState);
-        return;
-      } else {
         btnNext.disabled = false;
-        endView.classList.add("hidden");
+        btnPrev.disabled = false;
+        btnPause.disabled = false;
       }
 
       if (state.gameState === "PAUSED") {
@@ -222,7 +327,7 @@
         btnPause.style.background = "#22c55e";
         renderPlayerStatuses(state.playerList, state.gameState);
         return;
-      } else {
+      } else if (state.gameState !== "END") {
         pauseView.classList.add("hidden");
         mainView.classList.remove("hidden");
         btnPause.textContent = "☕ Pauzeer";
@@ -255,57 +360,155 @@
       renderPlayerStatuses(state.playerList, state.gameState);
     });
 
-    // Uitslagenoverzicht inclusief keuzes per team
+    // --- NABESPREKING LOGICA (Vraag voor vraag) ---
+    let allQuestionsFlat = [];
+    let currentReviewIndex = 0;
+    let finalScoresData = [];
+
     socket.on("game_over", (data) => {
-      const container = document.getElementById("final-answers-list");
-      container.innerHTML = "";
+      finalScoresData = data.finalScores;
 
-      data.overview.forEach((round) => {
-        const roundTitle = document.createElement("h3");
-        roundTitle.style.marginTop = "24px";
-        roundTitle.style.color = "#f59e0b";
-        roundTitle.textContent = round.roundName;
-        container.appendChild(roundTitle);
-
-        round.questions.forEach((q, idx) => {
-          const card = document.createElement("div");
-          card.style.background = "#0f172a";
-          card.style.padding = "16px";
-          card.style.borderRadius = "8px";
-          card.style.marginTop = "12px";
-          card.style.border = "1px solid #334155";
-
-          const letters = ['A', 'B', 'C', 'D'];
-          const correctLetter = letters[q.correctAnswer];
-          const correctText = q.options[q.correctAnswer];
-
-          // Bouw antwoorden van elk team
-          let playerAnswersHtml = q.playerResponses.map(resp => {
-            const letter = resp.chosen !== null ? letters[resp.chosen] : "-";
-            const optText = resp.chosen !== null ? q.options[resp.chosen] : "Geen antwoord";
-            if (resp.isCorrect) {
-              return `<li style="padding: 6px 0; border-bottom: 1px dashed #1e293b; color: #4ade80;">
-                <b>${resp.playerName}</b>: [${letter}] ${optText} &nbsp;<b>✓ (+10 pt)</b>
-              </li>`;
-            } else {
-              return `<li style="padding: 6px 0; border-bottom: 1px dashed #1e293b; color: #f87171;">
-                <b>${resp.playerName}</b>: [${letter}] ${optText} &nbsp;<b>✗</b>
-              </li>`;
-            }
-          }).join("");
-
-          card.innerHTML = `
-            <div style="font-size: 17px; margin-bottom: 6px;"><b>Vraag ${idx + 1}:</b> ${q.question}</div>
-            <div style="color: #38bdf8; margin-bottom: 12px;">👉 <b>Juiste antwoord:</b> [${correctLetter}] ${correctText}</div>
-            <div style="background: #1e293b; padding: 10px 14px; border-radius: 6px;">
-              <small style="color: #94a3b8; font-weight: bold; text-transform: uppercase;">Antwoorden per team:</small>
-              <ul style="margin-top: 6px; list-style: none;">
-                ${playerAnswersHtml}
-              </ul>
-            </div>
-          `;
-          container.appendChild(card);
+      // Vlakke lijst maken van alle vragen uit alle rondes
+      allQuestionsFlat = [];
+      data.overview.forEach(round => {
+        round.questions.forEach(q => {
+          allQuestionsFlat.push({
+            roundName: round.roundName,
+            ...q
+          });
         });
+      });
+
+      currentReviewIndex = 0;
+      loadReviewQuestion(currentReviewIndex);
+    });
+
+    function loadReviewQuestion(index) {
+      if (!allQuestionsFlat[index]) return;
+      const q = allQuestionsFlat[index];
+
+      document.getElementById("review-round-name").textContent = q.roundName;
+      document.getElementById("review-question-index").textContent = `Vraag ${index + 1} van ${allQuestionsFlat.length}`;
+      document.getElementById("review-question-text").textContent = q.question;
+
+      const mediaBox = document.getElementById("review-media");
+      mediaBox.innerHTML = "";
+      if (q.type === "location" && q.imageUrl) {
+        mediaBox.innerHTML = `<img src="${q.imageUrl}" style="max-height: 260px; border-radius: 8px;">`;
+      }
+      if (q.type === "audio" && q.audioUrl) {
+        mediaBox.innerHTML = `<audio controls src="${q.audioUrl}"></audio>`;
+      }
+
+      const optionsBox = document.getElementById("review-options");
+      optionsBox.innerHTML = "";
+      q.options.forEach((opt, idx) => {
+        const div = document.createElement("div");
+        div.className = "btn-option review-opt";
+        div.id = `review-opt-${idx}`;
+        div.style.padding = "12px";
+        div.textContent = `${['A', 'B', 'C', 'D'][idx]}: ${opt}`;
+        optionsBox.appendChild(div);
+      });
+
+      document.getElementById("btn-reveal-answer").disabled = false;
+      document.getElementById("btn-reveal-answer").style.opacity = "1";
+    }
+
+    document.getElementById("btn-reveal-answer").addEventListener("click", () => {
+      const q = allQuestionsFlat[currentReviewIndex];
+      const correctDiv = document.getElementById(`review-opt-${q.correctAnswer}`);
+      if (correctDiv) {
+        correctDiv.style.background = "#22c55e";
+        correctDiv.style.border = "2px solid #86efac";
+        correctDiv.style.fontWeight = "bold";
+        correctDiv.innerHTML += " ✅ JUIST!";
+      }
+      document.getElementById("btn-reveal-answer").disabled = true;
+      document.getElementById("btn-reveal-answer").style.opacity = "0.5";
+    });
+
+    document.getElementById("btn-review-next").addEventListener("click", () => {
+      if (currentReviewIndex < allQuestionsFlat.length - 1) {
+        currentReviewIndex++;
+        loadReviewQuestion(currentReviewIndex);
+      }
+    });
+
+    document.getElementById("btn-review-prev").addEventListener("click", () => {
+      if (currentReviewIndex > 0) {
+        currentReviewIndex--;
+        loadReviewQuestion(currentReviewIndex);
+      }
+    });
+
+    // Schakel door naar de ontknoping
+    document.getElementById("btn-go-to-podium").addEventListener("click", () => {
+      document.getElementById("host-review-view").classList.add("hidden");
+      document.getElementById("host-podium-view").classList.remove("hidden");
+      document.getElementById("participants-section").classList.add("hidden");
+    });
+
+    // --- FINALE RANKING (Slechtste naar Beste met Confetti) ---
+    let isRevealing = false;
+    document.getElementById("btn-start-countdown-reveal").addEventListener("click", () => {
+      if (isRevealing || finalScoresData.length === 0) return;
+      isRevealing = true;
+      document.getElementById("btn-start-countdown-reveal").classList.add("hidden");
+
+      const table = document.getElementById("podium-list");
+      table.innerHTML = "";
+
+      // Omkeren zodat we bij het slechtste team beginnen
+      const reversedList = [...finalScoresData].reverse();
+
+      reversedList.forEach((player, i) => {
+        const trueRank = finalScoresData.length - i;
+        const isWinner = (trueRank === 1);
+
+        setTimeout(() => {
+          playDrumHit();
+
+          const li = document.createElement("li");
+          li.className = "rank-card";
+          li.style.padding = "16px";
+          li.style.borderRadius = "8px";
+          li.style.marginBottom = "8px";
+          li.style.display = "flex";
+          li.style.justifyContent = "space-between";
+          li.style.alignItems = "center";
+
+          let rankBadge = `#${trueRank}`;
+          if (trueRank === 1) {
+            rankBadge = "🥇 WINNAAR";
+            li.style.background = "#2563eb";
+            li.style.border = "2px solid #60a5fa";
+          } else if (trueRank === 2) {
+            rankBadge = "🥈 #2";
+            li.style.background = "#1e293b";
+          } else if (trueRank === 3) {
+            rankBadge = "🥉 #3";
+            li.style.background = "#1e293b";
+          } else {
+            li.style.background = "#0f172a";
+          }
+
+          li.innerHTML = `
+            <span><b>${rankBadge}</b> &nbsp; ${player.name}</span>
+            <b style="color: ${isWinner ? '#fde047' : '#38bdf8'}; font-size: ${isWinner ? '26px' : '20px'};">${player.score} pt</b>
+          `;
+
+          table.prepend(li);
+          setTimeout(() => li.classList.add("show"), 50);
+
+          if (isWinner) {
+            playVictoryFanfare();
+            launchMassiveConfetti();
+            document.getElementById("winner-name-text").textContent = `🏆 ${player.name} WINT DE FAMILIEQUIZ! 🏆`;
+            document.getElementById("winner-banner").classList.remove("hidden");
+          }
+
+        }, (i + 1) * 2200);
       });
     });
 
@@ -325,17 +528,3 @@
             ? `<span style="color:#4ade80; font-weight:bold;">✓ Ingediend</span>` 
             : `<span style="color:#f59e0b;">⏳ Bezig met kiezen</span>`;
         } else if (gameState === "WAITING_NEXT") {
-          statusBadge = `<span style="color:#4ade80; font-weight:bold;">✓ Klaar</span>`;
-        } else if (gameState === "PAUSED") {
-          statusBadge = `<span style="color:#f59e0b;">☕ Pauze</span>`;
-        } else {
-          statusBadge = `<span style="color:#38bdf8;">Klaar</span>`;
-        }
-
-        li.innerHTML = `<span>${p.name}</span>${statusBadge}`;
-        listEl.appendChild(li);
-      });
-    }
-  </script>
-</body>
-</html>
