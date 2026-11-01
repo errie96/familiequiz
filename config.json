@@ -1,0 +1,8 @@
+{
+  "timerEnabled": false,
+  "defaultTime": 20,
+  "speedBonus": false,
+  "speedBonusMax": 5,
+  "defaultPoints": 10,
+  "jokersPerTeam": 0
+}

@@ -1,5 +1,5 @@
-// Gedeelde hulpfuncties voor host.html en scoreboard.html
-// (geluiden, confetti en de onthulling van de einduitslag)
+// Gedeelde hulpfuncties voor alle pagina's
+// (geluiden, confetti, media, aftelklok en de onthulling van de einduitslag)
 window.QuizFX = (function () {
   // Eén AudioContext hergebruiken; browsers laten er maar een paar tegelijk toe
   let ctx = null;
@@ -13,6 +13,10 @@ window.QuizFX = (function () {
     } catch (e) {
       return null;
     }
+  }
+  // Moet vanuit een klik of toetsdruk aangeroepen worden (tv-scherm)
+  function unlockAudio() {
+    audio();
   }
 
   const style = document.createElement("style");
@@ -87,62 +91,130 @@ window.QuizFX = (function () {
     }, 250);
   }
 
-  // Onthult de ranglijst van laatste naar eerste plaats.
+  // Aftelklok. info = { remainingMs, totalMs, running } of null.
+  // onTick krijgt { secs, fraction, running } (of null om te verbergen).
+  const clocks = {};
+  function countdown(key, info, onTick) {
+    if (clocks[key]) {
+      clearInterval(clocks[key]);
+      delete clocks[key];
+    }
+    if (!info) return onTick(null);
+    const total = info.totalMs || 1;
+    const end = Date.now() + info.remainingMs;
+    const tick = () => {
+      const left = info.running ? Math.max(0, end - Date.now()) : info.remainingMs;
+      onTick({ secs: Math.ceil(left / 1000), fraction: Math.min(1, left / total), running: info.running });
+      if (left <= 0 && clocks[key]) {
+        clearInterval(clocks[key]);
+        delete clocks[key];
+      }
+    };
+    tick();
+    if (info.running) clocks[key] = setInterval(tick, 250);
+  }
+
+  // Plaatje of audio in een vak zetten. media = { kind: 'image' | 'audio', src }.
+  function renderMedia(box, media, opts) {
+    box.replaceChildren();
+    if (!media || !media.src) return null;
+    const options = opts || {};
+    if (media.kind === "image") {
+      const img = document.createElement("img");
+      img.src = media.src;
+      img.className = "media-img";
+      if (options.imgStyle) img.style.cssText = options.imgStyle;
+      box.appendChild(img);
+      return img;
+    }
+    if (media.kind === "audio") {
+      const a = document.createElement("audio");
+      a.controls = true;
+      a.autoplay = !!options.autoplay;
+      a.src = media.src;
+      box.appendChild(a);
+      return a;
+    }
+    return null;
+  }
+
+  // Eén regel in de ranglijst
+  function rankRow(player) {
+    const li = document.createElement("li");
+    li.className = "rank-card";
+    li.style.padding = "0.6em 0.9em";
+    li.style.borderRadius = "8px";
+    li.style.marginBottom = "8px";
+
+    const isWinner = player.rank === 1;
+    let badge = `#${player.rank}`;
+    if (player.rank === 1) {
+      badge = "🥇 WINNAAR";
+      li.style.background = "#2563eb";
+      li.style.border = "2px solid #60a5fa";
+    } else if (player.rank === 2) {
+      badge = "🥈 #2";
+      li.style.background = "#1e293b";
+    } else if (player.rank === 3) {
+      badge = "🥉 #3";
+      li.style.background = "#1e293b";
+    } else {
+      li.style.background = "#0f172a";
+    }
+
+    const label = document.createElement("span");
+    const b = document.createElement("b");
+    b.textContent = badge;
+    label.append(b, document.createTextNode("\u00a0 " + player.name));
+
+    const pts = document.createElement("b");
+    pts.textContent = `${player.score} pt`;
+    pts.style.color = isWinner ? "#fde047" : "#38bdf8";
+    pts.style.fontSize = isWinner ? "1.2em" : "1em";
+
+    li.append(label, pts);
+    return li;
+  }
+
+  function showWinners(scores, banner, winnerText) {
+    const winners = scores.filter((s) => s.rank === 1).map((s) => s.name);
+    if (!winners.length) return;
+    winnerText.textContent =
+      `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
+    banner.classList.remove("hidden");
+  }
+
+  // Onthult de ranglijst van laatste naar eerste plaats (of meteen, met instant).
   // scores: [{ name, score, rank }] gesorteerd van hoog naar laag.
   // Geeft een functie terug waarmee je de onthulling kunt annuleren.
-  function runReveal(scores, { table, banner, winnerText, onFinish }) {
-    const timers = [];
+  function runReveal(scores, opts) {
+    const { table, banner, winnerText, onFinish, instant } = opts;
     table.replaceChildren();
     banner.classList.add("hidden");
 
+    if (instant) {
+      scores.forEach((player) => {
+        const li = rankRow(player);
+        li.classList.add("show");
+        table.appendChild(li);
+      });
+      showWinners(scores, banner, winnerText);
+      if (onFinish) onFinish();
+      return () => {};
+    }
+
+    const timers = [];
     const reversed = [...scores].reverse();
     reversed.forEach((player, i) => {
       timers.push(
         setTimeout(() => {
           drumHit();
-
-          const li = document.createElement("li");
-          li.className = "rank-card";
-          li.style.padding = "14px 18px";
-          li.style.borderRadius = "8px";
-          li.style.marginBottom = "8px";
-
-          const isWinner = player.rank === 1;
-          let badge = `#${player.rank}`;
-          if (player.rank === 1) {
-            badge = "🥇 WINNAAR";
-            li.style.background = "#2563eb";
-            li.style.border = "2px solid #60a5fa";
-          } else if (player.rank === 2) {
-            badge = "🥈 #2";
-            li.style.background = "#1e293b";
-          } else if (player.rank === 3) {
-            badge = "🥉 #3";
-            li.style.background = "#1e293b";
-          } else {
-            li.style.background = "#0f172a";
-          }
-
-          const label = document.createElement("span");
-          const b = document.createElement("b");
-          b.textContent = badge;
-          label.append(b, document.createTextNode("\u00a0 " + player.name));
-
-          const pts = document.createElement("b");
-          pts.textContent = `${player.score} pt`;
-          pts.style.color = isWinner ? "#fde047" : "#38bdf8";
-          pts.style.fontSize = isWinner ? "24px" : "20px";
-
-          li.append(label, pts);
+          const li = rankRow(player);
           table.prepend(li);
           timers.push(setTimeout(() => li.classList.add("show"), 50));
 
-          // Laatste onthulling = winnaar(s)
           if (i === reversed.length - 1) {
-            const winners = scores.filter((s) => s.rank === 1).map((s) => s.name);
-            winnerText.textContent =
-              `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
-            banner.classList.remove("hidden");
+            showWinners(scores, banner, winnerText);
             fanfare();
             launchConfetti();
             if (onFinish) onFinish();
@@ -150,9 +222,8 @@ window.QuizFX = (function () {
         }, (i + 1) * 2200)
       );
     });
-
     return () => timers.forEach(clearTimeout);
   }
 
-  return { drumHit, fanfare, alarm, launchConfetti, runReveal };
+  return { unlockAudio, drumHit, fanfare, alarm, launchConfetti, countdown, renderMedia, runReveal };
 })();

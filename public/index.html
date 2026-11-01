@@ -3,45 +3,81 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Familiequiz - Speler</title>
+  <title>Familiequiz - Team</title>
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
+  <script src="shared.js"></script>
+  <script src="qtypes.js"></script>
 </head>
 <body>
   <div class="card">
 
-    <!-- 1. Inloggen -->
+    <!-- 1. Team maken of aansluiten -->
     <div id="join-screen">
       <h1>Familiequiz 🏆</h1>
-      <p style="text-align:center; margin-bottom:16px;">Vul je naam in om mee te doen:</p>
-      <input type="text" id="username" placeholder="Bijv. Mark of Team Rood" maxlength="20">
-      <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-bottom:12px;"></p>
-      <button class="btn-primary" id="join-btn">Klaar voor de start</button>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button id="tab-new" class="btn-primary" style="margin:0;">Nieuw team</button>
+        <button id="tab-join" class="btn-option" style="margin:0; text-align:center;">Aansluiten bij team</button>
+      </div>
+
+      <div id="join-new">
+        <p style="text-align:center; margin-bottom:12px;">Kies een naam voor jullie team:</p>
+        <input type="text" id="team-name" placeholder="Bijv. BalloerBatsers of Zeegse Zuiperds" maxlength="24">
+        <input type="text" id="label-new" placeholder="Jouw naam (optioneel)" maxlength="16">
+        <p style="text-align:center; color:#94a3b8; font-size:13px; margin-bottom:8px;">
+          Deze telefoon wordt de <b>basistelefoon</b> van het team: hiermee dien je de antwoorden in.
+          Teamgenoten sluiten daarna aan met hun eigen telefoon.
+        </p>
+        <button class="btn-primary" id="btn-create">Maak team aan</button>
+      </div>
+
+      <div id="join-existing" class="hidden">
+        <p style="text-align:center; margin-bottom:12px;">Tik op het team waarbij je wilt aansluiten:</p>
+        <input type="text" id="label-join" placeholder="Jouw naam (optioneel)" maxlength="16">
+        <div id="team-list"></div>
+        <p id="team-list-empty" style="text-align:center; color:#94a3b8; font-size:14px;">Er zijn nog geen teams. Maak er zelf een aan, of wacht even.</p>
+      </div>
+
+      <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px;"></p>
     </div>
 
     <!-- 2. Wachtkamer / tussen de vragen -->
     <div id="lobby-screen" class="hidden">
-      <h2>Welkom, <span id="display-name"></span>!</h2>
-      <p id="lobby-message" style="text-align:center; color:#94a3b8; margin-top:20px;">Wachten tot de quizmaster de quiz start...</p>
+      <h2 id="team-title">Team</h2>
+      <p id="role-text" style="text-align:center; color:#cbd5e1; margin-bottom:10px;"></p>
+      <ul id="member-list"></ul>
+      <p id="lobby-message" style="text-align:center; color:#94a3b8; margin-top:16px;">Wachten tot de quizmaster de quiz start...</p>
+      <div id="member-actions" class="hidden">
+        <button id="btn-make-base" class="btn-option" style="text-align:center; font-size:14px;">📱 Deze telefoon wordt de basis</button>
+        <button id="btn-leave" class="btn-option" style="text-align:center; font-size:14px; color:#94a3b8;">Team verlaten</button>
+      </div>
+      <p id="lobby-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px; font-size:14px;"></p>
     </div>
 
     <!-- 3. Vraag beantwoorden -->
     <div id="question-screen" class="hidden">
-      <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
         <span class="badge" id="player-round-badge">Ronde</span>
+        <span class="badge" id="player-team-badge" style="background:#2563eb;"></span>
+        <span class="badge hidden" id="timer-badge">⏱</span>
       </div>
       <h3 id="player-question-text">Vraag laadt...</h3>
 
       <div id="media-container"></div>
       <div id="options-container"></div>
 
+      <button id="joker-btn" class="btn-option hidden" style="text-align:center; background:#7c3aed;"></button>
+
       <button id="submit-btn" class="btn-primary hidden" style="margin-top: 16px; background: #22c55e;">
         Antwoord Indienen 📤
       </button>
 
-      <p id="submit-error" class="hidden" style="text-align:center; margin-top:15px; color:#f87171; font-weight:bold;">
-        Indienen is niet gelukt. Probeer het opnieuw.
+      <p id="member-note" class="hidden" style="text-align:center; margin-top:15px; color:#94a3b8;">
+        Overleg met je team. De basistelefoon dient het antwoord in.
       </p>
+      <p id="joker-note" class="hidden" style="text-align:center; margin-top:10px; color:#c4b5fd; font-weight:bold;">🃏 Joker ingezet: dubbele punten!</p>
+
+      <p id="submit-error" class="hidden" style="text-align:center; margin-top:15px; color:#f87171; font-weight:bold;"></p>
 
       <p id="feedback-text" class="hidden" style="text-align:center; margin-top:15px; color:#38bdf8; font-weight:bold;">
         ✅ Ingediend! Wachten tot iedereen klaar is...
@@ -58,11 +94,9 @@
 
       <div style="background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 20px; border: 1px dashed #475569;">
         <span style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
-        <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;">
-          "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond."
-        </p>
+        <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;"></p>
       </div>
-      <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de host pauze beëindigt.</small>
+      <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de quizmaster de pauze beëindigt.</small>
     </div>
 
     <!-- 4b. Tussenstand -->
@@ -92,19 +126,22 @@
     const socket = io();
     const $ = (id) => document.getElementById(id);
 
-    let playerId = localStorage.getItem("quiz_player_id") || null;
-    let playerName = localStorage.getItem("quiz_player_name") || "";
-    let selectedOptionIndex = null;
-    let hasSubmittedCurrent = false;
+    let deviceId = localStorage.getItem("quiz_device_id") || null;
+    let me = null;                  // eigen teaminfo uit de laatste state_update
+    let lastState = null;
     let currentGameState = "LOBBY";
-    let renderedQuestionId = null; // id van de vraag die nu getekend staat
+    let renderedQuestionId = null;  // id van de vraag die nu getekend staat
+    let view = null;                // { setSelected, setLocked } van het huidige vraagtype
+    let selected = null;
+    let jokerOn = false;
+    let hasSubmitted = false;
 
     const SCREENS = ["join-screen", "lobby-screen", "question-screen", "pause-screen", "standings-screen", "end-screen"];
     function showScreen(id) {
       SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id));
     }
 
-    // Wake Lock
+    // ---------------- Wake Lock ----------------
     let wakeLock = null;
     async function requestWakeLock() {
       try {
@@ -115,116 +152,241 @@
       } catch (err) {}
     }
 
-    // Spiekdetectie: actief zolang een vraag open staat, ook na het indienen
+    // ---------------- Spiekdetectie ----------------
+    // Actief zolang een vraag open staat, ook na het indienen
     // (niet tijdens lobby, pauze, tussenstand of uitslag)
     let lastNotifyTime = 0;
     function notifyLeftApp(reason) {
-      if (!playerId || (currentGameState !== "QUESTION" && currentGameState !== "WAITING_NEXT")) return;
+      if (!deviceId || (currentGameState !== "QUESTION" && currentGameState !== "WAITING_NEXT")) return;
       const now = Date.now();
       if (now - lastNotifyTime < 3000) return;
       lastNotifyTime = now;
       socket.emit("player_blurred", { reason });
     }
-
     document.addEventListener("visibilitychange", async () => {
-      if (document.hidden) {
-        notifyLeftApp("locked");
-      } else {
-        await requestWakeLock();
-      }
+      if (document.hidden) notifyLeftApp("locked");
+      else await requestWakeLock();
     });
     window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
     window.addEventListener("blur", () => notifyLeftApp("app_switch"));
 
-    // Verbinden en sessieherstel
+    // ---------------- Identiteit ----------------
+    function saveIdentity(id) {
+      deviceId = id;
+      localStorage.setItem("quiz_device_id", id);
+    }
+    function clearIdentity() {
+      localStorage.removeItem("quiz_device_id");
+      deviceId = null;
+      me = null;
+      renderedQuestionId = null;
+      view = null;
+      selected = null;
+      jokerOn = false;
+      hasSubmitted = false;
+      QuizFX.countdown("phone", null, () => {});
+    }
+
     socket.on("connect", () => {
-      if (playerId && playerName) {
-        socket.emit("init_player", { playerId, name: playerName });
+      if (deviceId) {
+        socket.emit("hello", { deviceId });
         requestWakeLock();
+      } else {
+        showJoin();
       }
     });
+    socket.on("need_join", () => { clearIdentity(); showJoin(); });
+    socket.on("session", (data) => saveIdentity(data.deviceId));
+    socket.on("kicked", () => { clearIdentity(); showJoin("Je team is verwijderd door de quizmaster."); });
+    socket.on("quiz_reset", () => { clearIdentity(); showJoin(); });
 
-    function clearIdentity() {
-      localStorage.removeItem("quiz_player_id");
-      localStorage.removeItem("quiz_player_name");
-      playerId = null;
-      playerName = "";
-      selectedOptionIndex = null;
-      hasSubmittedCurrent = false;
-      renderedQuestionId = null;
+    // ---------------- Team maken / aansluiten ----------------
+    let pollHandle = null;
+
+    function showJoinError(message) {
+      $("join-error").textContent = message || "";
+      $("join-error").classList.toggle("hidden", !message);
     }
 
-    socket.on("quiz_reset", () => {
-      clearIdentity();
-      $("username").value = "";
-      $("join-error").classList.add("hidden");
+    function showJoin(message) {
       showScreen("join-screen");
-    });
-
-    // Inloggen
-    function join() {
-      const name = $("username").value.trim();
-      if (!name) return;
-      $("join-error").classList.add("hidden");
-      requestWakeLock();
-      socket.emit("init_player", { playerId: null, name });
+      selectTab(!$("join-existing").classList.contains("hidden") ? "join" : "new");
+      showJoinError(message); // na selectTab, want die wist de melding
     }
-    $("join-btn").addEventListener("click", join);
-    $("username").addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
 
-    socket.on("join_error", (data) => {
-      clearIdentity();
-      $("join-error").textContent = data.message;
-      $("join-error").classList.remove("hidden");
-      showScreen("join-screen");
-    });
+    function selectTab(which) {
+      const isNew = which === "new";
+      $("join-new").classList.toggle("hidden", !isNew);
+      $("join-existing").classList.toggle("hidden", isNew);
+      $("tab-new").className = isNew ? "btn-primary" : "btn-option";
+      $("tab-join").className = isNew ? "btn-option" : "btn-primary";
+      $("tab-join").style.textAlign = "center";
+      showJoinError("");
+      clearInterval(pollHandle);
+      pollHandle = null;
+      if (!isNew) {
+        refreshTeams();
+        pollHandle = setInterval(refreshTeams, 3000);
+      }
+    }
+    $("tab-new").addEventListener("click", () => selectTab("new"));
+    $("tab-join").addEventListener("click", () => selectTab("join"));
 
-    socket.on("joined", (data) => {
-      playerId = data.playerId;
-      playerName = data.name;
-      localStorage.setItem("quiz_player_id", playerId);
-      localStorage.setItem("quiz_player_name", playerName);
-      showLobby();
-    });
+    function refreshTeams() {
+      if ($("join-screen").classList.contains("hidden")) return;
+      socket.emit("list_teams", null, (res) => {
+        const list = $("team-list");
+        list.replaceChildren();
+        const teams = (res && res.teams) || [];
+        $("team-list-empty").classList.toggle("hidden", teams.length > 0);
+        teams.forEach((t) => {
+          const btn = document.createElement("button");
+          btn.className = "btn-option";
+          btn.textContent = `${t.name}  (${t.members} ${t.members === 1 ? "telefoon" : "telefoons"})`;
+          btn.onclick = () => joinTeam(t.teamId);
+          list.appendChild(btn);
+        });
+      });
+    }
 
-    socket.on("session_restored", (data) => {
-      playerId = data.playerId;
-      playerName = data.name;
-      showLobby();
-      requestWakeLock();
-    });
-
-    function showLobby() {
-      $("display-name").textContent = playerName;
+    function onJoined(res) {
+      if (!res || !res.ok) return showJoinError((res && res.message) || "Dat lukte niet. Probeer het opnieuw.");
+      clearInterval(pollHandle);
+      pollHandle = null;
+      saveIdentity(res.deviceId);
       showScreen("lobby-screen");
+      requestWakeLock();
     }
 
-    // Antwoord indienen
-    const submitBtn = $("submit-btn");
+    function createTeam() {
+      const teamName = $("team-name").value.trim();
+      if (!teamName) return showJoinError("Vul een teamnaam in.");
+      socket.emit("create_team", { teamName, label: $("label-new").value }, onJoined);
+    }
+    function joinTeam(teamId) {
+      socket.emit("join_team", { teamId, label: $("label-join").value }, onJoined);
+    }
+    $("btn-create").addEventListener("click", createTeam);
+    $("team-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createTeam(); });
 
-    function applyAnsweredState(answered) {
-      hasSubmittedCurrent = answered;
-      Array.from($("options-container").children).forEach((b) => { b.disabled = answered; });
-      submitBtn.classList.toggle("hidden", answered || selectedOptionIndex === null);
+    // ---------------- Teamkaart (lobby) ----------------
+    function renderTeamCard() {
+      $("team-title").textContent = me.teamName;
+      $("role-text").textContent =
+        me.role === "base"
+          ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in. Teamgenoten kiezen jullie team op hun eigen telefoon."
+          : `Je zit in dit team als teamlid. De basistelefoon (${me.baseLabel}) dient de antwoorden in.`;
+
+      const list = $("member-list");
+      list.replaceChildren();
+      me.members.forEach((m) => {
+        const li = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = m.role === "base" ? `${m.label} (basis)` : m.label;
+        const status = document.createElement("span");
+        status.textContent = m.connected ? "●" : "○ offline";
+        status.style.color = m.connected ? "#4ade80" : "#94a3b8";
+        li.append(name, status);
+        list.appendChild(li);
+      });
+      $("member-actions").classList.toggle("hidden", me.role === "base");
+    }
+
+    $("btn-make-base").addEventListener("click", () => {
+      socket.emit("make_base", null, () => {});
+    });
+    $("btn-leave").addEventListener("click", () => {
+      if (!confirm("Weet je zeker dat je dit team wilt verlaten?")) return;
+      socket.emit("leave_team", null, (res) => {
+        if (res && res.ok) {
+          clearIdentity();
+          showJoin();
+        } else {
+          $("lobby-error").textContent = (res && res.message) || "Dat lukte niet.";
+          $("lobby-error").classList.remove("hidden");
+        }
+      });
+    });
+
+    // ---------------- Vraag ----------------
+    const submitBtn = $("submit-btn");
+    const jokerBtn = $("joker-btn");
+
+    function renderQuestion(state) {
+      const q = state.currentQuestion;
+      renderedQuestionId = q.id;
+      selected = null;
+      jokerOn = false;
+      hasSubmitted = false;
+
+      $("player-round-badge").textContent = state.roundName;
+      $("player-question-text").textContent = q.question;
+      $("submit-error").classList.add("hidden");
+      QuizFX.renderMedia($("media-container"), q.media);
+
+      view = QuizQ.renderPlayer(q, $("options-container"), (value) => {
+        if (hasSubmitted || me.role !== "base") return;
+        selected = value;
+        view.setSelected(value);
+        updateQuestionUi();
+      });
+    }
+
+    // Past knoppen en teksten aan op de status van het team
+    function updateQuestionUi() {
+      const answered = !!me.answered;
+      const isBase = me.role === "base";
+      hasSubmitted = answered;
+      $("player-team-badge").textContent = me.teamName;
+
+      view.setLocked(answered || !isBase);
+      view.setSelected(answered ? me.givenAnswer : selected);
+
+      const jokersOn = lastState.settings.jokersPerTeam > 0;
+      if (jokersOn && isBase && !answered && me.jokersLeft > 0) {
+        jokerBtn.classList.remove("hidden");
+        jokerBtn.textContent = jokerOn
+          ? "🃏 Joker actief (2× punten) · tik om te annuleren"
+          : `🃏 Joker inzetten (2× punten) · nog ${me.jokersLeft}`;
+      } else {
+        jokerBtn.classList.add("hidden");
+      }
+      $("joker-note").classList.toggle("hidden", !(answered && me.jokerActive));
+
+      submitBtn.classList.toggle("hidden", answered || !isBase || selected === null);
+      $("member-note").classList.toggle("hidden", isBase || answered);
       $("feedback-text").classList.toggle("hidden", !answered);
       if (answered) $("submit-error").classList.add("hidden");
     }
 
+    jokerBtn.addEventListener("click", () => {
+      jokerOn = !jokerOn;
+      updateQuestionUi();
+    });
+
+    const errorText = {
+      not_open: "De vraag is niet meer open.",
+      not_base: "Alleen de basistelefoon kan indienen.",
+      no_joker: "Jullie hebben geen jokers meer.",
+      wrong_question: "De vraag is net gewisseld. Kies opnieuw.",
+      invalid: "Dat antwoord is niet geldig."
+    };
+
     submitBtn.addEventListener("click", () => {
-      if (selectedOptionIndex === null || hasSubmittedCurrent) return;
+      if (selected === null || hasSubmitted) return;
       submitBtn.disabled = true;
-      socket.emit(
-        "submit_answer",
-        { questionId: renderedQuestionId, answerIndex: selectedOptionIndex },
-        (res) => {
-          submitBtn.disabled = false;
-          if (res && res.ok) {
-            applyAnsweredState(true);
-          } else {
-            $("submit-error").classList.remove("hidden");
-          }
+      socket.emit("submit_answer", { questionId: renderedQuestionId, answer: selected, joker: jokerOn }, (res) => {
+        submitBtn.disabled = false;
+        if (res && res.ok) {
+          me.answered = true;
+          me.givenAnswer = selected;
+          me.jokerActive = jokerOn;
+          updateQuestionUi();
+        } else {
+          $("submit-error").textContent = errorText[res && res.reason] || "Indienen is niet gelukt. Probeer het opnieuw.";
+          $("submit-error").classList.remove("hidden");
         }
-      );
+      });
     });
 
     const funFacts = [
@@ -234,50 +396,18 @@
       "Tactische tip: niemand weet nog wie er voor staat..."
     ];
 
-    // De vraag wordt maar één keer getekend, zodat je keuze niet verdwijnt
-    // als een ander speler indient.
-    function renderQuestion(state) {
-      const q = state.currentQuestion;
-      renderedQuestionId = q.id;
-      selectedOptionIndex = null;
-      hasSubmittedCurrent = false;
-
-      $("player-round-badge").textContent = state.roundName;
-      $("player-question-text").textContent = q.question;
-      $("submit-error").classList.add("hidden");
-
-      const media = $("media-container");
-      media.replaceChildren();
-      if (q.type === "location" && q.imageUrl) {
-        const img = document.createElement("img");
-        img.src = q.imageUrl;
-        img.className = "media-img";
-        media.appendChild(img);
-      }
-
-      const optionsContainer = $("options-container");
-      optionsContainer.replaceChildren();
-      q.options.forEach((opt, idx) => {
-        const btn = document.createElement("button");
-        btn.className = "btn-option";
-        btn.textContent = `${["A", "B", "C", "D"][idx] || idx + 1}: ${opt}`;
-        btn.onclick = () => {
-          if (hasSubmittedCurrent) return;
-          selectedOptionIndex = idx;
-          Array.from(optionsContainer.children).forEach((b) => { b.style.background = ""; });
-          btn.style.background = "#2563eb";
-          submitBtn.classList.remove("hidden");
-        };
-        optionsContainer.appendChild(btn);
-      });
-    }
-
-    // State synchronisatie
+    // ---------------- State synchronisatie ----------------
     socket.on("state_update", (state) => {
-      if (!playerId) return;
-
+      if (!deviceId || !state.me) return;
+      me = state.me;
+      lastState = state;
       const previousState = currentGameState;
       currentGameState = state.gameState;
+      renderTeamCard();
+
+      if (state.gameState !== "QUESTION") {
+        QuizFX.countdown("phone", null, () => { $("timer-badge").classList.add("hidden"); });
+      }
 
       if (state.gameState === "END" || state.gameState === "REVIEW") {
         renderedQuestionId = null;
@@ -299,7 +429,7 @@
         list.replaceChildren();
         (state.standings || []).forEach((row) => {
           const li = document.createElement("li");
-          if (row.name === playerName) li.style.background = "#2563eb";
+          if (row.teamId === me.teamId) li.style.background = "#2563eb";
           const left = document.createElement("span");
           const medal = row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : `#${row.rank}`;
           left.textContent = `${medal}  ${row.name}`;
@@ -313,22 +443,29 @@
 
       if (state.gameState === "QUESTION" && state.currentQuestion) {
         showScreen("question-screen");
-        if (renderedQuestionId !== state.currentQuestion.id) {
-          renderQuestion(state);
-        }
-        applyAnsweredState(!!(state.me && state.me.answered));
+        if (renderedQuestionId !== state.currentQuestion.id) renderQuestion(state);
+        updateQuestionUi();
+        QuizFX.countdown("phone", state.timer, (info) => {
+          const badge = $("timer-badge");
+          if (!info) return badge.classList.add("hidden");
+          badge.classList.remove("hidden");
+          badge.textContent = `⏱ ${info.secs}s`;
+          badge.style.background = info.secs <= 5 && info.running ? "#dc2626" : "#475569";
+        });
         return;
       }
 
       // LOBBY of WAITING_NEXT
       renderedQuestionId = null;
-      selectedOptionIndex = null;
-      hasSubmittedCurrent = false;
+      selected = null;
+      jokerOn = false;
+      hasSubmitted = false;
       showScreen("lobby-screen");
+      $("lobby-error").classList.add("hidden");
       $("lobby-message").textContent =
         state.gameState === "WAITING_NEXT"
-          ? (state.me && state.me.answered
-              ? "✅ Ingediend! Wachten op de volgende vraag..."
+          ? (me.answered
+              ? "✅ Jullie team heeft ingediend! Wachten op de volgende vraag..."
               : "Wachten op de volgende vraag...")
           : "Wachten tot de quizmaster de quiz start...";
     });
