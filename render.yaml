@@ -1,0 +1,27 @@
+# Render Blueprint voor de familiequiz.
+# Standaard staat dit op het GRATIS plan: prima om te testen, maar de stand gaat verloren als
+# Render de service herstart of laat slapen. Voor de echte quiz-avond: zie "Betrouwbaar draaien"
+# onderaan README.md (plan: starter + schijf, twee kleine wijzigingen hieronder).
+services:
+  - type: web
+    name: familiequiz
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: HOST_PIN
+        sync: false          # Render vraagt hier tijdens het aanmaken om een pincode (bijv. 6 cijfers)
+
+    # --- Voor de echte avond: haal de # weg bij de regels hieronder en zet plan hierboven op "starter" ---
+    # (een gratis service kan geen schijf hebben)
+    # disk:
+    #   name: quizdata
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # En voeg bij envVars toe:
+    #   - key: DATA_DIR
+    #     value: /var/data
