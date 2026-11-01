@@ -10,32 +10,46 @@
   <script src="qtypes.js"></script>
 </head>
 <body>
+  <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
+
   <div class="card">
+
+    <div id="base-banner" class="hidden" style="background:#7c3aed; border-radius:10px; padding:12px; margin-bottom:14px;">
+      <p id="base-banner-text" style="margin-bottom:8px;"></p>
+      <div style="display:flex; gap:8px;">
+        <button id="btn-base-yes" class="btn-primary" style="margin:0; background:#22c55e;">👍 Akkoord</button>
+        <button id="btn-base-no" class="btn-option" style="margin:0; text-align:center;">Niet akkoord</button>
+      </div>
+    </div>
 
     <!-- 1. Team maken of aansluiten -->
     <div id="join-screen">
       <h1>Familiequiz 🏆</h1>
-      <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <button id="tab-new" class="btn-primary" style="margin:0;">Nieuw team</button>
-        <button id="tab-join" class="btn-option" style="margin:0; text-align:center;">Aansluiten bij team</button>
-      </div>
+      <p style="text-align:center; margin-bottom:10px;"><b>Stap 1:</b> vul je eigen naam in</p>
+      <input type="text" id="my-name" placeholder="Jouw naam" maxlength="16" autocomplete="off">
 
-      <div id="join-new">
-        <p style="text-align:center; margin-bottom:12px;">Kies een naam voor jullie team:</p>
-        <input type="text" id="team-name" placeholder="Bijv. BalloerBatsers of Zeegse Zuiperds" maxlength="24">
-        <input type="text" id="label-new" placeholder="Jouw naam (optioneel)" maxlength="16">
-        <p style="text-align:center; color:#94a3b8; font-size:13px; margin-bottom:8px;">
-          Deze telefoon wordt de <b>basistelefoon</b> van het team: hiermee dien je de antwoorden in.
-          Teamgenoten sluiten daarna aan met hun eigen telefoon.
-        </p>
-        <button class="btn-primary" id="btn-create">Maak team aan</button>
-      </div>
+      <div id="join-steps" class="hidden">
+        <p style="text-align:center; margin: 6px 0 10px;"><b>Stap 2:</b> maak een team of sluit aan bij een team</p>
+        <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <button id="tab-new" class="btn-primary" style="margin:0;">Nieuw team</button>
+          <button id="tab-join" class="btn-option" style="margin:0; text-align:center;">Aansluiten bij team</button>
+        </div>
 
-      <div id="join-existing" class="hidden">
-        <p style="text-align:center; margin-bottom:12px;">Tik op het team waarbij je wilt aansluiten:</p>
-        <input type="text" id="label-join" placeholder="Jouw naam (optioneel)" maxlength="16">
-        <div id="team-list"></div>
-        <p id="team-list-empty" style="text-align:center; color:#94a3b8; font-size:14px;">Er zijn nog geen teams. Maak er zelf een aan, of wacht even.</p>
+        <div id="join-new">
+          <p style="text-align:center; margin-bottom:12px;">Kies een naam voor jullie team:</p>
+          <input type="text" id="team-name" placeholder="Bijv. BalloerBatsers of Zeegse Zuiperds" maxlength="24">
+          <p style="text-align:center; color:#94a3b8; font-size:13px; margin-bottom:8px;">
+            Samen kiezen jullie straks welke telefoon de <b>basistelefoon</b> is: daarmee dien je de antwoorden in.
+            Voorlopig is dat deze telefoon. Teamgenoten sluiten aan met hun eigen telefoon.
+          </p>
+          <button class="btn-primary" id="btn-create">Maak team aan</button>
+        </div>
+
+        <div id="join-existing" class="hidden">
+          <p style="text-align:center; margin-bottom:12px;">Tik op het team waarbij je wilt aansluiten:</p>
+          <div id="team-list"></div>
+          <p id="team-list-empty" style="text-align:center; color:#94a3b8; font-size:14px;">Er zijn nog geen teams. Maak er zelf een aan, of wacht even.</p>
+        </div>
       </div>
 
       <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px;"></p>
@@ -48,7 +62,6 @@
       <ul id="member-list"></ul>
       <p id="lobby-message" style="text-align:center; color:#94a3b8; margin-top:16px;">Wachten tot de quizmaster de quiz start...</p>
       <div id="member-actions" class="hidden">
-        <button id="btn-make-base" class="btn-option" style="text-align:center; font-size:14px;">📱 Deze telefoon wordt de basis</button>
         <button id="btn-leave" class="btn-option" style="text-align:center; font-size:14px; color:#94a3b8;">Team verlaten</button>
       </div>
       <p id="lobby-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px; font-size:14px;"></p>
@@ -210,9 +223,24 @@
 
     function showJoin(message) {
       showScreen("join-screen");
+      updateSteps();
       selectTab(!$("join-existing").classList.contains("hidden") ? "join" : "new");
       showJoinError(message); // na selectTab, want die wist de melding
     }
+
+    // Eerst de eigen naam, pas daarna kun je een team kiezen
+    const myName = () => $("my-name").value.trim();
+    function updateSteps() {
+      $("join-steps").classList.toggle("hidden", !myName());
+    }
+    $("my-name").addEventListener("input", () => {
+      updateSteps();
+      showJoinError("");
+      if (myName() && !$("join-existing").classList.contains("hidden")) {
+        refreshTeams();
+        if (!pollHandle) pollHandle = setInterval(refreshTeams, 3000);
+      }
+    });
 
     function selectTab(which) {
       const isNew = which === "new";
@@ -224,7 +252,7 @@
       showJoinError("");
       clearInterval(pollHandle);
       pollHandle = null;
-      if (!isNew) {
+      if (!isNew && myName()) {
         refreshTeams();
         pollHandle = setInterval(refreshTeams, 3000);
       }
@@ -233,7 +261,7 @@
     $("tab-join").addEventListener("click", () => selectTab("join"));
 
     function refreshTeams() {
-      if ($("join-screen").classList.contains("hidden")) return;
+      if ($("join-screen").classList.contains("hidden") || !myName()) return;
       socket.emit("list_teams", null, (res) => {
         const list = $("team-list");
         list.replaceChildren();
@@ -261,10 +289,12 @@
     function createTeam() {
       const teamName = $("team-name").value.trim();
       if (!teamName) return showJoinError("Vul een teamnaam in.");
-      socket.emit("create_team", { teamName, label: $("label-new").value }, onJoined);
+      if (!myName()) return showJoinError("Vul eerst je eigen naam in.");
+      socket.emit("create_team", { teamName, label: myName() }, onJoined);
     }
     function joinTeam(teamId) {
-      socket.emit("join_team", { teamId, label: $("label-join").value }, onJoined);
+      if (!myName()) return showJoinError("Vul eerst je eigen naam in.");
+      socket.emit("join_team", { teamId, label: myName() }, onJoined);
     }
     $("btn-create").addEventListener("click", createTeam);
     $("team-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createTeam(); });
@@ -272,29 +302,81 @@
     // ---------------- Teamkaart (lobby) ----------------
     function renderTeamCard() {
       $("team-title").textContent = me.teamName;
+      const pending = !!me.proposal;
       $("role-text").textContent =
         me.role === "base"
-          ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in. Teamgenoten kiezen jullie team op hun eigen telefoon."
-          : `Je zit in dit team als teamlid. De basistelefoon (${me.baseLabel}) dient de antwoorden in.`;
+          ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in."
+          : `De basistelefoon (${me.baseLabel}) dient de antwoorden in.`;
 
       const list = $("member-list");
       list.replaceChildren();
       me.members.forEach((m) => {
         const li = document.createElement("li");
+        li.style.alignItems = "center";
         const name = document.createElement("span");
-        name.textContent = m.role === "base" ? `${m.label} (basis)` : m.label;
+        name.textContent = (m.memberId === me.memberId ? `${m.label} (jij)` : m.label) + (m.role === "base" ? " ⭐ basis" : "");
+        const right = document.createElement("span");
+        right.style.display = "flex";
+        right.style.gap = "8px";
+        right.style.alignItems = "center";
+
+        if (m.role !== "base" && m.connected && !pending) {
+          const btn = document.createElement("button");
+          btn.className = "btn-option";
+          btn.style.cssText = "width:auto; margin:0; padding:6px 10px; font-size:13px;";
+          btn.textContent = m.memberId === me.memberId ? "Maak mij de basis" : "Stel voor als basis";
+          btn.onclick = () => proposeBase(m.memberId);
+          right.appendChild(btn);
+        }
         const status = document.createElement("span");
         status.textContent = m.connected ? "●" : "○ offline";
         status.style.color = m.connected ? "#4ade80" : "#94a3b8";
-        li.append(name, status);
+        right.appendChild(status);
+
+        li.append(name, right);
         list.appendChild(li);
       });
       $("member-actions").classList.toggle("hidden", me.role === "base");
+      renderProposal();
     }
 
-    $("btn-make-base").addEventListener("click", () => {
-      socket.emit("make_base", null, () => {});
+    // De basistelefoon kiest het hele team: iemand stelt voor, iedereen moet akkoord gaan
+    function renderProposal() {
+      const p = me && me.proposal;
+      const banner = $("base-banner");
+      banner.classList.toggle("hidden", !p || !$("join-screen").classList.contains("hidden"));
+      if (!p) return;
+      const count = `${p.approved} van ${p.needed} akkoord`;
+      let text;
+      if (p.youAreProposer) text = `Jij stelde ${p.youAreCandidate ? "jezelf" : p.candidateLabel} voor als basistelefoon. Wachten op de rest van het team (${count}).`;
+      else if (p.youApproved) text = `Je bent akkoord. Wachten op de rest van het team (${count}).`;
+      else if (p.youAreCandidate) text = `${p.proposerLabel} stelt jou voor als basistelefoon van het team. Akkoord? (${count})`;
+      else text = `${p.proposerLabel} stelt ${p.candidateLabel} voor als basistelefoon van het team. Akkoord? (${count})`;
+      $("base-banner-text").textContent = text;
+      $("btn-base-yes").classList.toggle("hidden", p.youApproved);
+      $("btn-base-no").textContent = p.youAreProposer ? "Voorstel intrekken" : "Niet akkoord";
+    }
+
+    function proposeBase(memberId) {
+      socket.emit("propose_base", { memberId }, (res) => {
+        if (res && res.ok) return $("lobby-error").classList.add("hidden");
+        $("lobby-error").textContent = (res && res.message) || "Dat lukte niet.";
+        $("lobby-error").classList.remove("hidden");
+      });
+    }
+    $("btn-base-yes").addEventListener("click", () => socket.emit("respond_base", { approve: true }, () => {}));
+    $("btn-base-no").addEventListener("click", () => socket.emit("respond_base", { approve: false }, () => {}));
+
+    // Korte meldingen van de server (bijv. "Anna is nu de basistelefoon")
+    let toastTimer = null;
+    socket.on("team_notice", (data) => {
+      const t = $("toast");
+      t.textContent = data.text;
+      t.classList.remove("hidden");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.add("hidden"), 6000);
     });
+
     $("btn-leave").addEventListener("click", () => {
       if (!confirm("Weet je zeker dat je dit team wilt verlaten?")) return;
       socket.emit("leave_team", null, (res) => {

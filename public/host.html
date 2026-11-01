@@ -27,13 +27,19 @@
     /* Gemaakt voor een tv: alles schaalt mee met de breedte van het scherm */
     html, body { height: 100%; }
     body.tv { display: block; padding: 0; overflow: hidden; cursor: none; }
-    #audio-banner { position: fixed; bottom: 1.5vw; left: 50%; transform: translateX(-50%); background: #f59e0b; color: #0f172a;
-                    font-weight: bold; font-size: clamp(14px, 1.8vw, 32px); padding: 0.6em 1.4em; border-radius: 999px; z-index: 50; }
+    #audio-banner { position: fixed; top: 2vh; right: 3vw; background: #f59e0b; color: #0f172a;
+                    font-weight: bold; font-size: clamp(12px, 1.4vw, 26px); padding: 0.4em 1.2em; border-radius: 999px; z-index: 50; }
+    /* Spiekmeldingen onderin beeld, voor iedereen zichtbaar */
+    #tv-alerts { position: fixed; left: 3vw; right: 3vw; bottom: 1.5vw; display: flex; flex-direction: column; gap: 0.8vw; z-index: 45; }
+    .tv-alert { color: #fff; font-weight: bold; font-size: clamp(16px, 2.6vw, 48px); padding: 0.5em 1em; border-radius: 14px; text-align: center;
+                box-shadow: 0 6px 24px rgba(0,0,0,0.5); animation: shake 0.4s; }
+    .tv-alert.app { background: #dc2626; border: 3px solid #f87171; }
+    .tv-alert.locked { background: #d97706; border: 3px solid #fbbf24; }
     #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 1.1vh; background: #1e293b; z-index: 40; }
     #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.3s; }
     #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; }
     .pill { background: #334155; border-radius: 999px; padding: 0.3em 1.2em; font-size: clamp(14px, 1.9vw, 36px); font-weight: bold; }
-    main { padding: 1vh 4vw; }
+    main { padding: 1vh 4vw 14vh; }
     .view { display: block; }
     .tv-title { font-size: clamp(36px, 6vw, 110px); margin-bottom: 2vh; }
     .tv-q { font-size: clamp(26px, 4.4vw, 84px); line-height: 1.2; margin: 1vh 0 3vh; }
@@ -61,6 +67,7 @@
 </head>
 <body class="tv">
 
+  <div id="tv-alerts"></div>
   <div id="audio-banner">🔊 Druk één keer op OK of klik op het scherm om het geluid te activeren</div>
   <div id="tv-timerbar" class="hidden"><div id="tv-timerfill"></div></div>
 
@@ -159,6 +166,24 @@
 
     // ---------- Verbinding ----------
     socket.on("connect", () => socket.emit("register_tv"));
+
+    // ---------- Spiekmeldingen (onderin beeld) ----------
+    socket.on("cheat_warning", (data) => {
+      const isLocked = data.reason === "locked";
+      const box = document.createElement("div");
+      box.className = "tv-alert " + (isLocked ? "locked" : "app");
+      box.textContent = isLocked
+        ? `🔒 ${data.teamName} · ${data.label}: scherm vergrendeld`
+        : `🚨 ${data.teamName} · ${data.label} heeft een andere app geopend`;
+      const holder = $("tv-alerts");
+      holder.appendChild(box);
+      while (holder.children.length > 3) holder.firstChild.remove();
+      setTimeout(() => {
+        box.style.transition = "opacity 0.5s";
+        box.style.opacity = "0";
+        setTimeout(() => box.remove(), 500);
+      }, 15000);
+    });
 
     // ---------- QR-code ----------
     async function showJoinUrl() {
@@ -297,6 +322,8 @@
         allAudio().forEach((a) => a.pause());
       }
       wasPaused = gs === "PAUSED";
+
+      if (!inPlay) $("tv-alerts").replaceChildren();
 
       if (gs === "LOBBY") {
         showView("v-lobby");

@@ -24,9 +24,16 @@ Op de tv moet één keer op OK of een toets gedrukt worden, anders blokkeert de 
 
 ## Teams
 
-E�n telefoon maakt het team aan en is de **basistelefoon**: alleen die dient antwoorden in.
-Teamgenoten kiezen "Aansluiten bij team" en zien de vraag mee. Via "Basis overnemen" kan een
-teamlid de basis overnemen, bijvoorbeeld als de eerste telefoon leeg is.
+Op de telefoon vul je **eerst je eigen naam** in en kies je daarna pas een team: een nieuw team
+maken, of aansluiten bij een bestaand team.
+
+Eén telefoon is de **basistelefoon**: alleen die dient antwoorden in. De maker van het team is
+dat in het begin, maar **het hele team kiest de basis**: een teamlid stelt een telefoon voor (ook
+de eigen) en alle verbonden teamleden moeten akkoord gaan. Pas dan wisselt de basis.
+Een teamlid kan het team zelf verlaten, behalve de basistelefoon.
+
+Spiekmeldingen ("andere app geopend" of "scherm vergrendeld") verschijnen bij de quizmaster én
+onderin het tv-scherm, zodat iedereen ze ziet.
 
 ## Opslaan
 
@@ -67,10 +74,17 @@ aanpassen.
 
 ## Noodknoppen (in de bediening)
 
+Je kunt pas naar de volgende vraag als **alle verbonden teams hebben geantwoord** (of de tijd om is).
+De knop laat zien op welke teams nog gewacht wordt. Hangt een telefoon, dan kun je met
+"Toch doorgaan" onder de noodknoppen de vraag alsnog afsluiten.
+
 - Antwoord van een team wissen (het team mag opnieuw antwoorden)
+- Toch doorgaan naar de volgende vraag
 - +10 seconden (met timer)
 - Vraag voor iedereen goed rekenen, of laten vervallen
 - Team hernoemen of verwijderen
+- Spelers individueel hernoemen en naar een ander team verplaatsen
+- Zelf een basistelefoon aanwijzen (als het team er niet uitkomt)
 
 ## Nieuwe vraagtypen toevoegen
 

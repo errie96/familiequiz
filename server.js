@@ -211,8 +211,39 @@ function teamConnected(team) {
 function activeTeams() {
   return Object.values(teams).filter(teamConnected);
 }
+function connectedDevices(team) {
+  return teamDevices(team).filter((d) => d.connected);
+}
+// Korte melding op de telefoons van een team
+function notifyTeam(team, text) {
+  for (const d of teamDevices(team)) {
+    if (d.connected && d.socketId) io.to(d.socketId).emit('team_notice', { text });
+  }
+}
+// Wat een telefoon te zien krijgt van een lopend voorstel voor een nieuwe basistelefoon
+function proposalFor(team, device) {
+  const p = team.proposal;
+  const candidate = p && devices[p.candidateId];
+  if (!candidate) return null;
+  const proposer = devices[p.proposerId];
+  const need = connectedDevices(team);
+  return {
+    candidateMemberId: candidate.memberId,
+    candidateLabel: candidate.label,
+    proposerLabel: proposer ? proposer.label : '',
+    youApproved: p.approvals.includes(device.deviceId),
+    youAreProposer: p.proposerId === device.deviceId,
+    youAreCandidate: candidate.deviceId === device.deviceId,
+    approved: need.filter((x) => p.approvals.includes(x.deviceId)).length,
+    needed: need.length
+  };
+}
 function jokersUsed(team) {
   return Object.keys(team.jokers).filter((qid) => voided[qid] !== 'void').length;
+}
+function labelTaken(team, label, exceptDeviceId = null) {
+  const lower = label.toLowerCase();
+  return teamDevices(team).some((d) => d.deviceId !== exceptDeviceId && d.label.toLowerCase() === lower);
 }
 function findTeamByName(name, exceptId = null) {
   const lower = name.toLowerCase();
@@ -386,7 +417,7 @@ function saveNow() {
       timer: { qid: timer.qid, totalMs: timer.totalMs, remainingMs: Math.round(currentRemaining()) },
       teams,
       devices: Object.fromEntries(
-        Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, teamId: d.teamId, label: d.label }])
+        Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label }])
       )
     };
     const tmp = STATE_FILE + '.tmp';
@@ -429,7 +460,7 @@ function loadSaved() {
   devices = {};
   for (const d of Object.values(data.devices || {})) {
     if (!d || !teams[d.teamId]) continue;
-    devices[d.deviceId] = { deviceId: d.deviceId, teamId: d.teamId, label: d.label || 'Telefoon', socketId: null, connected: false, lastAlertTime: 0 };
+    devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', socketId: null, connected: false, lastAlertTime: 0 };
   }
   for (const t of Object.values(teams)) {
     if (!devices[t.baseDeviceId]) {
@@ -534,6 +565,7 @@ function broadcastState() {
         answered: inPlay && hasAnswered(t),
         jokersUsed: jokersUsed(t),
         members: teamDevices(t).map((d) => ({
+          deviceId: d.deviceId,
           label: d.label,
           role: d.deviceId === t.baseDeviceId ? 'base' : 'member',
           connected: d.connected
@@ -561,6 +593,7 @@ function broadcastState() {
       standings: standingsList,
       settings: { jokersPerTeam: settings.jokersPerTeam, timerEnabled: settings.timerEnabled },
       me: {
+        memberId: d.memberId,
         teamId: t.teamId,
         teamName: t.name,
         label: d.label,
@@ -570,7 +603,9 @@ function broadcastState() {
         givenAnswer: answered ? t.answers[q.id] : null,
         jokerActive: answered && !!t.jokers[q.id],
         jokersLeft: Math.max(0, settings.jokersPerTeam - jokersUsed(t)),
+        proposal: proposalFor(t, d),
         members: teamDevices(t).map((m) => ({
+          memberId: m.memberId,
           label: m.label,
           role: m.deviceId === t.baseDeviceId ? 'base' : 'member',
           connected: m.connected
@@ -582,7 +617,34 @@ function broadcastState() {
   scheduleSave();
 }
 
+function advance() {
+  if (currentIndex + 1 >= allQuestions.length) {
+    gameState = 'END';
+    revealState = 'idle';
+  } else {
+    currentIndex++;
+    gameState = 'QUESTION';
+  }
+}
+
+// Een voorstel voor een nieuwe basistelefoon gaat door zodra alle verbonden teamleden akkoord zijn
+function evaluateProposal(team) {
+  const p = team.proposal;
+  if (!p) return;
+  const candidate = devices[p.candidateId];
+  if (!candidate || candidate.teamId !== team.teamId || !candidate.connected) {
+    team.proposal = null; // de kandidaat is weg of offline
+    return;
+  }
+  if (connectedDevices(team).every((d) => p.approvals.includes(d.deviceId))) {
+    team.baseDeviceId = candidate.deviceId;
+    team.proposal = null;
+    notifyTeam(team, `${candidate.label} is nu de basistelefoon van het team.`);
+  }
+}
+
 function sync() {
+  Object.values(teams).forEach(evaluateProposal);
   settleQuestion();
   timerEnsure();
   broadcastState();
@@ -700,11 +762,13 @@ io.on('connection', (socket) => {
   socket.on('create_team', ({ teamName, label } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     if (gameState === 'END' || gameState === 'REVIEW') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
+    const myName = cleanName(label, MAX_LABEL);
+    if (!myName) return reply({ ok: false, message: 'Vul eerst je eigen naam in.' });
     const name = cleanName(teamName, MAX_TEAM_NAME);
     if (!name) return reply({ ok: false, message: 'Vul een teamnaam in.' });
     if (findTeamByName(name)) return reply({ ok: false, message: `De teamnaam "${name}" is al in gebruik.` });
 
-    const device = { deviceId: newId('d_'), teamId: null, label: cleanName(label, MAX_LABEL) || 'Basis', socketId: null, connected: false, lastAlertTime: 0 };
+    const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: null, label: myName, socketId: null, connected: false, lastAlertTime: 0 };
     const team = { teamId: newId('t_'), name, answers: {}, bonus: {}, jokers: {}, baseDeviceId: device.deviceId };
     device.teamId = team.teamId;
     teams[team.teamId] = team;
@@ -717,15 +781,21 @@ io.on('connection', (socket) => {
   socket.on('join_team', ({ teamId, label } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     if (gameState === 'END' || gameState === 'REVIEW') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
+    const myName = cleanName(label, MAX_LABEL);
+    if (!myName) return reply({ ok: false, message: 'Vul eerst je eigen naam in.' });
     const team = teams[teamId];
     if (!team) return reply({ ok: false, message: 'Dat team bestaat niet meer.' });
     const members = teamDevices(team);
     if (members.length >= MAX_DEVICES_PER_TEAM) return reply({ ok: false, message: 'Dit team zit vol.' });
+    if (labelTaken(team, myName)) {
+      return reply({ ok: false, message: `In dit team zit al iemand die ${myName} heet. Voeg bijvoorbeeld een letter toe.` });
+    }
 
     const device = {
       deviceId: newId('d_'),
+      memberId: newId('m_'),
       teamId: team.teamId,
-      label: cleanName(label, MAX_LABEL) || `Teamlid ${members.length}`,
+      label: myName,
       socketId: null,
       connected: false,
       lastAlertTime: 0
@@ -736,13 +806,44 @@ io.on('connection', (socket) => {
     sync();
   });
 
-  // Een teamlid neemt de basis over (bijvoorbeeld als de basistelefoon leeg is)
-  socket.on('make_base', (_, cb) => {
+  // De basistelefoon wordt door het hele team gekozen: een teamlid stelt een telefoon voor
+  // (ook de eigen) en alle verbonden teamleden moeten akkoord gaan.
+  socket.on('propose_base', ({ memberId } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const device = deviceOf(socket);
     const team = device && teams[device.teamId];
     if (!team) return reply({ ok: false });
-    team.baseDeviceId = device.deviceId;
+    const candidate = memberId ? teamDevices(team).find((d) => d.memberId === memberId) : device;
+    if (!candidate || candidate.teamId !== team.teamId || !candidate.connected) {
+      return reply({ ok: false, message: 'Die telefoon is niet verbonden.' });
+    }
+    if (team.baseDeviceId === candidate.deviceId) {
+      return reply({ ok: false, message: `${candidate.label} is al de basistelefoon.` });
+    }
+    team.proposal = { candidateId: candidate.deviceId, proposerId: device.deviceId, approvals: [device.deviceId] };
+    reply({ ok: true });
+    sync(); // gaat meteen door als de voorsteller de enige verbonden teamgenoot is
+  });
+
+  socket.on('respond_base', ({ approve } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const device = deviceOf(socket);
+    const team = device && teams[device.teamId];
+    const p = team && team.proposal;
+    if (!p) return reply({ ok: false });
+
+    if (approve) {
+      if (!p.approvals.includes(device.deviceId)) p.approvals.push(device.deviceId);
+    } else {
+      team.proposal = null;
+      const base = devices[team.baseDeviceId];
+      notifyTeam(
+        team,
+        p.proposerId === device.deviceId
+          ? `${device.label} heeft het voorstel ingetrokken.`
+          : `${device.label} is niet akkoord. De basistelefoon blijft ${base ? base.label : 'zoals hij was'}.`
+      );
+    }
     reply({ ok: true });
     sync();
   });
@@ -753,7 +854,10 @@ io.on('connection', (socket) => {
     const team = device && teams[device.teamId];
     if (!team) return reply({ ok: false });
     if (team.baseDeviceId === device.deviceId) {
-      return reply({ ok: false, message: 'De basistelefoon kan het team niet verlaten. Geef eerst de basis aan een teamlid ("Basis overnemen" op die telefoon).' });
+      return reply({ ok: false, message: 'De basistelefoon kan het team niet verlaten. Kies eerst samen een andere basistelefoon.' });
+    }
+    if (team.proposal && (team.proposal.candidateId === device.deviceId || team.proposal.proposerId === device.deviceId)) {
+      team.proposal = null;
     }
     delete devices[device.deviceId];
     socket.data.deviceId = null;
@@ -800,13 +904,15 @@ io.on('connection', (socket) => {
     if (now - device.lastAlertTime < 3500) return;
     device.lastAlertTime = now;
 
-    io.to('remote_room').emit('cheat_warning', {
+    const alert = {
       teamName: team.name,
       label: device.label,
       role: team.baseDeviceId === device.deviceId ? 'base' : 'member',
       reason: reason === 'locked' ? 'locked' : 'app_switch',
       timestamp: new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' })
-    });
+    };
+    io.to('remote_room').emit('cheat_warning', alert);
+    io.to('tv_room').emit('cheat_warning', alert); // zodat iedereen het kan zien
   });
 
   // ---------- Bediening: spelverloop ----------
@@ -822,17 +928,25 @@ io.on('connection', (socket) => {
       }
       currentIndex = 0;
       gameState = 'QUESTION';
-    } else if (gameState === 'QUESTION' || gameState === 'WAITING_NEXT') {
-      if (currentIndex + 1 >= allQuestions.length) {
-        gameState = 'END';
-        revealState = 'idle';
-      } else {
-        currentIndex++;
-        gameState = 'QUESTION';
-      }
+    } else if (gameState === 'WAITING_NEXT') {
+      advance(); // alle teams hebben geantwoord (of de tijd is om)
+    } else if (gameState === 'QUESTION') {
+      const waiting = activeTeams().filter((t) => !hasAnswered(t)).map((t) => t.name);
+      return socket.emit('host_error', {
+        message: waiting.length
+          ? `Wacht nog op: ${waiting.join(', ')}.`
+          : 'Wacht tot alle teams hebben geantwoord.'
+      });
     } else {
       return;
     }
+    sync();
+  });
+
+  // Noodknop: toch doorgaan, ook als niet iedereen heeft geantwoord (bijv. een telefoon die vastloopt)
+  socket.on('force_next', () => {
+    if (!isRemote(socket) || (gameState !== 'QUESTION' && gameState !== 'WAITING_NEXT')) return;
+    advance();
     sync();
   });
 
@@ -988,6 +1102,75 @@ io.on('connection', (socket) => {
       return socket.emit('host_error', { message: `De teamnaam "${clean}" is al in gebruik.` });
     }
     team.name = clean;
+    sync();
+  });
+
+  // Naam van één speler (telefoon) wijzigen
+  socket.on('rename_player', ({ deviceId, name } = {}) => {
+    if (!isRemote(socket)) return;
+    const device = devices[deviceId];
+    const team = device && teams[device.teamId];
+    const clean = cleanName(name, MAX_LABEL);
+    if (!team || !clean) return;
+    if (labelTaken(team, clean, device.deviceId)) {
+      return socket.emit('host_error', { message: `In team ${team.name} zit al iemand die ${clean} heet.` });
+    }
+    device.label = clean;
+    sync();
+  });
+
+  // Speler naar een ander team verplaatsen
+  socket.on('move_player', ({ deviceId, teamId } = {}) => {
+    if (!isRemote(socket)) return;
+    const device = devices[deviceId];
+    const from = device && teams[device.teamId];
+    const to = teams[teamId];
+    if (!device || !from || !to || from === to) return;
+
+    if (teamDevices(from).length <= 1) {
+      return socket.emit('host_error', {
+        message: `${device.label} is de enige telefoon van team ${from.name}. Verplaats eerst iemand anders, of verwijder het team.`
+      });
+    }
+    if (teamDevices(to).length >= MAX_DEVICES_PER_TEAM) {
+      return socket.emit('host_error', { message: `Team ${to.name} zit vol.` });
+    }
+    if (labelTaken(to, device.label)) {
+      return socket.emit('host_error', {
+        message: `In team ${to.name} zit al iemand die ${device.label} heet. Wijzig eerst een van de namen.`
+      });
+    }
+
+    const wasBase = from.baseDeviceId === device.deviceId;
+    device.teamId = to.teamId;
+    from.proposal = null;
+    to.proposal = null;
+
+    if (wasBase) {
+      // Het oude team krijgt een nieuwe basis; de quizmaster kan dat daarna nog wijzigen
+      const rest = teamDevices(from);
+      const next = rest.find((d) => d.connected) || rest[0];
+      from.baseDeviceId = next.deviceId;
+      notifyTeam(from, `${device.label} is verplaatst. ${next.label} is nu de basistelefoon.`);
+    } else {
+      notifyTeam(from, `${device.label} is verplaatst naar een ander team.`);
+    }
+    if (device.connected && device.socketId) {
+      io.to(device.socketId).emit('team_notice', { text: `De quizmaster heeft je verplaatst naar team ${to.name}.` });
+    }
+    notifyTeam(to, `${device.label} is toegevoegd aan jullie team.`);
+    sync();
+  });
+
+  // Noodknop: de quizmaster wijst zelf de basistelefoon aan
+  socket.on('set_base', ({ deviceId } = {}) => {
+    if (!isRemote(socket)) return;
+    const device = devices[deviceId];
+    const team = device && teams[device.teamId];
+    if (!team) return;
+    team.baseDeviceId = device.deviceId;
+    team.proposal = null;
+    notifyTeam(team, `De quizmaster heeft ${device.label} aangewezen als basistelefoon.`);
     sync();
   });
 

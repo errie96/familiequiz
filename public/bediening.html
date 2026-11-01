@@ -102,6 +102,7 @@
     <details id="emergency-panel">
       <summary>🚨 Noodknoppen</summary>
       <p id="em-target" style="color:#94a3b8; font-size:14px; margin: 4px 0 8px;"></p>
+      <button id="btn-force-next" class="btn-option" style="text-align:center;">⏭️ Toch doorgaan zonder te wachten</button>
       <button id="btn-add-time" class="btn-option" style="text-align:center;">⏱️ +10 seconden</button>
       <button id="btn-all-correct" class="btn-option" style="text-align:center;">✅ Voor iedereen goed rekenen</button>
       <button id="btn-void" class="btn-option" style="text-align:center;">🚫 Vraag laten vervallen</button>
@@ -110,6 +111,14 @@
         Een antwoord wissen, een team hernoemen of verwijderen doe je onder "Teams".
       </p>
     </details>
+
+    <div id="move-dialog" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:60; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div style="background:#1e293b; border-radius:12px; padding:18px; width:100%; max-width:420px; max-height:80vh; overflow:auto;">
+        <h3 id="move-title" style="text-align:left;"></h3>
+        <div id="move-list"></div>
+        <button id="move-cancel" class="btn-option" style="text-align:center; margin-top:10px;">Annuleren</button>
+      </div>
+    </div>
 
     <button id="btn-reset" style="background:#dc2626; color:#fff; margin-top:18px;">🔄 Quiz helemaal opnieuw</button>
   </div>
@@ -162,7 +171,7 @@
       box.style.backgroundColor = isLocked ? "#d97706" : "#dc2626";
       box.style.border = isLocked ? "2px solid #fbbf24" : "2px solid #f87171";
       const who = document.createElement("u");
-      who.textContent = `${data.teamName} (${data.label})`;
+      who.textContent = `${data.teamName} · ${data.label}`;
       box.append(
         isLocked ? "🔒 Scherm vergrendeld: " : "🚨 Andere app: ",
         who,
@@ -186,6 +195,12 @@
     $("btn-pause").addEventListener("click", () => socket.emit("toggle_pause"));
     $("btn-skip-reveal").addEventListener("click", () => socket.emit("reveal_done"));
     $("btn-add-time").addEventListener("click", () => socket.emit("add_time"));
+    $("btn-force-next").addEventListener("click", () => {
+      if (confirm("Doorgaan naar de volgende vraag, ook al hebben niet alle teams geantwoord?")) {
+        socket.emit("force_next");
+      }
+    });
+    $("move-cancel").addEventListener("click", () => $("move-dialog").classList.add("hidden"));
     $("btn-reset").addEventListener("click", () => {
       if (confirm("Weet je zeker dat je de quiz helemaal opnieuw wilt starten? Alle teams en scores worden gewist.")) {
         socket.emit("reset_quiz");
@@ -242,6 +257,30 @@
       b.classList.toggle("hidden", !!hidden);
     }
 
+    function openMoveDialog(member, fromTeam) {
+      $("move-title").textContent = `Verplaats ${member.label} (van ${fromTeam.name}) naar:`;
+      const list = $("move-list");
+      list.replaceChildren();
+      const others = lastState.teams.filter((t) => t.teamId !== fromTeam.teamId);
+      if (!others.length) {
+        const p = document.createElement("p");
+        p.style.color = "#94a3b8";
+        p.textContent = "Er is geen ander team.";
+        list.appendChild(p);
+      }
+      others.forEach((t) => {
+        const b = document.createElement("button");
+        b.className = "btn-option";
+        b.textContent = `${t.name}  (${t.members.length} ${t.members.length === 1 ? "telefoon" : "telefoons"})`;
+        b.onclick = () => {
+          socket.emit("move_player", { deviceId: member.deviceId, teamId: t.teamId });
+          $("move-dialog").classList.add("hidden");
+        };
+        list.appendChild(b);
+      });
+      $("move-dialog").classList.remove("hidden");
+    }
+
     function renderTeams(state) {
       const inPlay = state.gameState === "QUESTION" || state.gameState === "WAITING_NEXT";
       $("team-count").textContent = state.teams.length;
@@ -254,7 +293,7 @@
         const head = document.createElement("div");
         head.className = "head";
         const name = document.createElement("b");
-        name.textContent = t.name;
+        name.textContent = t.name + (state.settings.jokersPerTeam > 0 ? `  🃏 ${t.jokersUsed}/${state.settings.jokersPerTeam}` : "");
         const status = document.createElement("span");
         if (!t.connected) { status.textContent = "(basis offline)"; status.style.color = "#94a3b8"; }
         else if (inPlay) {
@@ -262,14 +301,42 @@
           status.style.color = t.answered ? "#4ade80" : "#f59e0b";
         }
         head.append(name, status);
+        box.appendChild(head);
 
-        const members = document.createElement("div");
-        members.className = "members";
-        members.textContent =
-          t.members.map((m) => `${m.label}${m.role === "base" ? " (basis)" : ""}${m.connected ? "" : " ○"}`).join(" · ") +
-          (state.settings.jokersPerTeam > 0 ? `  ·  🃏 ${t.jokersUsed}/${state.settings.jokersPerTeam}` : "");
+        // Spelers van dit team
+        t.members.forEach((m) => {
+          const row = document.createElement("div");
+          row.style.cssText = "margin-top:8px; padding:6px 8px; background:#1e293b; border-radius:8px;";
+          const label = document.createElement("div");
+          label.textContent = `${m.label}${m.role === "base" ? " ⭐ basis" : ""}${m.connected ? "" : "  ○ offline"}`;
+          label.style.color = m.connected ? "#e2e8f0" : "#94a3b8";
+          const btns = document.createElement("div");
+          const mk = (text, onClick) => {
+            const b = document.createElement("button");
+            b.className = "btn-option btn-small";
+            b.textContent = text;
+            b.onclick = onClick;
+            btns.appendChild(b);
+          };
+          mk("✏️ Naam", () => {
+            const n = prompt(`Nieuwe naam voor ${m.label}:`, m.label);
+            if (n && n.trim()) socket.emit("rename_player", { deviceId: m.deviceId, name: n });
+          });
+          mk("➡️ Verplaats", () => openMoveDialog(m, t));
+          if (m.role !== "base") {
+            mk("⭐ Maak basis", () => {
+              if (confirm(`${m.label} aanwijzen als basistelefoon van ${t.name}? (Normaal kiest het team dit zelf.)`)) {
+                socket.emit("set_base", { deviceId: m.deviceId });
+              }
+            });
+          }
+          row.append(label, btns);
+          box.appendChild(row);
+        });
 
+        // Het hele team
         const actions = document.createElement("div");
+        actions.style.marginTop = "8px";
         const mkBtn = (label, onClick) => {
           const b = document.createElement("button");
           b.className = "btn-option btn-small";
@@ -284,17 +351,16 @@
             }
           });
         }
-        mkBtn("✏️ Naam", () => {
+        mkBtn("✏️ Teamnaam", () => {
           const n = prompt("Nieuwe teamnaam:", t.name);
           if (n && n.trim()) socket.emit("rename_team", { teamId: t.teamId, name: n });
         });
-        mkBtn("🗑️ Verwijderen", () => {
+        mkBtn("🗑️ Team verwijderen", () => {
           if (confirm(`Team "${t.name}" verwijderen? De punten van dit team gaan verloren.`)) {
             socket.emit("remove_team", { teamId: t.teamId });
           }
         });
-
-        box.append(head, members, actions);
+        box.appendChild(actions);
         list.appendChild(box);
       });
     }
@@ -328,7 +394,11 @@
       // Hoofdknop per status
       let main;
       if (gs === "LOBBY") main = { label: "▶️ Start quiz", event: "next_question", disabled: state.teams.length === 0 };
-      else if (inPlay) main = { label: isLast ? "🏁 Afronden" : "Volgende vraag ➡️", event: "next_question" };
+      else if (gs === "QUESTION") {
+        const waiting = state.teams.filter((t) => t.connected && !t.answered);
+        main = { label: waiting.length ? `⏳ Wachten op ${waiting.length} ${waiting.length === 1 ? "team" : "teams"}...` : "⏳ Wachten op de teams...", disabled: true };
+      }
+      else if (gs === "WAITING_NEXT") main = { label: isLast ? "🏁 Afronden" : "Volgende vraag ➡️", event: "next_question" };
       else if (gs === "PAUSED") main = { label: "☕ Pauze actief", disabled: true };
       else if (gs === "STANDINGS") main = { label: "📊 Tussenstand wordt getoond", disabled: true };
       else if (gs === "END") {
@@ -371,7 +441,10 @@
       // Statusregel
       const labels = {
         LOBBY: `${state.teams.length} team(s) aangemeld`,
-        QUESTION: `${state.answeredCount} van ${state.activeCount} teams hebben ingediend`,
+        QUESTION: (() => {
+          const waiting = state.teams.filter((t) => t.connected && !t.answered).map((t) => t.name);
+          return `${state.answeredCount} van ${state.activeCount} teams hebben ingediend` + (waiting.length ? ` · wacht op: ${waiting.join(", ")}` : "");
+        })(),
         WAITING_NEXT: "✅ Alle teams hebben ingediend",
         PAUSED: "Pauze: alle schermen staan stil",
         STANDINGS: "Tussenstand wordt getoond",
@@ -447,6 +520,7 @@
         ? `Geldt voor: "${target.question}"`
         : "Beschikbaar zodra de quiz bezig is.";
       const curVoid = gs === "REVIEW" ? (state.reviewQuestion && state.reviewQuestion.voided) : state.voided;
+      setBtn("btn-force-next", { disabled: !inPlay });
       setBtn("btn-add-time", { disabled: !(state.settings.timerEnabled && inPlay), hidden: !state.settings.timerEnabled });
       setBtn("btn-all-correct", { disabled: !hasTarget || curVoid === "all_correct" });
       setBtn("btn-void", { disabled: !hasTarget || curVoid === "void" });
