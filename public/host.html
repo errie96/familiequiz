@@ -509,22 +509,39 @@
       teamsBox.replaceChildren();
       s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
       if (s.status === "wager") {
-        $("final-sub").textContent = "Hoeveel punten zetten jullie in? Het team dat het dichtstbij zit, krijgt de inzet erbij. Alle anderen zijn hun inzet kwijt!";
+        $("final-sub").textContent = "Hoeveel punten zetten jullie in? Goed = je inzet erbij. Fout = je inzet kwijt!";
         return;
       }
-      $("final-sub").textContent = s.status === "revealed" ? (s.explanation ? `💡 ${s.explanation}` : "") : "Elk team schat een getal. Wie er het dichtstbij zit, wint!";
-      const h = el("h1", "tv-q", s.question);
-      h.style.textAlign = "center";
-      q.append(h);
+      $("final-sub").textContent = s.status === "revealed" && s.explanation ? `💡 ${s.explanation}` : "";
+      const h1 = el("h1", "tv-q", s.question);
+      h1.style.textAlign = "center";
+      q.append(h1);
+      const o = el("div");
+      q.append(o);
+      lettersGrid(o, s.options, s.status === "revealed" ? s.answer : null);
+    }
+
+    function renderTiebreak(s) {
+      showView("v-final");
+      $("final-emoji").textContent = "⚖️";
+      $("final-title").textContent = "Beslissingsvraag: gelijke stand!";
+      const q = $("final-q");
+      q.replaceChildren();
+      $("final-result").replaceChildren();
+      $("final-sub").textContent = s.status === "revealed"
+        ? (s.explanation ? `💡 ${s.explanation}` : "")
+        : "Teams die gelijk staan op de eerste plaats schatten een getal. Wie het dichtstbij zit, wint!";
+      const h1 = el("h1", "tv-q", s.question);
+      h1.style.textAlign = "center";
+      q.append(h1);
       if (s.status === "revealed") {
         const a = el("div", "bigtimer", `${s.answer}${s.unit ? " " + s.unit : ""}`);
         a.style.color = "#4ade80";
         q.append(a);
-        teamsBox.replaceChildren();
-        q.append(el("p", "tv-sub", "De uitslag zie je aan het einde van de quiz."));
-      } else if (s.unit) {
-        q.append(el("p", "tv-sub", `Antwoord in: ${s.unit}`));
-      }
+      } else if (s.unit) q.append(el("p", "tv-sub", `Antwoord in: ${s.unit}`));
+      const box = $("final-teams");
+      box.replaceChildren();
+      s.teams.forEach((t) => box.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
     }
 
     // ---------- Einduitslag ----------
@@ -659,7 +676,8 @@
           showView("v-joker");
           chips($("joker-teams"), step.chosen.map((c) => ({ name: c.name, answered: c.done })), true);
           break;
-        case "final": renderFinal(step); break;
+        case "final": $("final-emoji").textContent = "🎰"; renderFinal(step); break;
+        case "tiebreak": renderTiebreak(step); break;
       }
       bigTimer(curTimer, $("draw-bigtimer"));
       bigTimer(curTimer, $("th-bigtimer"));

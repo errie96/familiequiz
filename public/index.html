@@ -434,6 +434,7 @@
         if (v.status === "revealed") {
           box.append(bigEl(`${v.song.year}`));
           if (v.result) box.append(el("p", "bigtxt " + (v.result.ok ? "good" : "bad"), v.result.ok ? "✔ Goed! De kaart is toegevoegd aan jullie tijdlijn." : "✘ Helaas, de kaart is niet toegevoegd."));
+          if (v.result && v.result.exact) box.append(el("p", "bigtxt good", "⭐ Exact jaartal goed: bonuspunten!"));
           else box.append(el("p", "note", "Jullie hebben niet geplaatst."));
         } else if (v.placed !== null) {
           box.append(el("p", "note good", "✅ Geplaatst! Wachten tot iedereen klaar is..."));
@@ -462,10 +463,15 @@
           addSlot(i + 1);
         });
         box.append(tl);
+        const yi = el("input"); yi.type = "text"; yi.inputMode = "numeric"; yi.maxLength = 4; yi.placeholder = "Exact jaartal (optioneel, bonuspunten)";
+        yi.classList.toggle("hidden", !canPlace);
+        if (v.yearGuess) yi.value = v.yearGuess;
+        if (canPlace) box.append(yi);
         const send = submitBtn("Kaart plaatsen 📤", () => {
           if (sel === null) return;
           send.disabled = true;
-          socket.emit("place_card", { stepId: v.id, slot: sel }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
+          const year = parseInt(yi.value, 10);
+          socket.emit("place_card", { stepId: v.id, slot: sel, year: Number.isInteger(year) ? year : undefined }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
         });
         function paint() {
           slots.forEach((s, i) => s.classList.toggle("sel", sel === i));
@@ -652,6 +658,30 @@
         };
       },
 
+      // ----- Beslissingsvraag bij gelijke stand -----
+      tiebreak(box, v) {
+        const d = el("div"); d.style.textAlign = "center";
+        const e = el("div", "", "⚖️"); e.style.fontSize = "54px";
+        d.append(e, el("h2", "", "Beslissingsvraag"));
+        box.append(d);
+        if (!v.inGame) { box.append(el("p", "note", "Jullie team doet niet mee: andere teams staan gelijk op de eerste plaats. Kijk mee op het grote scherm!")); return noop; }
+        box.append(el("h3", "", v.question), el("p", "note", `Schat een getal${v.unit ? " (in " + v.unit + ")" : ""}. Wie het dichtstbij zit, wint!`));
+        const canAnswer = v.isBase && v.status === "open" && !v.answered;
+        const gi = el("input"); gi.type = "text"; gi.inputMode = "decimal"; gi.placeholder = "Jullie schatting"; gi.disabled = !canAnswer;
+        if (v.answered) gi.value = String(v.given).replace(".", ",");
+        const err = el("p", "bad hidden"); err.style.textAlign = "center";
+        const send = submitBtn("Antwoord indienen 📤", () => {
+          const n = Number(String(gi.value).replace(",", ".").replace(/[^0-9.\-]/g, ""));
+          if (gi.value.trim() === "" || !Number.isFinite(n)) { err.textContent = "Vul een getal in."; err.classList.remove("hidden"); return; }
+          socket.emit("submit_answer", { stepId: v.id, value: n }, (res) => { if (!res || !res.ok) { err.textContent = "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
+        });
+        send.classList.toggle("hidden", !canAnswer);
+        box.append(gi, send, err);
+        if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is…"));
+        else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in."));
+        return noop;
+      },
+
       // ----- Slotvraag -----
       final(box, v) {
         box.append(el("h2", "", `🎰 Slotvraag: ${v.category}`));
@@ -678,19 +708,20 @@
           return noop;
         }
         box.append(el("p", "bigtxt", v.wager !== null ? `Inzet: ${v.wager}` : ""), el("h3", "", v.question));
-        box.append(el("p", "note", `Schat een getal${v.unit ? " (in " + v.unit + ")" : ""}. Het team dat er het dichtstbij zit wint de inzet!`));
         const canAnswer = v.isBase && v.status === "question" && !v.answered;
-        const gi = el("input"); gi.type = "text"; gi.inputMode = "decimal"; gi.placeholder = "Jullie schatting";
-        gi.disabled = !canAnswer;
-        if (v.answered) gi.value = String(v.given).replace(".", ",");
-        const err = el("p", "bad hidden"); err.style.textAlign = "center";
-        const send = submitBtn("Antwoord indienen 📤", () => {
-          const n = Number(String(gi.value).replace(",", ".").replace(/[^0-9.\-]/g, ""));
-          if (gi.value.trim() === "" || !Number.isFinite(n)) { err.textContent = "Vul een getal in."; err.classList.remove("hidden"); return; }
-          socket.emit("submit_answer", { stepId: v.id, value: n }, (res) => { if (!res || !res.ok) { err.textContent = "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
+        let selected = v.answered ? v.given : null;
+        const opts = el("div");
+        const buttons = v.options.map((opt, i) => {
+          const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
+          b.disabled = !canAnswer;
+          b.onclick = () => { selected = i; paint(); };
+          opts.append(b);
+          return b;
         });
-        send.classList.toggle("hidden", !canAnswer);
-        box.append(gi, send, err);
+        const send = submitBtn("Antwoord indienen 📤", () => { if (selected !== null) socket.emit("submit_answer", { stepId: v.id, value: selected }, () => {}); });
+        function paint() { buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; }); send.classList.toggle("hidden", !canAnswer || selected === null); }
+        paint();
+        box.append(opts, send);
         if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is…"));
         else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in."));
         return noop;
@@ -711,6 +742,7 @@
         case "thirty": return [v.id, v.status, v.role, v.turn, v.words ? 1 : 0].join("|");
         case "joker": return [v.id, v.isBase].join("|");
         case "final": return [v.id, v.status, v.answered, v.wager !== null, v.isBase, v.result ? 1 : 0].join("|");
+        case "tiebreak": return [v.id, v.status, v.answered, v.isBase, v.inGame].join("|");
         case "info": return [v.type, v.id].join("|");
         default: return v.type + (v.id || "");
       }

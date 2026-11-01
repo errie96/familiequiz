@@ -1361,10 +1361,33 @@
   }
  ],
  "final": {
-  "category": "Schatting",
-  "question": "Hoe lang is de Afsluitdijk?",
-  "unit": "kilometer",
-  "answer": 32,
-  "explanation": "De Afsluitdijk is 32 kilometer lang."
- }
+  "category": "Geschiedenis",
+  "question": "In welk jaar viel de Berlijnse Muur?",
+  "options": [
+   "1987",
+   "1989",
+   "1991",
+   "1993"
+  ],
+  "answer": 1,
+  "explanation": "De Muur viel op 9 november 1989."
+ },
+ "tiebreakers": [
+  {
+   "question": "Hoe lang is de Afsluitdijk?",
+   "unit": "kilometer",
+   "answer": 32,
+   "explanation": "De Afsluitdijk is 32 kilometer lang."
+  },
+  {
+   "question": "Hoe hoog is de Eiffeltoren (inclusief antenne)?",
+   "unit": "meter",
+   "answer": 330
+  },
+  {
+   "question": "Hoeveel treden telt de Domtoren in Utrecht?",
+   "unit": "treden",
+   "answer": 465
+  }
+ ]
 }

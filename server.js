@@ -127,7 +127,8 @@ function ss(step) {
     const init = {
       mc: { status: 'open', answers: {}, blurStep: 0, voided: null },
       memory: { status: 'idle', entries: {} },
-      song: { status: 'open', placements: {}, results: null },
+      song: { status: 'open', placements: {}, years: {}, results: null },
+      tiebreak: { status: 'open', teams: null, answers: {}, winners: null },
       price: { status: 'open', answers: {} },
       draw: { status: 'ready', turn: 0, turns: [], plan: null, used: [] },
       thirty: { status: 'ready', turn: 0, turns: [], order: null, cardOrder: [] },
@@ -244,8 +245,10 @@ function roundRaw(team, round) {
       max += step.items.length;
       if (s.status === 'done') raw += Math.min(step.items.length, (s.entries[team.teamId] || []).filter((e) => e.ok).length);
     } else if (step.kind === 'song') {
-      max += 1;
-      if (s.results && s.results[team.teamId] && s.results[team.teamId].ok) raw += 1;
+      const bonus = (roundById[step.round] && roundById[step.round].yearBonus) ?? 1;
+      max += 1 + bonus;
+      const r = s.results && s.results[team.teamId];
+      if (r) raw += (r.ok ? 1 : 0) + (r.exact ? bonus : 0);
     } else if (step.kind === 'price') {
       max += settings.pricePoints[0] * 2;
       if (s.status === 'revealed') {
@@ -272,24 +275,46 @@ const finalStep = () => steps.find((s) => s.kind === 'final') || null;
 function totalBeforeFinal(team) {
   return rounds.reduce((sum, r) => sum + roundScore(team, r) * jokerFactor(team, r), 0);
 }
-// Slotvraag (open getal): het team dat het dichtstbij zit wint (gelijkspel: allemaal); met "tolerance" iedereen binnen die marge
-function finalWinners(step) {
-  const s = ss(step);
-  const d = Object.entries(s.answers).filter(([id, v]) => teams[id] && Number.isFinite(v)).map(([id, v]) => [id, Math.abs(v - step.answer)]);
-  if (!d.length) return new Set();
-  if (step.tolerance > 0) return new Set(d.filter((x) => x[1] <= step.tolerance).map((x) => x[0]));
-  const best = Math.min(...d.map((x) => x[1]));
-  return new Set(d.filter((x) => x[1] <= best + 1e-9).map((x) => x[0]));
-}
 function finalDelta(team) {
   const f = finalStep();
   if (!f) return 0;
   const s = ss(f);
   if (s.status !== 'revealed') return 0;
   const wager = s.wagers[team.teamId] || 0;
-  return finalWinners(f).has(team.teamId) ? wager : -wager;
+  const a = s.answers[team.teamId];
+  return a !== undefined && a === f.answer ? wager : -wager;
 }
-const scoreOf = (team) => totalBeforeFinal(team) + finalDelta(team);
+// Beslissingsvraag: elk gewonnen duel levert 1 punt op, zodat de gelijke stand doorbroken wordt
+function tiebreakBonus(team) {
+  let b = 0;
+  for (const st of steps) {
+    if (st.kind !== 'tiebreak') continue;
+    const s = ss(st);
+    if (s.status === 'revealed' && s.winners && s.winners.includes(team.teamId)) b += 1;
+  }
+  return b;
+}
+const scoreOf = (team) => totalBeforeFinal(team) + finalDelta(team) + tiebreakBonus(team);
+// Teams die na de slotvraag (en eerdere beslissingsvragen) gedeeld eerste staan
+function tiedLeaders() {
+  const list = Object.values(teams).map((t) => ({ id: t.teamId, score: scoreOf(t) }));
+  if (list.length < 2) return [];
+  const best = Math.max(...list.map((x) => x.score));
+  const top = list.filter((x) => x.score === best);
+  return top.length > 1 ? top.map((x) => x.id) : [];
+}
+function activeFor(step) {
+  const s = ss(step);
+  if (step.kind === 'tiebreak') return activeTeams().filter((t) => (s.teams || []).includes(t.teamId));
+  return activeTeams();
+}
+function tiebreakWinners(step) {
+  const s = ss(step);
+  const d = Object.entries(s.answers).filter(([id, v]) => (s.teams || []).includes(id) && teams[id] && Number.isFinite(v)).map(([id, v]) => [id, Math.abs(v - step.answer)]);
+  if (!d.length) return [];
+  const best = Math.min(...d.map((x) => x[1]));
+  return d.filter((x) => x[1] <= best + 1e-9).map((x) => x[0]);
+}
 
 function ranking() {
   const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, score: scoreOf(t) })).sort((a, b) => b.score - a.score || byName(a, b));
@@ -329,10 +354,11 @@ function hasAnswered(team, step) {
     case 'song': return s.placements[id] !== undefined;
     case 'joker': return s.choices[id] !== undefined;
     case 'final': return s.status === 'wager' ? s.wagers[id] !== undefined : s.answers[id] !== undefined;
+    case 'tiebreak': return s.answers[id] !== undefined;
     default: return false;
   }
 }
-const waitingFor = (step) => activeTeams().filter((t) => !hasAnswered(t, step)).map((t) => t.name);
+const waitingFor = (step) => activeFor(step).filter((t) => !hasAnswered(t, step)).map((t) => t.name);
 
 // Reveal = direct na het sluiten tonen we het antwoord (bij gewone meerkeuze pas bij het nakijken)
 const revealsOnClose = (step) => step.kind !== 'mc' || step.variant !== 'text';
@@ -347,6 +373,8 @@ function closeStep(step) {
   } else if (step.kind === 'song') {
     revealSong(step);
   } else if (step.kind === 'final' && s.status === 'question') {
+    s.status = 'closed';
+  } else if (step.kind === 'tiebreak' && s.status === 'open') {
     s.status = 'closed';
   }
 }
@@ -363,7 +391,8 @@ function revealSong(step) {
     const left = slot > 0 ? songs[tl[slot - 1]] : null;
     const right = slot < tl.length ? songs[tl[slot]] : null;
     const ok = (!left || left.year <= song.year) && (!right || song.year <= right.year);
-    s.results[team.teamId] = { slot, ok };
+    const guess = s.years[team.teamId];
+    s.results[team.teamId] = { slot, ok, yearGuess: guess === undefined ? null : guess, exact: guess === song.year };
     if (ok) tl.splice(slot, 0, song.id);
   }
   s.status = 'revealed';
@@ -384,6 +413,10 @@ function settle() {
   const s = ss(step);
   const active = activeTeams();
   if (!active.length) return;
+  if (step.kind === 'tiebreak' && s.status === 'open') {
+    const a = activeFor(step);
+    if (a.length && a.every((t) => hasAnswered(t, step))) closeStep(step);
+  }
   if ((step.kind === 'mc' || step.kind === 'price' || step.kind === 'song') && ['open'].includes(s.status)) {
     if (active.every((t) => hasAnswered(t, step))) closeStep(step);
   } else if (step.kind === 'final' && s.status === 'question') {
@@ -421,14 +454,23 @@ function enterStep() {
   if (step.kind === 'draw' && !s.plan) planDraw(step);
   if (step.kind === 'thirty' && !s.order) planThirty(step);
   if (step.kind === 'song') Object.values(teams).forEach(ensureTimeline);
+  if (step.kind === 'tiebreak' && !s.teams) s.teams = tiedLeaders();
   // Spiekmeldingen horen bij vragen; bij andere schermen weer opruimen
   if (!cheatSensitive(step)) alerts = {};
 }
-const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final'].includes(step.kind);
+const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tiebreak'].includes(step.kind);
 
+function finishQuiz() { phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear(); }
 function next() {
-  if (stepIndex + 1 >= steps.length) { phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear(); }
-  else { stepIndex++; enterStep(); }
+  if (stepIndex + 1 >= steps.length) return finishQuiz();
+  stepIndex++;
+  enterStep();
+  // Beslissingsvragen alleen stellen als er echt een gelijke stand op de eerste plaats is
+  while (phase === 'PLAY' && cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) {
+    if (stepIndex + 1 >= steps.length) return finishQuiz();
+    stepIndex++;
+    enterStep();
+  }
 }
 
 // ---------------------------------------------------------------
@@ -608,7 +650,7 @@ function reviewPages(scope) {
           rows: ss2.map((st) => {
             const song = songs[st.songId];
             const res = ss(st).results || {};
-            return [`${song.title} – ${song.artist}`, String(song.year), ...teamList.map((t) => (res[t.teamId] ? { t: `plek ${res[t.teamId].slot + 1}`, ok: res[t.teamId].ok } : { t: '–', ok: false }))];
+            return [`${song.title} – ${song.artist}`, String(song.year), ...teamList.map((t) => (res[t.teamId] ? { t: `plek ${res[t.teamId].slot + 1}${res[t.teamId].yearGuess ? ' · jaar ' + res[t.teamId].yearGuess : ''}${res[t.teamId].exact ? ' ★ exact' : ''}`, ok: res[t.teamId].ok } : { t: '–', ok: false }))];
           })
         });
       }
@@ -663,16 +705,30 @@ function reviewPages(scope) {
   const f = finalStep();
   if (scope === 'all' && f && ss(f).status === 'revealed') {
     const fs2 = ss(f);
-    const win = finalWinners(f);
     pages.push({
-      title: `Slotvraag: ${f.question}`, subtitle: `Goede antwoord: ${f.answer}${f.unit ? ' ' + f.unit : ''}`,
-      columns: ['Team', 'Inzet', 'Gok', 'Verschil', 'Punten'],
+      title: `Slotvraag: ${f.question}`, subtitle: `Goede antwoord: ${L[f.answer]}: ${f.options[f.answer]}`,
+      columns: ['Team', 'Inzet', 'Antwoord', 'Punten'],
       rows: teamList.map((t) => {
         const a = fs2.answers[t.teamId];
         const d = finalDelta(t);
-        return [t.name, String(fs2.wagers[t.teamId] || 0), a === undefined ? '–' : String(a), a === undefined ? '–' : String(Math.abs(a - f.answer)), { t: (d >= 0 ? '+' : '') + d, ok: win.has(t.teamId) }];
+        return [t.name, String(fs2.wagers[t.teamId] || 0), a === undefined ? '–' : `${L[a]}: ${clip(f.options[a], 22)}`, { t: (d >= 0 ? '+' : '') + d, ok: d > 0 ? true : d < 0 ? false : null }];
       })
     });
+  }
+  if (scope === 'all') {
+    for (const st of steps.filter((x) => x.kind === 'tiebreak')) {
+      const ts = ss(st);
+      if (ts.status !== 'revealed') continue;
+      pages.push({
+        title: `Beslissingsvraag: ${st.question}`, subtitle: `Goede antwoord: ${st.answer}${st.unit ? ' ' + st.unit : ''}`,
+        columns: ['Team', 'Gok', 'Verschil', 'Uitslag'],
+        rows: (ts.teams || []).map((id) => teams[id]).filter(Boolean).map((t) => {
+          const a = ts.answers[t.teamId];
+          const won = (ts.winners || []).includes(t.teamId);
+          return [t.name, a === undefined ? '–' : String(a), a === undefined ? '–' : String(Math.abs(a - st.answer)), { t: won ? 'Wint (+1)' : 'Verliest', ok: won }];
+        })
+      });
+    }
   }
   return pages;
 }
@@ -824,8 +880,14 @@ function publicStep(step) {
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined })) };
     case 'final': {
-      const out = { ...base, status: s.status, category: step.category, unit: step.unit, teams: teamChips(step) };
-      if (s.status !== 'wager') { out.question = step.question; out.media = step.media; }
+      const out = { ...base, status: s.status, category: step.category, teams: teamChips(step) };
+      if (s.status !== 'wager') { out.question = step.question; out.options = step.options; out.media = step.media; }
+      if (s.status === 'revealed') { out.answer = step.answer; out.explanation = step.explanation; }
+      return out;
+    }
+    case 'tiebreak': {
+      const tied = (s.teams || []).map((id) => teams[id]).filter(Boolean);
+      const out = { ...base, status: s.status, question: step.question, unit: step.unit, teams: tied.map((t) => ({ name: t.name, answered: s.answers[t.teamId] !== undefined, connected: teamConnected(t) })) };
       if (s.status === 'revealed') { out.answer = step.answer; out.explanation = step.explanation; }
       return out;
     }
@@ -851,7 +913,7 @@ function hostPanel(step) {
       };
     case 'song': {
       const song = songs[step.songId];
-      return { type: 'song', status: s.status, song: { title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
+      return { type: 'song', status: s.status, song: { id: step.id, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
     }
     case 'price':
       return { type: 'price', status: s.status, name: step.name, unit: step.unit, now: step.now, ago: step.ago, agoYears: step.agoYears };
@@ -879,8 +941,13 @@ function hostPanel(step) {
       return { type: 'joker', teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, round: t.jokerRound ? roundById[t.jokerRound].title : null })) };
     case 'final':
       return {
-        type: 'final', status: s.status, answer: step.answer, unit: step.unit, question: step.question,
+        type: 'final', status: s.status, answer: step.answer, options: step.options, question: step.question,
         teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] ?? null, max: Math.max(0, totalBeforeFinal(t)), answer: s.answers[t.teamId] ?? null }))
+      };
+    case 'tiebreak':
+      return {
+        type: 'tiebreak', status: s.status, answer: step.answer, unit: step.unit, question: step.question,
+        teams: (s.teams || []).map((id) => teams[id]).filter(Boolean).map((t) => ({ name: t.name, guess: s.answers[t.teamId] ?? null }))
       };
     default:
       return null;
@@ -940,7 +1007,11 @@ function mainAction() {
       }
       if (s.status === 'question') return none('⏳ Wachten op antwoorden…', wait());
       if (s.status === 'closed') return go('🎯 Toon het antwoord', () => { s.status = 'revealed'; });
-      return go('🏁 Naar de eindstand', next);
+      return go('🏁 Verder', next);
+    case 'tiebreak':
+      if (s.status === 'open') return none('⏳ Gelijke teams schatten…', wait());
+      if (s.status === 'closed') return go('🎯 Toon het antwoord', () => { s.winners = tiebreakWinners(step); s.status = 'revealed'; });
+      return go('🏁 Verder', next);
   }
   return none('…');
 }
@@ -954,6 +1025,7 @@ function forceAction() {
   if (step.kind === 'joker') return { label: '⏭️ Toch doorgaan', run: next };
   if (step.kind === 'final' && s.status === 'wager') return { label: '⏭️ Toch de vraag tonen', run: () => { s.status = 'question'; } };
   if (step.kind === 'final' && s.status === 'question') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
+  if (step.kind === 'tiebreak' && s.status === 'open') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
   return null;
 }
 
@@ -967,7 +1039,7 @@ function broadcastState() {
   const common = {
     phase, paused, showStandings, review: reviewPayload,
     header: {
-      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'final' ? 'Slotvraag' : 'Familiequiz',
+      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
       progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
     },
     standings: phase === 'END' ? ranking() : null,
@@ -1039,7 +1111,7 @@ function phoneView(step, team, device, isBase) {
     case 'song': {
       const tl = ensureTimeline(team).map((sid) => ({ id: sid, year: songs[sid].year, title: songs[sid].title, artist: songs[sid].artist }));
       const r = s.results && s.results[id];
-      return { ...base, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, result: r ? { ok: r.ok } : null,
+      return { ...base, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, yearGuess: s.years[id] ?? null, result: r ? { ok: r.ok, exact: r.exact, yearGuess: r.yearGuess } : null,
         song: s.status === 'revealed' ? { title: songs[step.songId].title, artist: songs[step.songId].artist, year: songs[step.songId].year } : null };
     }
     case 'price': {
@@ -1078,9 +1150,13 @@ function phoneView(step, team, device, isBase) {
       const a = s.answers[id];
       return {
         ...base, status: s.status, category: step.category, maxWager: Math.max(0, totalBeforeFinal(team)), wager: s.wagers[id] ?? null,
-        question: s.status !== 'wager' ? step.question : null, unit: step.unit,
+        question: s.status !== 'wager' ? step.question : null, options: s.status !== 'wager' ? step.options : null,
         answered: a !== undefined, given: a !== undefined ? a : null
       };
+    }
+    case 'tiebreak': {
+      const a = s.answers[id];
+      return { ...base, status: s.status, question: step.question, unit: step.unit, inGame: (s.teams || []).includes(id), answered: a !== undefined, given: a !== undefined ? a : null };
     }
   }
   return base;
@@ -1285,6 +1361,7 @@ io.on('connection', (socket) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const step = cur();
     if (step && step.kind === 'final') return submitFinalAnswer(socket, stepId, value, reply);
+    if (step && step.kind === 'tiebreak') return submitTiebreak(socket, value, reply);
     const c = baseContext(socket, 'mc');
     if (!c || c.s.status !== 'open') return reply({ ok: false, reason: 'not_open' });
     if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
@@ -1298,6 +1375,16 @@ io.on('connection', (socket) => {
   function submitFinalAnswer(sock, stepId, value, reply) {
     const c = baseContext(sock, 'final');
     if (!c || c.s.status !== 'question') return reply({ ok: false, reason: 'not_open' });
+    if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
+    if (!Number.isInteger(value) || value < 0 || value >= c.step.options.length) return reply({ ok: false, reason: 'invalid' });
+    if (c.s.answers[c.team.teamId] !== undefined) return reply({ ok: true, already: true });
+    c.s.answers[c.team.teamId] = value;
+    reply({ ok: true });
+    sync();
+  }
+  function submitTiebreak(sock, value, reply) {
+    const c = baseContext(sock, 'tiebreak');
+    if (!c || c.s.status !== 'open' || !(c.s.teams || []).includes(c.team.teamId)) return reply({ ok: false, reason: 'not_open' });
     if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
     if (!Number.isFinite(value) || Math.abs(value) > 1e12) return reply({ ok: false, reason: 'invalid' });
     if (c.s.answers[c.team.teamId] !== undefined) return reply({ ok: true, already: true });
@@ -1321,7 +1408,7 @@ io.on('connection', (socket) => {
   });
 
   // ---------- Muziek: kaart in de tijdlijn leggen ----------
-  socket.on('place_card', ({ stepId, slot } = {}, cb) => {
+  socket.on('place_card', ({ stepId, slot, year } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const c = baseContext(socket, 'song');
     if (!c || c.s.status !== 'open') return reply({ ok: false, reason: 'not_open' });
@@ -1330,6 +1417,7 @@ io.on('connection', (socket) => {
     if (stepId !== c.step.id || !Number.isInteger(slot) || slot < 0 || slot > tl.length) return reply({ ok: false, reason: 'invalid' });
     if (c.s.placements[c.team.teamId] !== undefined) return reply({ ok: true, already: true });
     c.s.placements[c.team.teamId] = slot;
+    if (Number.isInteger(year) && year >= 1900 && year <= 2100) c.s.years[c.team.teamId] = year;
     reply({ ok: true });
     sync();
   });
@@ -1605,9 +1693,9 @@ io.on('connection', (socket) => {
     if (!isRemote(socket)) return;
     const team = teams[teamId];
     const step = cur();
-    if (!team || !step || !['mc', 'price', 'final'].includes(step.kind)) return;
+    if (!team || !step || !['mc', 'price', 'final', 'tiebreak'].includes(step.kind)) return;
     const s = ss(step);
-    if (step.kind === 'final') { if (s.status === 'question') delete s.answers[teamId]; }
+    if (step.kind === 'final' || step.kind === 'tiebreak') { if (s.status === 'question' || s.status === 'open') delete s.answers[teamId]; }
     else if (s.status === 'open' || (step.kind === 'mc' && s.status === 'closed')) {
       delete s.answers[teamId];
       if (step.kind === 'mc' && s.status === 'closed') s.status = 'open';
