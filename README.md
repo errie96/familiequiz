@@ -2,6 +2,8 @@
 
 Teams spelen op hun telefoon, de vragen staan op de tv en de quizmaster bedient alles vanaf een eigen telefoon.
 
+Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als DRAAIBOEK.docx).
+
 ## Starten
     npm install
     npm start          # hervat een eventuele vorige quiz (staat dan op pauze)

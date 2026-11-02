@@ -131,6 +131,7 @@
       <div class="setting"><label for="s-thirty">30 Seconds: seconden per beurt</label><input type="number" id="s-thirty" min="10" max="120"></div>
       <div class="setting"><label for="s-blur">Foto blur: punten per stap</label><input type="text" id="s-blur"></div>
       <div class="setting"><label for="s-price">Prijzen: punten dichtstbij, 2e, 3e…</label><input type="text" id="s-price"></div>
+      <div class="setting"><label for="s-hitster">Muziek: stoppen bij zoveel kaarten</label><input type="number" id="s-hitster" min="3" max="50"></div>
       <div class="setting"><label for="s-logo">Logo's: punten 1e, 2e, 3e… goede antwoord</label><input type="text" id="s-logo"></div>
       <button id="btn-save-settings" class="btn-primary">Instellingen opslaan</button>
     </details>
@@ -236,7 +237,7 @@
     $("btn-save-settings").onclick = () => socket.emit("update_settings", {
       roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value),
       memorySeconds: Number($("s-mem").value), drawSeconds: Number($("s-draw").value), thirtySeconds: Number($("s-thirty").value),
-      blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value), logoPoints: parseList($("s-logo").value)
+      blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value), logoPoints: parseList($("s-logo").value), hitsterTarget: Number($("s-hitster").value)
     });
 
     // ---------------- Stap-paneel ----------------
@@ -306,6 +307,7 @@
       if (p.type === "song") {
         box.append(el("h3", "", `${p.song.title} · ${p.song.artist}`));
         box.append(el("p", "", `Jaar: ${p.song.year}`));
+        box.append(el("p", "muted", `Kaarten per team: ${p.cards.map((c) => c.name + " " + c.n).join(" · ")} (doel ${p.target})`));
         const r = el("div", "row");
         const replay = el("button", "btn-option", "🔁 Opnieuw afspelen op tv");
         replay.style.textAlign = "center";
@@ -588,12 +590,12 @@
       // Instellingen
       const locked = state.settingsLocked;
       $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
-      ["s-round", "s-timer", "s-time", "s-mem", "s-draw", "s-thirty", "s-blur", "s-price", "s-logo", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+      ["s-round", "s-timer", "s-time", "s-mem", "s-draw", "s-thirty", "s-blur", "s-price", "s-logo", "s-hitster", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
       const ae = document.activeElement && document.activeElement.id;
       if (!settingsFilled || !ae || !ae.startsWith("s-")) {
         $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime;
         $("s-mem").value = state.settings.memorySeconds; $("s-draw").value = state.settings.drawSeconds; $("s-thirty").value = state.settings.thirtySeconds;
-        $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", ");
+        $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", "); $("s-hitster").value = state.settings.hitsterTarget;
         settingsFilled = true;
       }
     });

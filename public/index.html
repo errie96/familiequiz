@@ -443,6 +443,7 @@
         } else {
           box.append(el("p", "note", "Denk mee! De basistelefoon legt het liedje in de tijdlijn."));
         }
+        box.append(el("p", "note", `Jullie tijdlijn: ${v.timeline.length} kaarten · wie als eerste ${v.target} heeft, beëindigt de ronde`));
         const canPlace = v.isBase && v.status === "open" && v.placed === null;
         let sel = v.placed;
         const tl = el("div", "tl");

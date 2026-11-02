@@ -378,12 +378,12 @@
         if (a && !audioUnlocked) a.play().catch(() => {});
       }
       const rev = s.status === "revealed";
-      $("song-title").textContent = rev ? `${s.song.year}` : "Welk jaar komt dit liedje uit?";
-      $("song-title").style.fontSize = rev ? "clamp(80px,14vw,260px)" : "";
-      $("song-emoji").textContent = rev ? "🎶" : "🎵";
+      $("song-title").textContent = rev ? (s.done ? "De muziekronde is voorbij!" : "Kijk op je telefoon!") : "Welk jaar komt dit liedje uit?";
+      $("song-title").style.fontSize = "";
+      $("song-emoji").textContent = rev ? (s.done ? "🏁" : "📱") : "🎵";
       $("song-sub").textContent = rev
-        ? `${s.song.title} – ${s.song.artist}`
-        : (s.audio ? "Luister goed en leg het liedje op de juiste plek in jullie tijdlijn." : "De quizmaster speelt het liedje af. Leg het op de juiste plek in jullie tijdlijn.");
+        ? (s.done ? `Een team heeft ${s.target} kaarten in de tijdlijn.` : "Op de basistelefoon staat of jullie kaart goed lag. Het volgende liedje komt eraan.")
+        : `Leg het liedje op de juiste plek in jullie tijdlijn. De eerste met ${s.target} kaarten beëindigt de ronde.`;
       const box = $("song-teams");
       box.replaceChildren();
       s.teams.forEach((t) => {

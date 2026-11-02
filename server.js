@@ -67,6 +67,7 @@ const DEFAULT_SETTINGS = {
   blurPoints: [10, 8, 6, 4, 3, 2], // punten per blurstap: hoe eerder goed, hoe meer
   pricePoints: [5, 3, 2, 1], // punten voor dichtstbij, tweede, derde, ...
   logoPoints: [10, 8, 6, 4, 2], // logo's: punten voor het eerste, tweede, ... goede antwoord
+  hitsterTarget: 10,         // muziekronde stopt zodra een team zoveel kaarten in de tijdlijn heeft
   memorySeconds: 120,
   drawSeconds: 75,
   thirtySeconds: 30
@@ -84,6 +85,7 @@ function sanitizeSettings(input, base) {
   int('memorySeconds', 20, 900);
   int('drawSeconds', 15, 300);
   int('thirtySeconds', 10, 120);
+  int('hitsterTarget', 3, 50);
   list('blurPoints', 10);
   list('pricePoints', 8);
   list('logoPoints', 10);
@@ -289,7 +291,7 @@ function roundRaw(team, round) {
       if (s.status === 'done') raw += Math.min(step.items.length, (s.entries[team.teamId] || []).filter((e) => e.ok).length);
     } else if (step.kind === 'song') {
       const bonus = (roundById[step.round] && roundById[step.round].yearBonus) ?? 1;
-      max += 1 + bonus;
+      if (s.status === 'revealed') max += 1 + bonus;
       const r = s.results && s.results[team.teamId];
       if (r) raw += (r.ok ? 1 : 0) + (r.exact ? bonus : 0);
     } else if (step.kind === 'price') {
@@ -428,10 +430,25 @@ function closeStep(step) {
   }
 }
 
+// Het liedje van een muziekvraag: bij de eerste keer willekeurig gekozen uit de nog niet gespeelde liedjes
+function songOf(step) {
+  const s = ss(step);
+  if (!s.songId || !songs[s.songId]) {
+    const round = roundById[step.round];
+    const pool = (round && round.pool) || [];
+    const used = new Set(steps.filter((x) => x.kind === 'song' && x.round === step.round && x.id !== step.id).map((x) => ssAll[x.id] && ssAll[x.id].songId).filter(Boolean));
+    const free = pool.filter((id) => !used.has(id));
+    s.songId = free.length ? free[Math.floor(Math.random() * free.length)] : pool[0];
+  }
+  return songs[s.songId];
+}
+// Heeft een team het doel (standaard 10 kaarten) gehaald? Dan stopt de muziekronde.
+const hitsterDone = () => Object.values(teams).some((t) => t.timeline && t.timeline.length >= settings.hitsterTarget);
+
 function revealSong(step) {
   const s = ss(step);
   if (s.status === 'revealed') return;
-  const song = songs[step.songId];
+  const song = songOf(step);
   s.results = {};
   for (const team of Object.values(teams)) {
     const slot = s.placements[team.teamId];
@@ -515,7 +532,7 @@ function next() {
   stepIndex++;
   enterStep();
   // Beslissingsvragen alleen stellen als er echt een gelijke stand op de eerste plaats is
-  while (phase === 'PLAY' && cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) {
+  while (phase === 'PLAY' && ((cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) || (cur().kind === 'song' && hitsterDone()))) {
     if (stepIndex + 1 >= steps.length) return finishQuiz();
     stepIndex++;
     enterStep();
@@ -716,7 +733,7 @@ function reviewPages(scope) {
           title, subtitle: 'Liedjes in de tijdlijn',
           columns: ['Liedje', 'Jaar', ...names],
           rows: ss2.map((st) => {
-            const song = songs[st.songId];
+            const song = songOf(st);
             const res = ss(st).results || {};
             return [`${song.title} – ${song.artist}`, String(song.year), ...teamList.map((t) => (res[t.teamId] ? { t: `plek ${res[t.teamId].slot + 1}${res[t.teamId].yearGuess ? ' · jaar ' + res[t.teamId].yearGuess : ''}${res[t.teamId].exact ? ' ★ exact' : ''}`, ok: res[t.teamId].ok } : { t: '–', ok: false }))];
           })
@@ -902,13 +919,10 @@ function publicStep(step) {
       return out;
     }
     case 'song': {
-      const song = songs[step.songId];
-      const out = { ...base, status: s.status, audio: song.audio, placed: Object.keys(s.placements).filter((id) => teams[id]).length, active: activeTeams().length,
+      const song = songOf(step);
+      const out = { ...base, status: s.status, audio: song.audio, target: settings.hitsterTarget, done: s.status === 'revealed' && hitsterDone(), placed: Object.keys(s.placements).filter((id) => teams[id]).length, active: activeTeams().length,
         teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, cards: ensureTimeline(t).length, answered: hasAnswered(t, step), connected: teamConnected(t) })) };
-      if (s.status === 'revealed') {
-        out.song = { title: song.title, artist: song.artist, year: song.year };
-      }
-      return out;
+      return out; // het antwoord staat alleen op de telefoons, niet op de tv
     }
     case 'price': {
       const out = { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, teams: teamChips(step) };
@@ -985,8 +999,8 @@ function hostPanel(step) {
         teams: Object.values(teams).sort(byName).map((t) => ({ teamId: t.teamId, name: t.name, entries: (s.entries[t.teamId] || []).map((e) => ({ id: e.id, text: e.text, ok: e.ok })) }))
       };
     case 'song': {
-      const song = songs[step.songId];
-      return { type: 'song', status: s.status, song: { id: step.id, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
+      const song = songOf(step);
+      return { type: 'song', target: settings.hitsterTarget, cards: Object.values(teams).sort(byName).map((t) => ({ name: t.name, n: ensureTimeline(t).length })), status: s.status, song: { id: step.id, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
     }
     case 'price':
       return { type: 'price', status: s.status, name: step.name, unit: step.unit, now: step.now, ago: step.ago, agoYears: step.agoYears };
@@ -1059,9 +1073,13 @@ function mainAction() {
     case 'info':
     case 'roundresult':
       return go('Volgende ▶️', next);
+    case 'song':
+      if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
+      if (hitsterDone()) return go(`🏁 Muziekronde klaar (${settings.hitsterTarget} kaarten) ▶️`, next, 'Een team heeft de tijdlijn vol; de overige liedjes worden overgeslagen.');
+      if (!steps.slice(stepIndex + 1).some((x) => x.kind === 'song' && x.round === step.round)) return go('Volgende ▶️', next, `De liedjes zijn op voordat een team ${settings.hitsterTarget} kaarten had. Zet meer liedjes in de Excel.`);
+      return go('Volgend liedje ▶️', next);
     case 'mc':
     case 'price':
-    case 'song':
       if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
       return go('Volgende ▶️', next);
     case 'logo':
@@ -1201,7 +1219,8 @@ function phoneView(step, team, device, isBase) {
       const tl = ensureTimeline(team).map((sid) => ({ id: sid, year: songs[sid].year, title: songs[sid].title, artist: songs[sid].artist }));
       const r = s.results && s.results[id];
       return { ...base, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, yearGuess: s.years[id] ?? null, result: r ? { ok: r.ok, exact: r.exact, yearGuess: r.yearGuess } : null,
-        song: s.status === 'revealed' ? { title: songs[step.songId].title, artist: songs[step.songId].artist, year: songs[step.songId].year } : null };
+        target: settings.hitsterTarget,
+        song: s.status === 'revealed' ? (({ title, artist, year }) => ({ title, artist, year }))(songOf(step)) : null };
     }
     case 'price': {
       const a = s.answers[id];
