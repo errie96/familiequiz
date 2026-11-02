@@ -156,7 +156,7 @@
     <section id="v-joker" class="view hidden tv-center">
       <div class="huge">🃏</div>
       <h1 class="tv-title">Zet je joker in!</h1>
-      <p class="tv-sub" style="max-width:70vw; margin:0 auto;">Kies op de basistelefoon één ronde waarin jullie punten verdubbeld worden. Denk goed na: dit kan maar één keer.</p>
+      <p class="tv-sub" style="max-width:70vw; margin:0 auto;">Kies vóór de quiz begint op de basistelefoon de ronde waarin jullie verwachten het best te scoren. Die punten tellen dubbel!</p>
       <div id="joker-teams" class="chips-row"></div>
     </section>
 
@@ -363,9 +363,7 @@
         const list = el("div", "chips-row");
         s.items.forEach((i) => list.append(el("span", "tchip", i)));
         body.append(list);
-        const res = el("div", "chips-row");
-        s.results.forEach((r) => { const c = el("span", "tchip done", `${r.name}: ${r.good} van ${r.total} goed`); res.append(c); });
-        body.append(res);
+        body.append(el("p", "tv-sub", "Hoeveel jullie goed hadden, zie je aan het einde van de quiz."));
       }
     }
 
@@ -424,15 +422,15 @@
         $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}`;
         const row = el("div", "chips-row");
         s.teams.forEach((t) => {
-          const c = el("span", "tchip" + (t.solved ? " done" : ""));
-          c.textContent = `${t.solved ? "✔ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}`;
+          const c = el("span", "tchip" + (t.answered ? " done" : ""));
+          c.textContent = `${t.answered ? "✓ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}`;
           row.append(c);
         });
         body.append(row, el("div", "bigtimer", ""));
         body.lastChild.id = "draw-bigtimer";
-        body.append(el("p", "tv-sub", "Raad mee op je telefoon! Hoe sneller, hoe meer punten."));
-      } else if (s.status === "result") {
-        $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}: dit was het woord`;
+        body.append(el("p", "tv-sub", "Elk team tekent een ander woord. De basistelefoon geeft één antwoord."));
+      } else if (s.status === "judging" || s.status === "result") {
+        $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}: dit waren de woorden`;
         const g = el("div", "gallery");
         s.teams.forEach((t) => {
           if (!t.strokes) return;
@@ -440,8 +438,7 @@
           const wrap = el("div", "padwrap");
           const cv = el("canvas");
           wrap.append(cv);
-          card.append(wrap, el("div", "", `${t.solved ? "✔" : "✘"} ${t.name}: ${t.word || ""}`), el("div", "", t.drawer ? `getekend door ${t.drawer}` : ""));
-          card.style.outline = t.solved ? "3px solid #22c55e" : "3px solid #7f1d1d";
+          card.append(wrap, el("div", "", `${t.name}: ${t.word || ""}`), el("div", "", t.drawer ? `getekend door ${t.drawer}` : ""));
           g.append(card);
           requestAnimationFrame(() => QuizFX.paintStrokes(cv, t.strokes));
         });
@@ -463,11 +460,11 @@
         t.id = "th-bigtimer";
         body.append(t);
       } else if (s.status === "judging" || s.status === "result") {
-        $("th-title").textContent = s.status === "judging" ? `Tijd om! De quizmaster keurt de antwoorden van ${s.team} goed…` : `${s.team}: ${s.ok.filter(Boolean).length} van 5 goed`;
+        $("th-title").textContent = s.status === "judging" ? `Tijd om! De quizmaster keurt de antwoorden van ${s.team}…` : `${s.team}: dit waren de woorden`;
         const w = el("div", "words");
-        s.words.forEach((word, i) => {
-          const r = el("div", "word" + (s.status === "result" ? (s.ok[i] ? " ok" : " no") : ""));
-          r.append(el("span", "", word), el("span", "", s.status === "result" ? (s.ok[i] ? "✔" : "✘") : ""));
+        s.words.forEach((word) => {
+          const r = el("div", "word");
+          r.append(el("span", "", word));
           w.append(r);
         });
         body.append(w);
@@ -497,6 +494,21 @@
         body.append(row);
       });
       body.append(el("p", "tv-sub", `Maximaal ${s.max} punten per ronde. De joker wordt pas aan het eind ingezet.`));
+    }
+
+    let logoKey = null;
+    function renderLogoStep(s) {
+      showView("v-mc");
+      $("mc-cat").classList.add("hidden");
+      $("mc-question").textContent = s.status === "closed" ? `Dit was: ${s.name}` : "Welk logo is dit?";
+      const key = s.id + s.status;
+      if (logoKey !== key) { logoKey = key; QuizFX.renderLogo($("mc-media"), s.media, s.hide, s.status === "closed", s.media ? s.media.src : "Logo ontbreekt"); }
+      $("mc-dots").classList.add("hidden");
+      $("mc-pointsnow").classList.toggle("hidden", s.status === "closed");
+      $("mc-pointsnow").textContent = "Typ het merk op de basistelefoon. Hoe sneller goed, hoe meer punten!";
+      $("mc-options").replaceChildren();
+      $("mc-explain").textContent = "";
+      chips($("mc-teams"), s.teams, true);
     }
 
     function renderFinal(s) {
@@ -666,6 +678,7 @@
       switch (step.kind) {
         case "info": renderInfo(step); break;
         case "mc": renderMc(step); break;
+        case "logo": renderLogoStep(step); break;
         case "memory": renderMemory(step); break;
         case "song": renderSong(step); break;
         case "price": renderPrice(step); break;

@@ -15,13 +15,13 @@ Teams spelen op hun telefoon, de vragen staan op de tv en de quizmaster bedient 
 | Bediening | `/bediening.html` | de quizmaster, pincode standaard `1234` (`HOST_PIN=...` om te wijzigen) |
 
 ## Verloop
-Testvragen (tellen niet) → "Hier begint de echte quiz" → ronde 1 t/m 8 → joker inzetten → slotvraag → ontknoping → nakijken.
+Testvragen (tellen niet) → "Hier begint de echte quiz" → joker inzetten → ronde 1 t/m 8 → slotvraag → (beslissingsvraag bij gelijke stand) → ontknoping → nakijken.
 Tijdens het spel zijn er **geen uitslagen** te zien. Pas als alle rondes klaar zijn volgen de ontknoping, het overzicht per ronde en **Nakijken**: per team het antwoord met groen vinkje of rood kruis.
 
 ## Punten
 Elke ronde is evenveel waard (`roundPoints`, standaard 100), ongeacht het aantal vragen of de grootte van het team.
 Een team scoort dus een percentage van het maximum. Per ronde te overschrijven met `"points"` in questions.json.
-- **Joker**: één per team, na ronde 8. De basistelefoon kiest een ronde; die ronde telt dubbel.
+- **Joker**: vóór ronde 1 kiest de basistelefoon van elk team de ronde waarin het team verwacht het best te scoren; die ronde telt dubbel.
 - **Slotvraag**: meerkeuze met inzet (0 tot je totaal). Goed = inzet erbij, fout = inzet kwijt.
 - **Beslissingsvraag**: alleen als na de slotvraag teams gelijk staan op de eerste plaats. Die teams schatten een getal (`tiebreakers` in questions.json); wie het dichtstbij zit krijgt 1 punt en wint. Staan ze dan nog gelijk, dan volgt de volgende vraag. Geen gelijke stand = geen open vraag.
 - **Muziek**: de basistelefoon legt het liedje in de tijdlijn en kan optioneel het exacte jaartal invullen: dat levert bonuspunten op (`yearBonus`, standaard 1 extra punt per liedje, op te geven bij de ronde).
@@ -45,9 +45,9 @@ De server leest dit bestand zelf in; er is geen extra pakket voor nodig. Tot vla
 | `memory` | `items` = wat op het bord stond; het hele team typt mee, quizmaster keurt bij |
 | `hitster` | `songs` met `title`, `artist`, `year`, optioneel `audio` en `start: true` (startkaarten) |
 | `price` | `items` met `now` en `ago` (prijs nu en `agoYears` jaar geleden) |
-| `draw` | de tekenaar tekent op de eigen telefoon, de streken verschijnen live bij de teamgenoten; `words` (met optioneel `alt` voor andere goede spellingen); teams moeten uit minstens 2 spelers bestaan |
+| `draw` | alle teams tegelijk, elk een ander woord. Een willekeurig teamlid (nooit de basistelefoon) tekent op de eigen telefoon, het team ziet het live. De basistelefoon geeft één antwoord; de quizmaster keurt goed/fout (voorstel staat al klaar). Ieder teamlid behalve de basis tekent één keer. `words` (met optioneel `alt` voor andere goede spellingen); teams moeten uit minstens 2 spelers bestaan |
 | `thirty` | `cards`: lijsten van 5 woorden |
-| `logo` | foto's met een deel afgedekt (`hide`, standaard 0.5) |
+| `logo` | open vraag: logo met stukjes afgedekt (`hide`, standaard 0.5); `name` en `alt` (ook goed). Eén antwoord per team. Goede antwoorden krijgen punten op volgorde van snelheid (`logoPoints`, standaard 10, 8, 6, 4, 2); de quizmaster keurt achteraf goed/fout, dat verandert de volgorde niet. |
 
 **Controleer vóór gebruik**: de prijzen zijn schattingen, `items` bij het geheugenbord zijn voorbeelden,
 foto's/logo's/audio moeten nog in `public/media/` (zie daar de README).

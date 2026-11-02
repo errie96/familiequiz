@@ -130,6 +130,7 @@
       <div class="setting"><label for="s-thirty">30 Seconds: seconden per beurt</label><input type="number" id="s-thirty" min="10" max="120"></div>
       <div class="setting"><label for="s-blur">Foto blur: punten per stap</label><input type="text" id="s-blur"></div>
       <div class="setting"><label for="s-price">Prijzen: punten dichtstbij, 2e, 3e…</label><input type="text" id="s-price"></div>
+      <div class="setting"><label for="s-logo">Logo's: punten 1e, 2e, 3e… goede antwoord</label><input type="text" id="s-logo"></div>
       <button id="btn-save-settings" class="btn-primary">Instellingen opslaan</button>
     </details>
 
@@ -234,7 +235,7 @@
     $("btn-save-settings").onclick = () => socket.emit("update_settings", {
       roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value),
       memorySeconds: Number($("s-mem").value), drawSeconds: Number($("s-draw").value), thirtySeconds: Number($("s-thirty").value),
-      blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value)
+      blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value), logoPoints: parseList($("s-logo").value)
     });
 
     // ---------------- Stap-paneel ----------------
@@ -327,15 +328,27 @@
 
       if (p.type === "draw") {
         box.append(el("h3", "", `Tekenen: beurt ${p.turn} van ${p.total}`));
-        if (p.smallTeams.length) box.append(el("p", "bad", `Let op: ${p.smallTeams.join(", ")} heeft minder dan 2 spelers en kan niet meedoen.`));
-        if (p.status === "ready") box.append(el("p", "muted", "Laat de tekenaars aan jouw tafel zitten en druk op Start."));
+        if (p.smallTeams.length) box.append(el("p", "bad", `Let op: ${p.smallTeams.join(", ")} heeft maar één telefoon en kan niet meedoen (de basistelefoon tekent nooit).`));
+        if (p.status === "ready") box.append(el("p", "muted", "Druk op Start: elk team krijgt een ander woord, op de telefoon van een willekeurig teamlid (niet de basistelefoon)."));
+        if (p.status === "judging") box.append(el("p", "muted", "Keur de antwoorden goed of fout (automatisch voorgesteld) en bevestig."));
         p.teams.forEach((t) => {
           const row = el("div", "line");
           const left = el("div");
-          left.append(el("div", "", `${t.solved ? "✔" : "…"} ${t.name} · tekent: ${t.drawer}`), el("div", "muted", `Woord: ${t.word}`), el("div", "muted", t.guesses.map((g) => `${g.ok ? "✔" : "✘"} ${g.text}`).join("  ")));
-          const fix = el("button", "btn-option tg", t.solved ? "afkeuren" : "goedkeuren");
-          fix.onclick = () => socket.emit("draw_judge", { teamId: findTeamId(t.name), ok: !t.solved });
-          row.append(left, fix);
+          left.append(el("div", "", `${t.name} · tekent: ${t.drawer}`), el("div", "muted", `Woord: ${t.word}`), el("div", "", t.answer ? `Antwoord: ${t.answer}` : "⏳ nog geen antwoord"));
+          row.append(left);
+          if (p.status !== "ready" && t.answer) row.append(toggle(t.ok, () => socket.emit("draw_judge", { teamId: t.teamId, ok: !t.ok })));
+          box.append(row);
+        });
+      }
+
+      if (p.type === "logo") {
+        box.append(el("h3", "", `Logo: ${p.name}`));
+        if (p.alt && p.alt.length) box.append(el("p", "muted", `Ook goed: ${p.alt.join(", ")}`));
+        box.append(el("p", "muted", "Antwoorden staan op volgorde van binnenkomst; de snelste goede krijgt de meeste punten. Keur goed of fout (automatisch voorgesteld)."));
+        p.teams.slice().sort((a, b) => (a.place || 99) - (b.place || 99)).forEach((t) => {
+          const row = el("div", "line");
+          row.append(el("span", "", `${t.place ? "#" + t.place + " " : "⏳ "}${t.name}${t.answer ? ": " + t.answer : ""}${t.ok && t.pts ? "  (+" + t.pts + ")" : ""}`));
+          if (t.answer) row.append(toggle(t.ok, () => socket.emit("logo_judge", { teamId: t.teamId, ok: !t.ok })));
           box.append(row);
         });
       }
@@ -605,12 +618,12 @@
       // Instellingen
       const locked = state.settingsLocked;
       $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
-      ["s-round", "s-timer", "s-time", "s-mem", "s-draw", "s-thirty", "s-blur", "s-price", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+      ["s-round", "s-timer", "s-time", "s-mem", "s-draw", "s-thirty", "s-blur", "s-price", "s-logo", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
       const ae = document.activeElement && document.activeElement.id;
       if (!settingsFilled || !ae || !ae.startsWith("s-")) {
         $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime;
         $("s-mem").value = state.settings.memorySeconds; $("s-draw").value = state.settings.drawSeconds; $("s-thirty").value = state.settings.thirtySeconds;
-        $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", ");
+        $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", ");
         settingsFilled = true;
       }
     });

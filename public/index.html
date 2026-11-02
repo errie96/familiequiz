@@ -518,11 +518,11 @@
       // ----- Tekenen -----
       draw(box, v) {
         if (v.status === "ready") {
-          box.append(bigEl("✏️"), el("h3", "", `Beurt ${v.turn} van ${v.total}`), el("p", "note", v.role === "drawer" ? "Jij bent de tekenaar! Ga aan de tafel van de quizmaster zitten." : v.role === "guesser" ? `${v.drawerLabel} gaat tekenen. Maak je klaar om te raden!` : "Jullie team heeft deze beurt geen tekenaar."));
+          box.append(bigEl("✏️"), el("h3", "", `Beurt ${v.turn} van ${v.total}`), el("p", "note", v.role === "drawer" ? "Jij bent de tekenaar! Zodra de quizmaster start, zie je hier je woord." : v.role === "idle" ? "Jullie team heeft deze beurt geen tekenaar." : `${v.drawerLabel} gaat tekenen. ${v.role === "guesser" ? "Jij geeft straks het antwoord van het team." : "De basistelefoon geeft het antwoord."}`));
           return noop;
         }
-        if (v.status === "result") {
-          box.append(bigEl("⏹"), el("h3", "", v.answerWord ? `Het woord was: ${v.answerWord}` : "Beurt afgelopen"), el("p", v.solved ? "bigtxt good" : "note", v.solved ? "✔ Jullie hebben het geraden!" : "Niet geraden."), el("p", "note", "Kijk naar het grote scherm."));
+        if (v.status === "judging" || v.status === "result") {
+          box.append(bigEl("⏹"), el("h3", "", v.answerWord ? `Het woord was: ${v.answerWord}` : "Beurt afgelopen"), el("p", "note", v.given ? `Jullie antwoord: ${v.given}` : "Jullie hebben geen antwoord gegeven."), el("p", "note", "De quizmaster keurt de antwoorden. De uitslag zie je aan het einde."));
           return noop;
         }
         if (v.role === "idle") { box.append(el("p", "note", "Jullie team heeft deze beurt geen tekenaar. Kijk mee op het grote scherm.")); return noop; }
@@ -581,7 +581,7 @@
           return noop;
         }
 
-        // Raadplek: tekening live meekijken en raden
+        // Meekijken: tekening live; alleen de basistelefoon geeft één antwoord
         box.append(el("p", "note", `${v.drawerLabel} tekent! Wat is het?`), wrap);
         window.__drawHandler = (ops) => {
           ops.forEach((op) => {
@@ -597,26 +597,38 @@
         };
         socket.emit("draw_get", null, (res) => { strokes = (res && res.strokes) || []; repaint(); });
         requestAnimationFrame(repaint);
-        const guesses = el("div");
-        if (v.solved) {
-          box.append(el("p", "bigtxt good", "✔ Goed geraden!"), el("p", "note", "Wachten op de andere teams…"));
-          return (nv) => {};
-        }
-        const input = el("input"); input.type = "text"; input.placeholder = "Jouw gok"; input.maxLength = 40; input.autocomplete = "off";
+        if (v.role === "watcher") { box.append(el("p", "note", "Overleg met je team: de basistelefoon geeft het antwoord.")); return noop; }
+        if (v.answered) { box.append(el("p", "note good", `✅ Ingediend: ${v.given}`), el("p", "note", "De quizmaster keurt het antwoord goed of fout.")); return noop; }
+        const input = el("input"); input.type = "text"; input.placeholder = "Jullie antwoord (één poging!)"; input.maxLength = 40; input.autocomplete = "off";
+        const err = el("p", "bad hidden"); err.style.textAlign = "center";
         const send = () => {
           const text = input.value.trim();
           if (!text) return;
-          input.value = "";
-          socket.emit("draw_guess", { text }, () => {});
-          input.focus();
+          if (!confirm(`"${text}" indienen? Jullie hebben maar één poging.`)) return;
+          socket.emit("draw_guess", { text }, (res) => { if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
         };
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
-        const btn = el("button", "btn-primary", "Gokken 🎯"); btn.onclick = send;
-        box.append(input, btn, guesses);
-        return (nv) => {
-          guesses.replaceChildren();
-          [...nv.guesses].reverse().forEach((g) => guesses.append(el("div", "entry", `${g.ok ? "✔" : "✘"} ${g.label}: ${g.text}`)));
+        const btn = submitBtn("Antwoord indienen 📤", send);
+        box.append(input, btn, err);
+        return noop;
+      },
+
+      // ----- Logo's: open antwoord -----
+      logo(box, v) {
+        box.append(el("h3", "", "🏷️ Welk logo is dit?"), el("p", "note", "👀 Kijk naar het grote scherm. Eén antwoord per team; hoe sneller goed, hoe meer punten."));
+        if (v.answered) { box.append(el("p", "bigtxt good", `✅ ${v.given}`), el("p", "note", "Ingediend! De quizmaster keurt de antwoorden achteraf.")); return noop; }
+        if (v.status !== "open") { box.append(el("p", "note", "De vraag is gesloten.")); return noop; }
+        if (!v.isBase) { box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in.")); return noop; }
+        const input = el("input"); input.type = "text"; input.placeholder = "Merknaam"; input.maxLength = 40; input.autocomplete = "off";
+        const err = el("p", "bad hidden"); err.style.textAlign = "center";
+        const send = () => {
+          const text = input.value.trim();
+          if (!text) return;
+          socket.emit("submit_text", { stepId: v.id, text }, (res) => { if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
         };
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+        box.append(input, submitBtn("Antwoord indienen 📤", send), err);
+        return noop;
       },
 
       // ----- 30 Seconds -----
@@ -642,7 +654,7 @@
         const d = el("div"); d.style.textAlign = "center";
         const e = el("div", "", "🃏"); e.style.fontSize = "54px";
         d.append(e, el("h2", "", "Zet je joker in!"));
-        box.append(d, el("p", "note", "Kies de ronde waarin de punten van jullie team verdubbeld worden. Dit doet de basistelefoon."));
+        box.append(d, el("p", "note", "Kies vooraf de ronde waarin jullie verwachten het best te scoren: die punten tellen dubbel. Dit doet de basistelefoon en kan maar één keer."));
         const list = el("div");
         box.append(list);
         return (nv) => {
@@ -738,7 +750,8 @@
         case "memory": return [v.id, v.status].join("|");
         case "song": return [v.id, v.status, v.placed, v.isBase, v.result && v.result.ok].join("|");
         case "price": return [v.id, v.status, v.answered, v.isBase].join("|");
-        case "draw": return [v.id, v.status, v.role, v.turn, v.solved].join("|");
+        case "draw": return [v.id, v.status, v.role, v.turn, v.answered].join("|");
+        case "logo": return [v.id, v.status, v.answered, v.isBase].join("|");
         case "thirty": return [v.id, v.status, v.role, v.turn, v.words ? 1 : 0].join("|");
         case "joker": return [v.id, v.isBase].join("|");
         case "final": return [v.id, v.status, v.answered, v.wager !== null, v.isBase, v.result ? 1 : 0].join("|");
@@ -762,7 +775,7 @@
       "Valsspelen bij de familiequiz kost je gegarandeerd de afwasbeurt van vanavond.",
       "Wie het hardst roept dat de vraag niet klopt, heeft meestal het foute antwoord gekozen.",
       "Neem gerust nog een drankje; de quizmaster houdt de antwoorden geheim tot het einde!",
-      "Tactische tip: denk goed na over wanneer je je joker inzet..."
+      "Hopelijk hebben jullie je joker op de goede ronde gezet..."
     ];
     let prevPaused = false;
 

@@ -1218,140 +1218,90 @@
    "hide": 0.5,
    "questions": [
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Jumbo",
-      "Albert Heijn",
-      "Plus",
-      "Dirk"
+     "name": "Albert Heijn",
+     "alt": [
+      "AH",
+      "Appie"
      ],
-     "answer": 1,
      "media": {
       "kind": "image",
       "src": "logos/albert-heijn.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "McDonald's",
-      "Burger King",
-      "KFC",
-      "Wendy's"
+     "name": "McDonald's",
+     "alt": [
+      "McDonalds",
+      "Mac Donalds"
      ],
-     "answer": 0,
      "media": {
       "kind": "image",
       "src": "logos/mcdonalds.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Adidas",
-      "Puma",
-      "Under Armour",
-      "Nike"
-     ],
-     "answer": 3,
+     "name": "Nike",
+     "alt": [],
      "media": {
       "kind": "image",
       "src": "logos/nike.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Grolsch",
-      "Amstel",
-      "Heineken",
-      "Bavaria"
-     ],
-     "answer": 2,
+     "name": "Heineken",
+     "alt": [],
      "media": {
       "kind": "image",
       "src": "logos/heineken.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Transavia",
-      "KLM",
-      "Lufthansa",
-      "Air France"
+     "name": "KLM",
+     "alt": [
+      "Koninklijke Luchtvaart Maatschappij"
      ],
-     "answer": 1,
      "media": {
       "kind": "image",
       "src": "logos/klm.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Spotify",
-      "Deezer",
-      "SoundCloud",
-      "Tidal"
-     ],
-     "answer": 0,
+     "name": "Spotify",
+     "alt": [],
      "media": {
       "kind": "image",
       "src": "logos/spotify.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Costa Coffee",
-      "Nescafé",
-      "Coffee Company",
-      "Starbucks"
-     ],
-     "answer": 3,
+     "name": "Starbucks",
+     "alt": [],
      "media": {
       "kind": "image",
       "src": "logos/starbucks.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "BP",
-      "Esso",
-      "Shell",
-      "TotalEnergies"
-     ],
-     "answer": 2,
+     "name": "Shell",
+     "alt": [],
      "media": {
       "kind": "image",
       "src": "logos/shell.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Leen Bakker",
-      "IKEA",
-      "Kwantum",
-      "HEMA"
-     ],
-     "answer": 1,
+     "name": "IKEA",
+     "alt": [],
      "media": {
       "kind": "image",
       "src": "logos/ikea.png"
      }
     },
     {
-     "question": "Welk logo is dit?",
-     "options": [
-      "Coca-Cola",
-      "Pepsi",
-      "Fanta",
-      "Dr Pepper"
+     "name": "Coca-Cola",
+     "alt": [
+      "Coca Cola"
      ],
-     "answer": 0,
      "media": {
       "kind": "image",
       "src": "logos/coca-cola.png"
