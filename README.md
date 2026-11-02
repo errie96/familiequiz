@@ -8,8 +8,9 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 ## Nieuw in deze versie
 - **Welkomstpagina** op de tv vóór het aanmeldscherm (tekst in de Excel, tabblad *Teksten*). In de bediening: "Toon het aanmeldscherm".
 - **Thema's** (Standaard, Winter, Kerst, Oud & nieuw, Zomer, Halloween): bediening → *Thema*, op elk moment.
-- **Rondevolgorde**: bediening → *Rondes*: volgorde, aan/uit en "in 2 delen" (meerkeuze, foto blur, prijzen, logo's). Vóór de start.
-- **Scores voor de quizmasters**: bediening → *Scores*. Spelers en tv zien de stand pas aan het einde.
+- **Rondevolgorde**: bediening → *Rondes*: volgorde en aan/uit (vóór de start).
+- **Extra rondes**: 30 Seconds, tekenen of muziek nog een keer, ook tijdens de quiz (komt direct na de huidige ronde). Muziek met een categorie: decennium (automatisch) of de kolom *Categorie* in de Excel. Geen herhaling van liedjes, woorden of kaarten.
+- **Scores voor de quizmasters**: alleen in bediening → *Scores*. Spelers en tv zien de stand pas aan het einde.
 - **Oefenronde bij elk spel** (kolom *Oefen?* in de Excel; bij meerkeuze categorie "Oefenvraag"). Bij tekenen en 30 Seconds doet de quizmaster de oefenbeurt zelf (tekenen in de bediening, live op de tv).
 - **Tussenpagina's** met animatie: "Nu gaan we door naar…" bij elke ronde en elke categorie.
 - **Joker** vóór ronde 1; de tv toont waarop elk team de joker zet.

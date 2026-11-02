@@ -164,7 +164,7 @@ De knop "Stand" toont op de tv de eindstand als lijst.
 
 ## Punten en spelregels
 
-Elke ronde levert maximaal 100 punten op, hoeveel vragen er ook in zitten. Een team krijgt het percentage van het maximum dat het haalt: 30 van de 50 meerkeuzevragen goed is 60 punten. Bij tekenen en 30 Seconds wordt per team gerekend, zodat grote en kleine teams eerlijk tegen elkaar spelen. Oefenvragen tellen nooit mee. Zo is elke ronde even zwaar en is de joker eerlijk, ook als een ronde in 2 delen gespeeld wordt (dan is elk deel evenveel waard).
+Elke ronde levert maximaal 100 punten op, hoeveel vragen er ook in zitten. Een team krijgt het percentage van het maximum dat het haalt: 30 van de 50 meerkeuzevragen goed is 60 punten. Bij tekenen en 30 Seconds wordt per team gerekend, zodat grote en kleine teams eerlijk tegen elkaar spelen. Oefenvragen tellen nooit mee. Zo is elke ronde even zwaar en is de joker eerlijk, ook bij extra rondes (die zijn ook 100 punten waard).
 
 | Onderdeel | Hoe je punten scoort | Wie antwoordt |
 | --- | --- | --- |
@@ -205,9 +205,11 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Thema.** In de bediening (blokje Thema) kies je Standaard, Winter, Kerst, Oud & nieuw, Zomer of Halloween. Het thema verandert de kleuren en decoratie op de tv en alle telefoons, met bijvoorbeeld vallende sneeuw bij Winter en Kerst. Dat kan altijd, ook tijdens de quiz.
 
-**Rondevolgorde.** In het blokje Rondes zet je vóór de start de rondes in de gewenste volgorde, zet je rondes aan of uit, of speel je een ronde in 2 delen. Bij 2 delen worden de vragen eerlijk verdeeld en is elk deel evenveel punten waard; dat kan bij meerkeuze, foto blur, prijzen en logo's.
+**Rondevolgorde.** In het blokje Rondes zet je vóór de start de rondes in de gewenste volgorde en zet je rondes aan of uit.
 
-**Scores voor de quizmasters.** In het blokje Scores zien alleen de quizmasters tijdens het spel de stand per ronde, met de joker erbij. De spelers en de tv zien de stand pas aan het einde.
+**Extra rondes.** Onder het rondeplan kun je 30 Seconds, tekenen of de muziek nog een keer laten spelen, vooraf of later tijdens de quiz. Tijdens de quiz komt de extra ronde direct na de huidige ronde. Een extra ronde is net zoveel punten waard als elke andere ronde en heeft geen oefenronde. Bij een extra muziekronde kies je een categorie: een decennium (Jaren 80, Jaren 90 enz., gaat automatisch) of een eigen categorie uit de kolom Categorie in de Excel. De tijdlijnen beginnen dan opnieuw, en liedjes, tekenwoorden en 30 Seconds-kaarten die al gespeeld zijn komen niet nog een keer. Een extra ronde die nog niet begonnen is, kun je weer verwijderen.
+
+**Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten. De spelers en de tv zien de stand pas aan het einde.
 
 ## Nog te doen voor de avond
 

@@ -101,10 +101,20 @@
     </details>
 
     <details id="plan-panel">
-      <summary>🗂️ Rondes: volgorde, aan/uit, in 2 delen</summary>
+      <summary>🗂️ Rondes: volgorde en extra rondes</summary>
       <p id="plan-note" class="muted" style="margin:4px 0 8px;"></p>
       <div id="plan-list"></div>
       <button id="plan-save" class="btn-primary">Rondevolgorde opslaan</button>
+      <div class="qbox" style="margin-top:10px;">
+        <b>➕ Extra ronde toevoegen</b>
+        <p id="extra-note" class="muted" style="margin:4px 0 6px;"></p>
+        <select id="extra-base"></select>
+        <div id="extra-cat-row" class="hidden" style="margin-top:6px;">
+          <label class="muted">Categorie (muziek):</label>
+          <select id="extra-cat"></select>
+        </div>
+        <button id="extra-add" class="btn-option" style="text-align:center;">➕ Toevoegen</button>
+      </div>
     </details>
 
     <details id="quiz-panel">
@@ -501,7 +511,7 @@
       state.teams.forEach((t) => {
         const d = el("div", "team");
         const head = el("div", "head");
-        head.append(el("b", "", `${t.connected ? "●" : "○"} ${t.name} · ${t.score} pt${t.joker ? " · 🃏 " + t.joker : ""}`));
+        head.append(el("b", "", `${t.connected ? "●" : "○"} ${t.name}${t.joker ? " · 🃏 " + t.joker : ""}`));
         const acts = el("span");
         const rn = el("button", "btn-option btn-small", "✏️"); rn.onclick = () => { const n = prompt("Nieuwe teamnaam:", t.name); if (n) socket.emit("rename_team", { teamId: t.teamId, name: n }); };
         const rm = el("button", "btn-option btn-small", "🗑"); rm.onclick = () => { if (confirm(`Team ${t.name} verwijderen?`)) socket.emit("remove_team", { teamId: t.teamId }); };
@@ -623,34 +633,69 @@
       }
       box.querySelectorAll("button").forEach((bt) => { bt.style.outline = bt.dataset.t === st.theme ? "2px solid #fbbf24" : ""; });
     }
-    // Concept van de rondevolgorde: pas na "opslaan" naar de server
+    // Concept van de rondevolgorde: pas na "opslaan" naar de server (alleen vóór de start)
     let planDraft = [], planKey = "", planLocked = false;
     function renderPlan(st) {
       planLocked = st.phase !== "LOBBY";
-      $("plan-note").textContent = planLocked ? "Na de start kan de volgorde niet meer veranderen." : "Zet de rondes in de gewenste volgorde (▲▼), zet rondes aan/uit, of speel een ronde in 2 delen (de vragen worden verdeeld; elk deel is evenveel punten waard). Daarna opslaan.";
-      $("plan-save").disabled = planLocked;
+      $("plan-note").textContent = planLocked
+        ? "De quiz is begonnen: de volgorde ligt vast. Een extra ronde kun je nog wel toevoegen; die komt direct na de huidige ronde."
+        : "Zet de rondes in volgorde (▲▼) en zet ze aan of uit; daarna opslaan. Extra rondes kun je hieronder toevoegen, ook later tijdens de quiz.";
+      $("plan-save").classList.toggle("hidden", planLocked);
       const key = JSON.stringify(st.plan);
       if (key !== planKey) { planKey = key; planDraft = st.plan.map((x) => ({ ...x })); }
       drawPlan();
+      renderExtra(st);
     }
     function drawPlan() {
       const box = $("plan-list");
       box.replaceChildren();
       planDraft.forEach((r, i) => {
         const row = el("div", "line");
-        const left = el("span", "", `${i + 1}. ${r.title}${r.split ? " (2 delen)" : ""}`);
+        const left = el("span", "", `${i + 1}. ${r.title}${r.extra ? " ✨" : ""}${r.started ? " (gespeeld)" : ""}`);
         if (!r.on) left.style.opacity = "0.45";
         const right = el("span");
-        const mk = (label, fn, dis) => { const bt = el("button", "btn-option tg", label); bt.disabled = planLocked || dis; bt.onclick = () => { fn(); drawPlan(); }; bt.style.marginLeft = "4px"; right.append(bt); };
-        mk("▲", () => { [planDraft[i - 1], planDraft[i]] = [planDraft[i], planDraft[i - 1]]; }, i === 0);
-        mk("▼", () => { [planDraft[i + 1], planDraft[i]] = [planDraft[i], planDraft[i + 1]]; }, i === planDraft.length - 1);
-        mk(r.on ? "aan" : "uit", () => { r.on = !r.on; });
-        mk(r.split ? "2 delen ✔" : "2 delen", () => { r.split = !r.split; }, !r.canSplit);
+        const mk = (label, fn, dis) => { const bt = el("button", "btn-option tg", label); bt.disabled = dis; bt.onclick = () => { fn(); drawPlan(); }; bt.style.marginLeft = "4px"; right.append(bt); };
+        if (!planLocked) {
+          mk("▲", () => { [planDraft[i - 1], planDraft[i]] = [planDraft[i], planDraft[i - 1]]; }, i === 0);
+          mk("▼", () => { [planDraft[i + 1], planDraft[i]] = [planDraft[i], planDraft[i + 1]]; }, i === planDraft.length - 1);
+          mk(r.on ? "aan" : "uit", () => { r.on = !r.on; });
+        }
+        if (r.extra && !r.started) {
+          const del = el("button", "btn-option tg", "🗑");
+          del.style.marginLeft = "4px";
+          del.onclick = () => { if (confirm(`"${r.title}" verwijderen?`)) socket.emit("remove_extra", { id: r.id }); };
+          right.append(del);
+        }
         row.append(left, right);
         box.append(row);
       });
     }
-    $("plan-save").onclick = () => socket.emit("set_plan", { plan: planDraft.map((r) => ({ id: r.id, on: r.on, split: r.split })) });
+    let extraKey = "";
+    function renderExtra(st) {
+      const opt = st.extraOptions;
+      const key = JSON.stringify(opt);
+      if (key !== extraKey) {
+        extraKey = key;
+        const sel = $("extra-base");
+        const keep = sel.value;
+        sel.replaceChildren(...opt.rounds.map((r) => new Option(r.title, r.id)));
+        if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+        const cat = $("extra-cat");
+        cat.replaceChildren(new Option("Alles (alle liedjes)", "Alles"), ...opt.categories.map((c) => new Option(`${c.name} (${c.count} liedjes)`, c.name)));
+      }
+      const r = opt.rounds.find((x) => x.id === $("extra-base").value);
+      $("extra-cat-row").classList.toggle("hidden", !(r && r.type === "hitster"));
+      $("extra-add").disabled = st.phase === "END" || !opt.rounds.length;
+      $("extra-note").textContent = "Speel 30 Seconds, tekenen of de muziek nog een keer. Een extra ronde is evenveel punten waard als elke andere ronde; er is geen oefenronde. Bij muziek kies je een categorie, en de tijdlijnen beginnen opnieuw.";
+    }
+    $("extra-base").onchange = () => { const r = S && S.extraOptions.rounds.find((x) => x.id === $("extra-base").value); $("extra-cat-row").classList.toggle("hidden", !(r && r.type === "hitster")); };
+    $("extra-add").onclick = () => {
+      const base = $("extra-base").value;
+      const r = S.extraOptions.rounds.find((x) => x.id === base);
+      const category = r && r.type === "hitster" ? $("extra-cat").value : null;
+      if (confirm(`Extra ronde toevoegen: ${r ? r.title : base}${category && category !== "Alles" ? " (" + category + ")" : ""}?`)) socket.emit("add_extra", { base, category });
+    };
+    $("plan-save").onclick = () => socket.emit("set_plan", { plan: planDraft.map((r) => ({ id: r.id, on: r.on, base: r.base || undefined, category: r.category || undefined })) });
 
     // ---------------- Hoofdlus ----------------
     let settingsFilled = false;
@@ -709,7 +754,7 @@
       if (state.phase === "END") {
         const ul = $("end-list");
         ul.replaceChildren();
-        (state.standings || []).forEach((r) => { const li = el("li"); li.append(el("span", "", `#${r.rank} ${r.name}`), el("b", "", `${r.score} pt`)); ul.append(li); });
+        ul.append(el("p", "muted", "De scores staan in het blok Scores hieronder."));
       }
 
       renderTeams(state);
