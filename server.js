@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { loadContent } = require('./lib/content');
+const { fromExcel } = require('./lib/fromExcel');
 const { newId, cleanText, norm, fuzzyEq, shuffle } = require('./lib/util');
 
 const PORT = process.env.PORT || 3000;
@@ -31,7 +32,7 @@ const THIRTY_MAX = 5;  // maximaal aantal punten (ruw) per 30-secondsbeurt
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { maxHttpBufferSize: 5e6 });
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------------------------------------------------------
@@ -94,10 +95,39 @@ try {
 // ---------------------------------------------------------------
 // Inhoud
 // ---------------------------------------------------------------
-const content = loadContent(path.join(__dirname, 'questions.json'));
-const { rounds, steps, songs } = content;
-const roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
-content.warnings.forEach((w) => console.warn('Waarschuwing:', w));
+// De vragen komen uit vragenlijst.xlsx (de nieuwste van: geüpload via de bediening, in de projectmap, of QUIZ_XLSX).
+// Staat er geen Excel, of is hij onleesbaar, dan wordt questions.json gebruikt.
+const XLSX_UPLOAD = path.join(DATA_DIR, 'vragenlijst.xlsx');
+const XLSX_LOCAL = path.join(__dirname, 'vragenlijst.xlsx');
+const JSON_BASE = path.join(__dirname, 'questions.json');
+let content, rounds, steps, songs, roundById;
+let quizSource = { kind: 'json', file: 'questions.json', loadedAt: null };
+function loadQuiz() {
+  const candidates = [process.env.QUIZ_XLSX, XLSX_UPLOAD, XLSX_LOCAL].filter((f) => f && fs.existsSync(f));
+  candidates.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  let result = null;
+  const extra = [];
+  if (candidates.length) {
+    try {
+      const { raw, warnings } = fromExcel(candidates[0], JSON_BASE);
+      result = loadContent(null, raw);
+      result.warnings = [...warnings, ...result.warnings];
+      quizSource = { kind: 'excel', file: path.basename(candidates[0]) + (candidates[0] === XLSX_UPLOAD ? ' (geüpload)' : ''), loadedAt: new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
+    } catch (e) {
+      extra.push(`De Excel kon niet gelezen worden (${e.message}). questions.json is gebruikt.`);
+    }
+  }
+  if (!result) {
+    result = loadContent(JSON_BASE);
+    quizSource = { kind: 'json', file: 'questions.json', loadedAt: new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
+  }
+  result.warnings = [...extra, ...result.warnings];
+  content = result;
+  ({ rounds, steps, songs } = result);
+  roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
+  result.warnings.forEach((w) => console.warn('Waarschuwing:', w));
+}
+loadQuiz();
 const roundPoints = (round) => round.points ?? settings.roundPoints;
 
 // ---------------------------------------------------------------
@@ -1067,7 +1097,8 @@ function broadcastState() {
     rounds: rounds.map((r) => ({ id: r.id, no: r.no, title: r.title, introId: `${r.id}_intro` })),
     settings, settingsLocked: phase !== 'LOBBY',
     stepNo: stepIndex + 1, stepTotal: steps.length,
-    warnings: content.warnings
+    warnings: content.warnings,
+    quiz: { ...quizSource, steps: steps.length, rounds: rounds.length }
   });
 
   Object.values(devices).forEach((d) => {
@@ -1687,6 +1718,37 @@ io.on('connection', (socket) => {
     if (!isRemote(socket)) return;
     if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'Instellingen kunnen alleen vóór de start worden gewijzigd.' });
     settings = sanitizeSettings(partial, settings);
+    sync();
+  });
+  // Vragenlijst opnieuw inlezen of een nieuw Excel-bestand uploaden (alleen voor de start)
+  socket.on('reload_quiz', () => {
+    if (!isRemote(socket)) return;
+    if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'De vragen kunnen alleen vóór de start opnieuw worden ingelezen.' });
+    loadQuiz();
+    ssAll = {};
+    Object.values(teams).forEach((t) => { t.timeline = null; });
+    sync();
+  });
+  socket.on('upload_xlsx', (data, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!isRemote(socket)) return reply({ ok: false, message: 'Geen toegang.' });
+    if (phase !== 'LOBBY') return reply({ ok: false, message: 'Uploaden kan alleen vóór de start.' });
+    let buf;
+    try { buf = Buffer.isBuffer(data) ? data : Buffer.from(data); } catch (e) { return reply({ ok: false, message: 'Ongeldig bestand.' }); }
+    if (!buf.length || buf.length > 5e6) return reply({ ok: false, message: 'Het bestand is leeg of te groot (max 5 MB).' });
+    try {
+      fromExcel(buf, JSON_BASE);
+    } catch (e) {
+      return reply({ ok: false, message: `Dit is geen leesbaar .xlsx-bestand (${e.message}).` });
+    }
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(XLSX_UPLOAD, buf);
+    } catch (e) { return reply({ ok: false, message: 'Opslaan mislukte: ' + e.message }); }
+    loadQuiz();
+    ssAll = {};
+    Object.values(teams).forEach((t) => { t.timeline = null; });
+    reply({ ok: true, warnings: content.warnings.length });
     sync();
   });
   socket.on('clear_answer', ({ teamId } = {}) => {

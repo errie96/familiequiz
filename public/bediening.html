@@ -86,6 +86,18 @@
       </div>
     </div>
 
+    <details id="quiz-panel">
+      <summary>📋 Vragenlijst (Excel) <span id="quiz-badge" class="muted"></span></summary>
+      <p id="quiz-status" class="muted" style="margin:4px 0 8px;"></p>
+      <div class="row">
+        <button id="quiz-reload" class="btn-option" style="text-align:center;">↻ Opnieuw inlezen</button>
+        <button id="quiz-upload-btn" class="btn-primary">⬆️ Excel uploaden</button>
+      </div>
+      <input type="file" id="quiz-file" accept=".xlsx" class="hidden">
+      <p id="quiz-msg" class="muted"></p>
+      <p class="muted" style="font-size:12px;">Wijzigingen in de Excel (vragen, antwoorden, punten, tijden) kun je tot de start doorvoeren: upload het bestand hier, of vervang <b>vragenlijst.xlsx</b> op de server en tik op Opnieuw inlezen. Foto's, logo's en audio staan in <b>public/media/</b>. Na de start kan dit niet meer.</p>
+    </details>
+
     <details id="spotify-panel">
       <summary>🎵 Spotify (muziekronde) <span id="sp-badge" class="muted"></span></summary>
       <p id="sp-status" class="muted" style="margin:4px 0 8px;"></p>
@@ -411,6 +423,19 @@
       });
     }
 
+    // ---------------- Vragenlijst uit Excel ----------------
+    $("quiz-reload").onclick = () => socket.emit("reload_quiz");
+    $("quiz-upload-btn").onclick = () => $("quiz-file").click();
+    $("quiz-file").onchange = async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      $("quiz-msg").textContent = "Uploaden…";
+      socket.emit("upload_xlsx", await f.arrayBuffer(), (res) => {
+        $("quiz-msg").textContent = res && res.ok ? `✔ ${f.name} is ingelezen${res.warnings ? ` (${res.warnings} waarschuwing(en), zie bovenin)` : ""}.` : "✘ " + ((res && res.message) || "Uploaden mislukte.");
+      });
+      e.target.value = "";
+    };
+
     // ---------------- Spotify (PKCE, alleen in deze pagina) ----------------
     const SP = {
       clientId: localStorage.getItem("sp_client") || "3fc7ebb5540449dc92fa1ee9f4e97fff",
@@ -554,6 +579,9 @@
 
       renderPanel(state);
       spOnState(state);
+      $("quiz-badge").textContent = state.quiz.kind === "excel" ? "● uit Excel" : "○ questions.json";
+      $("quiz-status").textContent = `Bron: ${state.quiz.file} · ingelezen ${state.quiz.loadedAt} · ${state.quiz.rounds} rondes, ${state.quiz.steps} schermen`;
+      $("quiz-reload").disabled = $("quiz-upload-btn").disabled = state.settingsLocked;
 
       // Einde
       $("end-box").classList.toggle("hidden", state.phase !== "END");
