@@ -101,12 +101,22 @@
     <details id="spotify-panel">
       <summary>🎵 Spotify (muziekronde) <span id="sp-badge" class="muted"></span></summary>
       <p id="sp-status" class="muted" style="margin:4px 0 8px;"></p>
-      <p class="muted" style="font-size:12px;">
-        De muziek speelt af in de browser van het tv-scherm, net als bij Hitster. Koppelen doe je vooraf op de computer aan de tv:
-        open daar <b id="sp-tvurl"></b>, klik in de lobby op <b>Spotify koppelen</b> en log in.
-        Eenmalig nodig: Spotify Premium, deze Redirect-URI in je Spotify-app (developer dashboard), en het Spotify-account onder <i>User Management</i>.
-        Gebruik Chrome, Edge of Firefox op een computer (een smart-tv-browser kan het meestal niet).
-        Lokaal moet de tv-pagina via http://127.0.0.1:3000 openen, niet via het netwerkadres.
+      <button id="sp-connect" class="btn-primary" style="background:#1db954;">Verbind met Spotify</button>
+      <div id="sp-tools" class="hidden">
+        <label class="muted">Waar moet de muziek klinken?</label>
+        <select id="sp-device"></select>
+        <div class="row">
+          <button id="sp-refresh" class="btn-option" style="text-align:center;">↻ Apparaten</button>
+          <button id="sp-test" class="btn-option" style="text-align:center;">▶️ Test</button>
+          <button id="sp-stop" class="btn-option" style="text-align:center;">⏸ Stop</button>
+        </div>
+        <button id="sp-disconnect" class="btn-option" style="text-align:center; font-size:13px;">Ontkoppelen</button>
+      </div>
+      <p class="muted" style="font-size:12px; margin-top:8px;">
+        De bediening start bij elke muziekvraag zelf het liedje. Kies <b>Deze browser</b> als deze bediening op een laptop draait (die je op de speakers aansluit),
+        of een ander Spotify-apparaat: bijvoorbeeld je telefoon met de Spotify-app open, of een speaker. Houd deze pagina open tijdens de muziekronde.<br>
+        Eenmalig nodig: Spotify Premium, deze Redirect-URI in je Spotify-app (developer dashboard): <b id="sp-redirect"></b>, en het account onder <i>User Management</i>.
+        Spotify staat inloggen alleen toe via <b>http://127.0.0.1:3000</b> (op de laptop waar de server draait) of via https (Render); niet via het netwerkadres (192.168…).
       </p>
     </details>
 
@@ -300,16 +310,15 @@
         const replay = el("button", "btn-option", "🔁 Opnieuw afspelen op tv");
         replay.style.textAlign = "center";
         replay.textContent = "🔁 Opnieuw afspelen";
-        replay.onclick = () => socket.emit("song_replay");
+        replay.onclick = () => { if (QuizSpotify.connected() && !p.song.hasAudio) spPlay(p.song); else socket.emit("song_replay"); };
         const pz = el("button", "btn-option", "⏸ Muziek stoppen");
         pz.style.textAlign = "center";
-        pz.onclick = () => socket.emit("song_pause");
+        pz.onclick = () => { spStop(); socket.emit("song_pause"); };
         r.append(pz);
         r.append(replay);
         box.append(r);
-        const tvSp = state.tvStatus && state.tvStatus.spotify;
-        if (tvSp) box.append(el("p", "muted", `Spotify op de tv: ${tvSp.text}`));
-        if (!p.song.hasAudio && !(tvSp && tvSp.ok)) {
+        if (QuizSpotify.connected() && !p.song.hasAudio) box.append(el("p", "muted", `Spotify: ${$("sp-status").textContent}`));
+        if (!p.song.hasAudio && !QuizSpotify.connected()) {
           const a = el("a", "lnk", "Open dit liedje in Spotify");
           a.href = p.song.spotify; a.target = "_blank"; a.rel = "noopener";
           box.append(el("p", "muted", "Geen geluidsbestand ingesteld: speel het liedje zelf af (bijv. via Spotify) zodat het via de tv-speakers te horen is."), a);
@@ -445,14 +454,75 @@
       e.target.value = "";
     };
 
-    // ---------------- Spotify: status van de speler op de tv ----------------
-    $("sp-tvurl").textContent = location.origin.replace(/\/\/[^:/]+/, (m) => (location.hostname === "127.0.0.1" || location.protocol === "https:" ? m : "//127.0.0.1")) + "/host.html";
-    function renderSpotify(st) {
-      const s = st.tvStatus && st.tvStatus.spotify;
-      $("sp-badge").textContent = s ? (s.ok ? "● klaar" : "○ let op") : "○ geen tv-melding";
-      $("sp-status").textContent = s ? `Tv (${s.at}): ${s.text}` : "Het tv-scherm heeft nog niets gemeld. Is host.html geopend?";
-      $("sp-status").style.color = s && !s.ok ? "#fbbf24" : "";
+    // ---------------- Spotify: de bediening logt in en start de liedjes ----------------
+    const SP_BROWSER = "__browser__";
+    let spBrowserId = null, spLast = null, spPlaying = false, spWasPaused = false;
+    $("sp-redirect").textContent = QuizSpotify.redirect();
+    const spStatus = (t, warn) => { $("sp-status").textContent = t || ""; $("sp-status").style.color = warn ? "#fbbf24" : ""; };
+    const spTarget = () => { const v = $("sp-device").value; return v === SP_BROWSER ? spBrowserId : v || null; };
+    async function spDevices() {
+      const r = await QuizSpotify.devices();
+      const sel = $("sp-device");
+      const keep = localStorage.getItem("sp_device") || sel.value || SP_BROWSER;
+      sel.replaceChildren();
+      if (spBrowserId) sel.append(new Option("Deze browser (Familiequiz bediening)", SP_BROWSER));
+      r.list.filter((d) => d.id !== spBrowserId).forEach((d) => sel.append(new Option(`${d.name} (${d.type})${d.is_active ? " ●" : ""}`, d.id)));
+      if (!sel.options.length) sel.append(new Option("Geen apparaat gevonden: open Spotify en tik op ↻", ""));
+      sel.value = [...sel.options].some((o) => o.value === keep) ? keep : sel.options[0].value;
+      if (r.status === 401) spStatus("Spotify-login verlopen: ontkoppel en verbind opnieuw.", true);
+      else if (r.status !== 200) spStatus("Apparaten ophalen mislukte (status " + r.status + ").", true);
+      else spStatus(spTarget() ? "Klaar. Tik op Test om te controleren." : "Verbonden, maar er is nog geen apparaat. Open Spotify op het apparaat bij de speakers en tik op ↻.", !spTarget());
     }
+    async function spPlay(song) {
+      if (!QuizSpotify.connected()) return;
+      const dev = spTarget();
+      if (!dev) return spStatus("Geen afspeelapparaat gekozen: open Spotify op een apparaat en tik op ↻.", true);
+      const item = await QuizSpotify.find(song.title, song.artist);
+      if (!item) return spStatus(`"${song.title}" niet gevonden in Spotify: speel het zelf af.`, true);
+      const r = await QuizSpotify.play(item.uri, dev);
+      if ([200, 202, 204].includes(r.status)) { spPlaying = true; spStatus(`▶️ Speelt: ${item.name}`); }
+      else if (r.status === 401) spStatus("Spotify-login verlopen: ontkoppel en verbind opnieuw.", true);
+      else if (r.status === 403) spStatus("Spotify weigert afspelen: Premium nodig, of dit account staat niet onder User Management.", true);
+      else if (r.status === 404) spStatus("Apparaat niet bereikbaar: open Spotify op dat apparaat (of kies Deze browser) en tik op ↻.", true);
+      else spStatus("Afspelen mislukte (status " + r.status + ").", true);
+    }
+    function spStop() { if (QuizSpotify.connected() && spTarget()) QuizSpotify.pause(spTarget()); spPlaying = false; }
+    function spRefreshUi() {
+      const on = QuizSpotify.connected();
+      $("sp-connect").classList.toggle("hidden", on);
+      $("sp-tools").classList.toggle("hidden", !on);
+      $("sp-badge").textContent = on ? "● verbonden" : "○ niet verbonden";
+      if (!on) spStatus("Nog niet verbonden. Doe dit vooraf, vóór de quiz begint.");
+    }
+    $("sp-connect").onclick = () => QuizSpotify.login().catch((e) => { $("spotify-panel").open = true; spStatus(e.message, true); });
+    $("sp-refresh").onclick = spDevices;
+    $("sp-device").onchange = () => localStorage.setItem("sp_device", $("sp-device").value);
+    $("sp-test").onclick = () => spPlay({ title: "Bohemian Rhapsody", artist: "Queen" });
+    $("sp-stop").onclick = spStop;
+    $("sp-disconnect").onclick = () => { QuizSpotify.disconnect(); spRefreshUi(); };
+    // Afspelen in deze browser mag pas na een klik (regels van de browser)
+    document.addEventListener("click", () => QuizSpotify.activate());
+    (async () => {
+      const r = await QuizSpotify.handleRedirect();
+      if (r) $("spotify-panel").open = true;
+      spRefreshUi();
+      if (r && !r.ok) spStatus(`Koppelen mislukt: ${r.message}. Staat ${QuizSpotify.redirect()} als Redirect-URI in je Spotify-app?`, true);
+      if (!QuizSpotify.connected()) return;
+      spBrowserId = await QuizSpotify.startPlayer("Familiequiz bediening", (ok, text) => { if (!ok) spStatus(text + " Kies dan een ander apparaat.", true); });
+      spDevices();
+    })();
+    // Bij elke muziekvraag het liedje starten; stoppen bij pauze of een ander scherm
+    function spOnState(st) {
+      if (!QuizSpotify.connected()) return;
+      const song = st.step && st.step.kind === "song" && st.panel && st.panel.type === "song" && !st.panel.song.hasAudio ? st.panel.song : null;
+      if (!song || st.paused) {
+        if (spPlaying) spStop();
+        if (!song) spLast = null;
+      } else if (spLast !== st.step.id) { spLast = st.step.id; spPlay(song); }
+      else if (spWasPaused && !spPlaying) { spPlay(song); }
+      spWasPaused = st.paused;
+    }
+    const spSong = () => (S && S.panel && S.panel.type === "song" ? S.panel.song : null);
 
     // ---------------- Hoofdlus ----------------
     let settingsFilled = false;
@@ -491,7 +561,7 @@
       }
 
       renderPanel(state);
-      renderSpotify(state);
+      spOnState(state);
       $("quiz-badge").textContent = state.quiz.kind === "excel" ? "● uit Excel" : "○ questions.json";
       $("quiz-status").textContent = `Bron: ${state.quiz.file} · ingelezen ${state.quiz.loadedAt} · ${state.quiz.rounds} rondes, ${state.quiz.steps} schermen`;
       $("quiz-reload").disabled = $("quiz-upload-btn").disabled = state.settingsLocked;

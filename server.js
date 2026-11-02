@@ -147,7 +147,6 @@ let endView = 'ranking'; // ranking | breakdown (op de tv na de ontknoping)
 let ssAll = {};      // stepId -> dynamische status van die stap
 let alerts = {};     // deviceId -> spiekmelding (blijft staan tot de speler terug is)
 let seq = 0;
-let tvStatus = { spotify: null }; // wat het tv-scherm meldt over de Spotify-speler
 
 const timer = { tag: null, totalMs: 0, remainingMs: 0, startedAt: 0, handle: null };
 
@@ -1139,8 +1138,6 @@ function broadcastState() {
   io.to('tv_room').emit('state_update', {
     ...common,
     step: step ? publicStep(step) : null,
-    // Alleen voor de Spotify-speler op de tv (niet zichtbaar in beeld): welk liedje er moet spelen
-    spotify: step && step.kind === 'song' && !songs[step.songId].audio ? { stepId: step.id, title: songs[step.songId].title, artist: songs[step.songId].artist } : null,
     teamList: Object.values(teams).map((t) => ({ name: t.name, connected: teamConnected(t), members: teamDevices(t).length })).sort(byName)
   });
 
@@ -1159,8 +1156,7 @@ function broadcastState() {
     settings, settingsLocked: phase !== 'LOBBY',
     stepNo: stepIndex + 1, stepTotal: steps.length,
     warnings: content.warnings,
-    quiz: { ...quizSource, steps: steps.length, rounds: rounds.length },
-    tvStatus
+    quiz: { ...quizSource, steps: steps.length, rounds: rounds.length }
   });
 
   Object.values(devices).forEach((d) => {
@@ -1755,11 +1751,6 @@ io.on('connection', (socket) => {
   socket.on('song_pause', () => {
     if (!isRemote(socket)) return;
     io.to('tv_room').emit('pause_audio');
-  });
-  socket.on('tv_status', (data = {}) => {
-    if (socket.data.role !== 'tv' || !data.spotify) return;
-    tvStatus = { spotify: { ok: !!data.spotify.ok, text: cleanText(data.spotify.text, 200), at: new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' }) } };
-    broadcastState();
   });
   socket.on('memory_judge', ({ teamId, entryId, ok } = {}) => {
     if (!isRemote(socket)) return;

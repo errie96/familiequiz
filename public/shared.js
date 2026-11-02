@@ -307,7 +307,7 @@ window.QuizFX = (function () {
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
-// Wordt gebruikt door het tv-scherm: die browser (de laptop aan de tv) is de speler.
+// Wordt gebruikt door de bediening (host): die logt in en start de liedjes, in de eigen browser of op een gekozen Spotify-apparaat.
 window.QuizSpotify = (function () {
   const CLIENT_ID = localStorage.getItem("sp_client") || "3fc7ebb5540449dc92fa1ee9f4e97fff";
   const SCOPE = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state";
@@ -373,6 +373,7 @@ window.QuizSpotify = (function () {
   }
   const play = (uri, deviceId) => api("PUT", "/me/player/play" + (deviceId ? "?device_id=" + deviceId : ""), { uris: [uri], position_ms: 0 });
   const pause = (deviceId) => api("PUT", "/me/player/pause" + (deviceId ? "?device_id=" + deviceId : ""));
+  async function devices() { const r = await api("GET", "/me/player/devices"); return { status: r.status, list: (r.json && r.json.devices) || [] }; }
   function disconnect() { ["sp_access", "sp_refresh", "sp_exp", "sp_scope"].forEach((k) => localStorage.removeItem(k)); }
 
   // Speler in deze browser
@@ -401,5 +402,5 @@ window.QuizSpotify = (function () {
   const activate = () => { try { if (player && player.activateElement) player.activateElement(); } catch (e) { /* oudere SDK */ } };
   const resume = () => { if (player) player.resume().catch(() => {}); };
 
-  return { connected, login, handleRedirect, find, play, pause, resume, disconnect, startPlayer, activate, redirect };
+  return { connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect };
 })();

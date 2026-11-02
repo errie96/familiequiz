@@ -89,10 +89,6 @@
           <p class="tv-sub" style="margin-bottom:1vh;">Scan en doe mee:</p>
           <div id="qrcode"></div>
           <div id="join-url"></div>
-          <div id="sp-box" style="margin-top:2vh; font-size:clamp(12px,1.3vw,24px); color:#94a3b8; cursor:pointer;">
-            <button id="sp-connect" class="hidden" style="width:auto; padding:0.5em 1.2em; background:#1db954; color:#fff; cursor:pointer;">🎵 Spotify koppelen</button>
-            <div id="sp-status"></div>
-          </div>
         </div>
         <div>
           <h2 style="text-align:left; font-size: clamp(22px, 3vw, 56px);">Teams</h2>
@@ -226,55 +222,15 @@
       if (audioUnlocked) return;
       audioUnlocked = true;
       QuizFX.unlockAudio();
-      QuizSpotify.activate();
       $("audio-banner").classList.add("hidden");
       document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
     }
     ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, unlock));
     const allAudio = () => Array.from(document.querySelectorAll("audio"));
 
-    // ---------- Spotify: deze browser is de speler (vooraf koppelen in de lobby) ----------
-    let spDevice = null, spOk = false, spText = "", spSong = null, spLastStep = null, spPlaying = false;
-    function spStatus(ok, text) {
-      spOk = ok; spText = text;
-      $("sp-status").textContent = (ok ? "🎵 " : "⚠️ ") + text;
-      socket.emit("tv_status", { spotify: { ok, text } });
-    }
-    async function spPlaySong(song) {
-      if (!spDevice) return;
-      const item = await QuizSpotify.find(song.title, song.artist);
-      if (!item) return spStatus(false, `"${song.title}" niet gevonden in Spotify: speel het zelf af`);
-      const r = await QuizSpotify.play(item.uri, spDevice);
-      if (r.status === 204 || r.status === 200 || r.status === 202) { spPlaying = true; spStatus(true, `Speelt: ${item.name} (${song.title})`); }
-      else if (r.status === 401) spStatus(false, "Spotify-login verlopen: koppel opnieuw in de lobby");
-      else if (r.status === 403) spStatus(false, "Spotify weigert afspelen (Premium nodig, of account niet toegevoegd onder User Management)");
-      else if (r.status === 404) spStatus(false, "Spotify-speler niet gevonden: ververs de tv-pagina");
-      else spStatus(false, "Afspelen mislukte (status " + r.status + ")");
-    }
-    async function spInit() {
-      const r = await QuizSpotify.handleRedirect();
-      if (r && !r.ok) spStatus(false, `Koppelen mislukt: ${r.message}. Staat ${QuizSpotify.redirect()} als Redirect-URI in je Spotify-app?`);
-      if (!QuizSpotify.connected()) {
-        $("sp-connect").classList.remove("hidden");
-        if (!r) spStatus(false, "Spotify is nog niet gekoppeld (nodig voor de muziekronde)");
-        return;
-      }
-      $("sp-connect").classList.add("hidden");
-      spStatus(false, "Spotify-speler wordt gestart…");
-      spDevice = await QuizSpotify.startPlayer("Familiequiz tv", spStatus);
-    }
-    $("sp-connect").onclick = () => QuizSpotify.login().catch((e) => spStatus(false, e.message));
-    spInit();
-
-    socket.on("connect", () => { socket.emit("register_tv"); if (spText) socket.emit("tv_status", { spotify: { ok: spOk, text: spText } }); });
-    socket.on("play_audio", () => {
-      allAudio().forEach((a) => { a.currentTime = 0; a.play().catch(() => {}); });
-      if (spSong) spPlaySong(spSong);
-    });
-    socket.on("pause_audio", () => {
-      allAudio().forEach((a) => a.pause());
-      if (spDevice && spPlaying) { QuizSpotify.pause(spDevice); spPlaying = false; }
-    });
+    socket.on("connect", () => socket.emit("register_tv"));
+    socket.on("play_audio", () => allAudio().forEach((a) => { a.currentTime = 0; a.play().catch(() => {}); }));
+    socket.on("pause_audio", () => allAudio().forEach((a) => a.pause()));
 
     // ---------- Spiekmeldingen: blijven staan tot de speler weer kijkt ----------
     let shownAlerts = new Set();
@@ -655,7 +611,6 @@
 
     // ---------- Hoofdlus ----------
     let wasPaused = false;
-    let wasPausedSp = false;
     let lastStepId = null;
     let lastBeep = null;
     socket.on("state_update", (state) => {
@@ -695,20 +650,7 @@
 
       if (step && step.id !== lastStepId) { lastStepId = step.id; renderedMedia = null; }
 
-      // Spotify: liedje starten bij een nieuwe muziekvraag, stoppen bij pauze of een ander scherm
-      spSong = state.spotify;
-      if (spDevice) {
-        if (!spSong || state.paused) {
-          if (spPlaying) { QuizSpotify.pause(spDevice); spPlaying = false; }
-          if (!spSong) spLastStep = null;
-        } else if (spSong.stepId !== spLastStep) {
-          spLastStep = spSong.stepId;
-          spPlaySong(spSong);
-        } else if (!spPlaying && wasPausedSp) {
-          QuizSpotify.resume(); spPlaying = true;
-        }
-      }
-      wasPausedSp = state.paused;
+
 
       // Overlays hebben voorrang op de gewone schermen
       if (state.phase === "PLAY" && state.paused) return showView("v-pause");

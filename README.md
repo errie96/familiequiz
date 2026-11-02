@@ -53,15 +53,17 @@ De server leest dit bestand zelf in; er is geen extra pakket voor nodig. Tot vla
 foto's/logo's/audio moeten nog in `public/media/` (zie daar de README).
 Liedjes zonder `audio`: koppel Spotify (hieronder) of speel het liedje zelf af.
 
-## Spotify koppelen (vooraf, op de computer aan de tv)
-De muziek speelt af in de browser van het tv-scherm (Spotify Web Playback SDK), net als in de Hitster-app.
-1. Eenmalig in je Spotify-app (developer dashboard): voeg `http://127.0.0.1:3000/host.html` toe als Redirect URI
-   (en voor Render ook `https://<jouw-naam>.onrender.com/host.html`), en zet het Spotify-account onder *User Management*. Spotify Premium is nodig.
-2. Open op de computer aan de tv `http://127.0.0.1:3000/host.html` (niet het netwerkadres) in Chrome, Edge of Firefox.
-   Een smart-tv-browser kan meestal geen Spotify afspelen.
-3. Klik in de lobby op **Spotify koppelen** en log in. Daarna staat er "Spotify-speler klaar". Druk één keer op OK/klik om het geluid toe te staan.
-4. Bij elke muziekvraag start de tv het liedje zelf. In de bediening zie je wat er speelt, met knoppen *Opnieuw afspelen* en *Muziek stoppen*.
-   Gaat er iets mis, dan staat de melding van de tv in de bediening (blokje Spotify en bij de muziekvraag).
+## Spotify koppelen (vooraf, in de bediening)
+De bediening (host) logt in bij Spotify en start bij elke muziekvraag zelf het liedje.
+1. Eenmalig in je Spotify-app (developer dashboard): voeg `http://127.0.0.1:3000/bediening.html` toe als Redirect URI
+   (en voor Render ook `https://<jouw-naam>.onrender.com/bediening.html`), en zet het Spotify-account onder *User Management*. Spotify Premium is nodig.
+2. Open de bediening via `http://127.0.0.1:3000/bediening.html` (op de laptop waar de server draait) of via het https-adres op Render.
+   Via het netwerkadres (192.168…) staat Spotify inloggen niet toe.
+3. Klap *Spotify* open, tik op **Verbind met Spotify** en log in.
+4. Kies waar de muziek klinkt: **Deze browser** (de bediening op een laptop, aangesloten op de speakers) of een ander Spotify-apparaat
+   (bijvoorbeeld je telefoon met de Spotify-app open, of een speaker). Probeer **Test**.
+5. Houd de bediening open tijdens de muziekronde. Bij de muziekvraag staan de knoppen *Opnieuw afspelen* en *Muziek stoppen*.
+Afspelen in de browser zelf werkt op een computer (Chrome, Edge, Firefox), niet in een telefoonbrowser; kies op een telefoon de Spotify-app als apparaat.
 De Client ID staat in `public/shared.js` (`QuizSpotify`).
 
 ## Opslaan en Render
