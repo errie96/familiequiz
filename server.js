@@ -68,10 +68,14 @@ const DEFAULT_SETTINGS = {
   pricePoints: [5, 3, 2, 1], // punten voor dichtstbij, tweede, derde, ...
   logoPoints: [10, 8, 6, 4, 2], // logo's: punten voor het eerste, tweede, ... goede antwoord
   hitsterTarget: 10,         // muziekronde stopt zodra een team zoveel kaarten in de tijdlijn heeft
+  finalMaxWager: 100,        // slotvraag: maximale inzet (teams kennen hun stand niet)
+  theme: 'standaard',        // uiterlijk: standaard, winter, kerst, oudennieuw, zomer, halloween
+  roundPlan: null,           // volgorde, aan/uit en "in 2 delen" per ronde (wordt in de bediening ingesteld)
   memorySeconds: 120,
   drawSeconds: 75,
   thirtySeconds: 30
 };
+const THEMES = ['standaard', 'winter', 'kerst', 'oudennieuw', 'zomer', 'halloween'];
 function sanitizeSettings(input, base) {
   const out = { ...base };
   const src = input && typeof input === 'object' ? input : {};
@@ -86,6 +90,9 @@ function sanitizeSettings(input, base) {
   int('drawSeconds', 15, 300);
   int('thirtySeconds', 10, 120);
   int('hitsterTarget', 3, 50);
+  int('finalMaxWager', 0, 100000);
+  if (THEMES.includes(src.theme)) out.theme = src.theme;
+  if (Array.isArray(src.roundPlan)) out.roundPlan = src.roundPlan.filter((x) => x && typeof x.id === 'string').map((x) => ({ id: x.id, on: x.on !== false, split: !!x.split })).slice(0, 30);
   list('blurPoints', 10);
   list('pricePoints', 8);
   list('logoPoints', 10);
@@ -105,7 +112,60 @@ const XLSX_UPLOAD = path.join(DATA_DIR, 'vragenlijst.xlsx');
 const XLSX_LOCAL = path.join(__dirname, 'vragenlijst.xlsx');
 const JSON_BASE = path.join(__dirname, 'questions.json');
 let content, rounds, steps, songs, roundById;
+let baseRaw = null; // inhoud zoals ingelezen (Excel/JSON), vóór het rondeplan
 let quizSource = { kind: 'json', file: 'questions.json', loadedAt: null };
+const SPLITTABLE = ['mc', 'blur', 'logo', 'price'];
+const halves = (list) => { const h = Math.ceil(list.length / 2); return [list.slice(0, h), list.slice(h)]; };
+const practiceFlag = (x) => !!(x && (x.practice || x.oefen));
+// Eén ronde in twee delen: de vragen worden eerlijk verdeeld; de oefenronde zit alleen in deel 1. Elk deel is evenveel punten waard.
+function splitRound(r) {
+  const a = JSON.parse(JSON.stringify(r)), b = JSON.parse(JSON.stringify(r));
+  a.id = r.id + 'a'; b.id = r.id + 'b';
+  a.title = `${r.title} (deel 1)`; b.title = `${r.title} (deel 2)`;
+  if (r.type === 'mc') {
+    const prac = (r.categories || []).filter((c) => /^oefen/i.test(c.name || ''));
+    const cats = (r.categories || []).filter((c) => !/^oefen/i.test(c.name || ''));
+    if (cats.length >= 2) { const [x, y] = halves(cats); a.categories = [...prac, ...x]; b.categories = y; }
+    else { const qs = (cats[0] && cats[0].questions) || []; const [x, y] = halves(qs); a.categories = [...prac, { ...cats[0], questions: x }]; b.categories = [{ ...cats[0], questions: y }]; }
+  } else if (r.type === 'blur' || r.type === 'logo') {
+    const real = (r.questions || []).filter((q) => !practiceFlag(q));
+    const [x, y] = halves(real);
+    a.questions = [...(r.questions || []).filter(practiceFlag), ...x]; b.questions = y; delete b.test;
+  } else if (r.type === 'price') {
+    const real = (r.items || []).filter((q) => !practiceFlag(q));
+    const [x, y] = halves(real);
+    a.items = [...(r.items || []).filter(practiceFlag), ...x]; b.items = y;
+  }
+  return [a, b];
+}
+function applyPlan(raw) {
+  const out = JSON.parse(JSON.stringify(raw));
+  const plan = settings.roundPlan || [];
+  const byId = Object.fromEntries((out.rounds || []).map((r) => [r.id, r]));
+  const order = [...plan.filter((p) => byId[p.id]), ...(out.rounds || []).filter((r) => !plan.some((p) => p.id === r.id)).map((r) => ({ id: r.id, on: true, split: false }))];
+  out.rounds = [];
+  for (const p of order) {
+    if (!p.on) continue;
+    const r = byId[p.id];
+    if (p.split && SPLITTABLE.includes(r.type)) out.rounds.push(...splitRound(r));
+    else out.rounds.push(r);
+  }
+  return out;
+}
+function planView() {
+  const plan = settings.roundPlan || [];
+  const list = (baseRaw && baseRaw.rounds) || [];
+  const byId = Object.fromEntries(list.map((r) => [r.id, r]));
+  const order = [...plan.filter((p) => byId[p.id]), ...list.filter((r) => !plan.some((p) => p.id === r.id)).map((r) => ({ id: r.id, on: true, split: false }))];
+  return order.map((p) => ({ id: p.id, title: byId[p.id].title, type: byId[p.id].type, on: p.on, split: p.split && SPLITTABLE.includes(byId[p.id].type), canSplit: SPLITTABLE.includes(byId[p.id].type) }));
+}
+function compileQuiz(extraWarnings) {
+  const result = loadContent(null, applyPlan(baseRaw));
+  result.warnings = [...(extraWarnings || []), ...result.warnings];
+  content = result;
+  ({ rounds, steps, songs } = result);
+  roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
+}
 function loadQuiz() {
   const candidates = [process.env.QUIZ_XLSX, XLSX_UPLOAD, XLSX_LOCAL].filter((f) => f && fs.existsSync(f));
   candidates.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
@@ -114,22 +174,20 @@ function loadQuiz() {
   if (candidates.length) {
     try {
       const { raw, warnings } = fromExcel(candidates[0], JSON_BASE);
-      result = loadContent(null, raw);
-      result.warnings = [...warnings, ...result.warnings];
+      baseRaw = raw;
+      result = { warnings };
       quizSource = { kind: 'excel', file: path.basename(candidates[0]) + (candidates[0] === XLSX_UPLOAD ? ' (geüpload)' : ''), loadedAt: new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
     } catch (e) {
       extra.push(`De Excel kon niet gelezen worden (${e.message}). questions.json is gebruikt.`);
     }
   }
   if (!result) {
-    result = loadContent(JSON_BASE);
+    baseRaw = JSON.parse(fs.readFileSync(JSON_BASE, 'utf8'));
+    result = { warnings: [] };
     quizSource = { kind: 'json', file: 'questions.json', loadedAt: new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
   }
-  result.warnings = [...extra, ...result.warnings];
-  content = result;
-  ({ rounds, steps, songs } = result);
-  roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
-  result.warnings.forEach((w) => console.warn('Waarschuwing:', w));
+  compileQuiz([...extra, ...result.warnings]);
+  content.warnings.forEach((w) => console.warn('Waarschuwing:', w));
 }
 loadQuiz();
 const roundPoints = (round) => round.points ?? settings.roundPoints;
@@ -144,7 +202,9 @@ let stepIndex = 0;
 let paused = false;
 let showStandings = false;
 let review = null;   // { scope: rondeId | 'all', page }
-let reveal = 'idle'; // einduitslag: idle -> running -> done
+let reveal = 'idle'; // einduitslag: idle -> stepping (plek voor plek) -> done
+let revealN = 0;     // aantal onthulde plekken (van laag naar hoog)
+let lobbyStage = 'welcome'; // lobby: eerst de welkomstpagina, dan het aanmeldscherm met QR-code
 let endView = 'ranking'; // ranking | breakdown (op de tv na de ontknoping)
 let ssAll = {};      // stepId -> dynamische status van die stap
 let alerts = {};     // deviceId -> spiekmelding (blijft staan tot de speler terug is)
@@ -167,7 +227,9 @@ function ss(step) {
       draw: { status: 'ready', turn: 0, turns: [], plan: null, used: [] },
       thirty: { status: 'ready', turn: 0, turns: [], order: null, cardOrder: [] },
       joker: { choices: {} },
-      logo: { status: 'open', answers: {}, judged: {} },
+      logo: { status: 'open', answers: {}, judged: {}, blurStep: 0 },
+      demo_draw: { status: 'ready', strokes: [] },
+      demo_thirty: { status: 'ready', ok: [false, false, false, false, false] },
       final: { status: 'wager', wagers: {}, answers: {} }
     };
     ssAll[step.id] = init[step.kind] ? JSON.parse(JSON.stringify(init[step.kind])) : {};
@@ -227,6 +289,7 @@ function onTimerEnd(tag) {
   else if (tag === 'memory' && step.kind === 'memory') stopWriting(step);
   else if (tag === 'draw' && step.kind === 'draw') endDrawTurn(step);
   else if (tag === 'thirty' && step.kind === 'thirty') stopThirty(step);
+  else if (tag === 'demo' && step.kind === 'demo_thirty') ss(step).status = 'result';
 }
 
 // ---------------------------------------------------------------
@@ -263,16 +326,19 @@ function priceAwards(step) {
 // Tekenen: de basistelefoon tekent niet, dus elk ander teamlid tekent één keer
 const drawPlanTurns = (s, team) => {
   const list = s.plan && s.plan.members[team.teamId];
-  return list && list.length >= 2 ? list.length - 1 : 0;
+  return list && list.length >= 2 ? list.length : 0;
 };
 // Logo's: alle goede antwoorden op volgorde van snelheid; de eerste krijgt het meest
+// Foto blur: punten volgens de blurstap waarop het team antwoordde (hoe eerder, hoe meer)
 function logoAwards(step) {
   const s = ss(step);
   const good = Object.entries(s.answers).filter(([id]) => teams[id] && s.judged[id]).sort((a, b) => a[1].at - b[1].at);
   const out = {};
-  good.forEach(([id], i) => { out[id] = settings.logoPoints[Math.min(i, settings.logoPoints.length - 1)]; });
+  if (step.variant === 'blur') good.forEach(([id, a]) => { out[id] = settings.blurPoints[Math.min(a.step || 0, settings.blurPoints.length - 1)]; });
+  else good.forEach(([id], i) => { out[id] = settings.logoPoints[Math.min(i, settings.logoPoints.length - 1)]; });
   return out;
 }
+const openMax = (step) => (step.variant === 'blur' ? settings.blurPoints[0] : settings.logoPoints[0]);
 const logoMatches = (step, text) => [step.name, ...(step.alt || [])].some((w) => fuzzyEq(w, text) || (norm(w).length >= 4 && norm(text).includes(norm(w))));
 const thirtyPlanTurns = (s, team) => (s.order ? s.order.filter((o) => o.teamId === team.teamId).length : teamDevices(team).length);
 
@@ -281,6 +347,7 @@ function roundRaw(team, round) {
   const list = steps.filter((s) => s.round === round.id);
   let raw = 0, max = 0;
   for (const step of list) {
+    if (step.test) continue; // oefenrondes tellen nooit mee
     const s = ss(step);
     if (step.kind === 'mc' && !step.test) {
       const a = mcAward(step, team);
@@ -301,7 +368,7 @@ function roundRaw(team, round) {
         if (aw) raw += (aw.now ? aw.now.pts : 0) + (aw.ago ? aw.ago.pts : 0);
       }
     } else if (step.kind === 'logo') {
-      max += settings.logoPoints[0];
+      max += openMax(step);
       if (s.status === 'closed') raw += logoAwards(step)[team.teamId] || 0;
     } else if (step.kind === 'draw') {
       max += drawPlanTurns(s, team) * DRAW_MAX;
@@ -435,7 +502,7 @@ function songOf(step) {
   const s = ss(step);
   if (!s.songId || !songs[s.songId]) {
     const round = roundById[step.round];
-    const pool = (round && round.pool) || [];
+    const pool = (round && (step.test ? round.practicePool : round.pool)) || [];
     const used = new Set(steps.filter((x) => x.kind === 'song' && x.round === step.round && x.id !== step.id).map((x) => ssAll[x.id] && ssAll[x.id].songId).filter(Boolean));
     const free = pool.filter((id) => !used.has(id));
     s.songId = free.length ? free[Math.floor(Math.random() * free.length)] : pool[0];
@@ -459,7 +526,7 @@ function revealSong(step) {
     const ok = (!left || left.year <= song.year) && (!right || song.year <= right.year);
     const guess = s.years[team.teamId];
     s.results[team.teamId] = { slot, ok, yearGuess: guess === undefined ? null : guess, exact: guess === song.year };
-    if (ok) tl.splice(slot, 0, song.id);
+    if (ok && !step.test) tl.splice(slot, 0, song.id); // oefenliedje: alleen kijken of het goed lag
   }
   s.status = 'revealed';
 }
@@ -526,13 +593,14 @@ function enterStep() {
 }
 const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tiebreak', 'logo'].includes(step.kind);
 
+const tiebreakPlayed = () => steps.some((x) => x.kind === 'tiebreak' && ssAll[x.id] && (ssAll[x.id].teams || []).length);
 function finishQuiz() { phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear(); }
 function next() {
   if (stepIndex + 1 >= steps.length) return finishQuiz();
   stepIndex++;
   enterStep();
   // Beslissingsvragen alleen stellen als er echt een gelijke stand op de eerste plaats is
-  while (phase === 'PLAY' && ((cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) || (cur().kind === 'song' && hitsterDone()))) {
+  while (phase === 'PLAY' && ((cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) || (cur().kind === 'song' && !cur().test && hitsterDone()) || (cur().noTie && tiebreakPlayed()))) {
     if (stepIndex + 1 >= steps.length) return finishQuiz();
     stepIndex++;
     enterStep();
@@ -546,7 +614,6 @@ function startWriting(step) {
   const s = ss(step);
   s.status = 'writing';
   Object.values(teams).forEach((t) => { if (!s.entries[t.teamId]) s.entries[t.teamId] = []; });
-  timerStart((step.seconds || settings.memorySeconds) * 1000, 'memory');
 }
 function acceptedForms(item) { return [item.text, ...(item.alt || [])]; }
 function entryMatches(text, item) {
@@ -592,7 +659,7 @@ function planDraw(step) {
 }
 // Teams die deze beurt meedoen: er tekent iemand en de basistelefoon is verbonden
 function eligibleDrawTeams(step, turn) {
-  return Object.values(teams).filter((t) => turn && turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] && teamConnected(t));
+  return Object.values(teams).filter((t) => turn && turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] && devices[turn.answerers[t.teamId]] && devices[turn.answerers[t.teamId]].connected);
 }
 function startDrawTurn(step) {
   const s = ss(step);
@@ -600,14 +667,14 @@ function startDrawTurn(step) {
   const pool = step.words.length ? step.words : [{ word: 'Fiets', alt: [] }];
   let free = pool.map((_, i) => i).filter((i) => !s.used.includes(i));
   if (!free.length) { s.used = []; free = pool.map((_, i) => i); }
-  const turn = { words: {}, drawers: {}, strokes: {}, answers: {}, ok: {}, done: false, seconds: step.seconds || settings.drawSeconds };
+  const turn = { words: {}, drawers: {}, answerers: {}, strokes: {}, answers: {}, ok: {}, done: false };
   const picks = shuffle(free);
   let k = 0;
   for (const team of Object.values(teams).sort(bySeq)) {
     if (drawPlanTurns(s, team) <= s.turn) continue;
-    // Willekeurig iemand die nog niet getekend heeft, maar nooit de basistelefoon (die geeft het antwoord)
+    // Willekeurig iemand die nog niet getekend heeft (ook de basistelefoon komt aan de beurt)
     const done = s.drew[team.teamId] || [];
-    const options = teamDevices(team).filter((d) => d.deviceId !== team.baseDeviceId && !done.includes(d.deviceId));
+    const options = teamDevices(team).filter((d) => !done.includes(d.deviceId));
     const pool2 = options.filter((d) => d.connected).length ? options.filter((d) => d.connected) : options;
     if (!pool2.length) continue;
     const drawer = pool2[Math.floor(Math.random() * pool2.length)];
@@ -615,12 +682,14 @@ function startDrawTurn(step) {
     const idx = picks[k++ % picks.length];
     s.used.push(idx);
     turn.drawers[team.teamId] = drawer.deviceId;
+    // Wie dient het antwoord in? De basistelefoon, behalve als die zelf tekent: dan tijdelijk een ander teamlid
+    const others = teamDevices(team).filter((d) => d.deviceId !== drawer.deviceId);
+    turn.answerers[team.teamId] = drawer.deviceId !== team.baseDeviceId ? team.baseDeviceId : ((others.find((d) => d.connected) || others[0]) || {}).deviceId;
     turn.words[team.teamId] = pool[idx];
     turn.strokes[team.teamId] = [];
   }
   s.turns[s.turn] = turn;
   s.status = 'drawing';
-  timerStart(turn.seconds * 1000, 'draw');
 }
 // Na de beurt: de quizmaster keurt de antwoorden (voorgevuld met wat automatisch lijkt te kloppen)
 function endDrawTurn(step) {
@@ -676,11 +745,11 @@ function reviewPages(scope) {
   for (const round of list) {
     const rs = steps.filter((s) => s.round === round.id);
     const title = `Ronde ${round.no}: ${round.title}`;
-    if (round.type === 'logo') {
-      const qs = rs.filter((x) => x.kind === 'logo' && ss(x).status === 'closed');
+    if (round.type === 'logo' || round.type === 'blur') {
+      const qs = rs.filter((x) => x.kind === 'logo' && !x.test && ss(x).status === 'closed');
       for (let k = 0; k < qs.length; k += 8) {
         pages.push({
-          title, subtitle: '', columns: ['Logo', ...names],
+          title, subtitle: '', columns: [round.type === 'blur' ? 'Foto' : 'Logo', ...names],
           rows: qs.slice(k, k + 8).map((q) => {
             const aw = logoAwards(q), st = ss(q);
             return [q.name, ...teamList.map((t) => (st.answers[t.teamId] ? { t: `${st.answers[t.teamId].text}${aw[t.teamId] ? '  +' + aw[t.teamId] : ''}`, ok: !!st.judged[t.teamId] } : { t: '–', ok: false }))];
@@ -713,7 +782,7 @@ function reviewPages(scope) {
         });
       });
     } else if (round.type === 'memory') {
-      const step = rs.find((s) => s.kind === 'memory');
+      const step = rs.find((s) => s.kind === 'memory' && !s.test);
       const s = step && ss(step);
       if (s && s.status === 'done') {
         pages.push({ title, subtitle: 'Op het bord stond', columns: ['Antwoorden die goed waren'], rows: step.items.map((it) => [it.text]) });
@@ -727,7 +796,7 @@ function reviewPages(scope) {
         });
       }
     } else if (round.type === 'hitster') {
-      const ss2 = rs.filter((s) => s.kind === 'song' && ss(s).status === 'revealed');
+      const ss2 = rs.filter((s) => s.kind === 'song' && !s.test && ss(s).status === 'revealed');
       if (ss2.length) {
         pages.push({
           title, subtitle: 'Liedjes in de tijdlijn',
@@ -740,7 +809,7 @@ function reviewPages(scope) {
         });
       }
     } else if (round.type === 'price') {
-      const ps = rs.filter((s) => s.kind === 'price' && ss(s).status === 'revealed');
+      const ps = rs.filter((s) => s.kind === 'price' && !s.test && ss(s).status === 'revealed');
       const euro = (n) => '€' + n.toFixed(2).replace('.', ',');
       for (const key of ['now', 'ago']) {
         if (!ps.length) break;
@@ -760,16 +829,19 @@ function reviewPages(scope) {
       const step = rs.find((s) => s.kind === 'draw');
       const s = step && ss(step);
       if (s && s.turns.length) {
-        const rows = [];
+        // Eén pagina per beurt, met de tekeningen erbij
         s.turns.forEach((turn, i) => {
+          if (!turn || !turn.done) return;
+          const rows = [], images = [];
           teamList.forEach((t) => {
             if (!turn.words[t.teamId]) return;
             const d = devices[turn.drawers[t.teamId]];
             const a = turn.answers[t.teamId];
-            rows.push([`Beurt ${i + 1}`, t.name, d ? d.label : '?', turn.words[t.teamId].word, { t: a ? a.text : '(geen antwoord)', ok: !!turn.ok[t.teamId] }]);
+            rows.push([t.name, d ? d.label : '?', turn.words[t.teamId].word, { t: a ? a.text : '(geen antwoord)', ok: !!turn.ok[t.teamId] }]);
+            images.push({ label: `${t.name}: ${turn.words[t.teamId].word}`, strokes: turn.strokes[t.teamId] || [], ok: !!turn.ok[t.teamId] });
           });
+          pages.push({ title, subtitle: `Tekenbeurt ${i + 1}`, columns: ['Team', 'Tekenaar', 'Woord', 'Antwoord'], rows, images });
         });
-        pages.push({ title, subtitle: 'Tekenbeurten', columns: ['Beurt', 'Team', 'Tekenaar', 'Woord', 'Antwoord'], rows });
       }
     } else if (round.type === 'thirty') {
       const step = rs.find((s) => s.kind === 'thirty');
@@ -832,7 +904,7 @@ function saveNow() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase, stepIndex, paused, reveal, endView, settings, seq, ssAll,
+      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
       devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
@@ -865,10 +937,13 @@ function loadSaved() {
   }
   seq = Math.max(seq, data.seq || 0, ...Object.values(teams).map((t) => t.seq), ...Object.values(devices).map((d) => d.seq));
   settings = sanitizeSettings(data.settings, settings);
+  compileQuiz(content.warnings);
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
   phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
   stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), steps.length - 1);
-  reveal = ['idle', 'running', 'done'].includes(data.reveal) ? data.reveal : 'idle';
+  reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
+  revealN = Number.isInteger(data.revealN) ? data.revealN : 0;
+  lobbyStage = data.lobbyStage === 'join' ? 'join' : 'welcome';
   endView = data.endView === 'breakdown' ? 'breakdown' : 'ranking';
   if (data.timer && data.timer.tag) { timer.tag = data.timer.tag; timer.totalMs = Number(data.timer.totalMs) || 0; timer.remainingMs = Number(data.timer.remainingMs) || 0; }
   // Teams komen pas langzaam terug na een herstart: begin dus op pauze
@@ -881,8 +956,8 @@ function loadSaved() {
 // ---------------------------------------------------------------
 function progressOf(step) {
   if (!step) return null;
-  if (step.test) return { label: 'Testvraag' };
-  const items = steps.filter((s) => s.round === step.round && ['mc', 'song', 'price'].includes(s.kind) && !s.test);
+  if (step.test) return { label: step.round === 'test' ? 'Testvraag' : 'Oefenvraag' };
+  const items = steps.filter((s) => s.round === step.round && ['mc', 'song', 'price', 'logo'].includes(s.kind) && !s.test);
   const i = items.findIndex((s) => s.id === step.id);
   return i >= 0 ? { n: i + 1, total: items.length } : null;
 }
@@ -900,7 +975,7 @@ function publicStep(step) {
   const base = { kind: step.kind, id: step.id, round: step.round };
   switch (step.kind) {
     case 'info':
-      return { ...base, emoji: step.emoji, title: step.title, text: step.text, roundIntro: !!step.roundIntro, points: step.roundIntro ? roundPoints(roundById[step.round]) : null, roundNo: step.roundIntro ? roundById[step.round].no : null };
+      return { ...base, emoji: step.emoji, title: step.title, text: step.text, transition: !!step.transition, categoryIntro: !!step.categoryIntro, roundIntro: !!step.roundIntro, points: step.roundIntro ? roundPoints(roundById[step.round]) : null, roundNo: step.roundIntro ? roundById[step.round].no : null };
     case 'mc': {
       const showAnswer = s.status === 'closed' && revealsOnClose(step);
       return {
@@ -933,7 +1008,7 @@ function publicStep(step) {
     }
     case 'draw': {
       const turn = s.turns[s.turn];
-      const out = { ...base, status: s.status, turn: s.turn + 1, total: s.total || 0, timer: timerInfo('draw'), teams: [] };
+      const out = { ...base, status: s.status, turn: s.turn + 1, total: s.total || 0, teams: [] };
       if (turn) {
         out.teams = Object.values(teams).sort(byName).map((t) => ({
           name: t.name, drawer: turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] ? devices[turn.drawers[t.teamId]].label : null,
@@ -944,20 +1019,26 @@ function publicStep(step) {
       }
       return out;
     }
+    case 'demo_draw':
+      return { ...base, status: s.status, word: s.status === 'result' ? step.word : null, strokes: s.status !== 'ready' ? s.strokes : null };
+    case 'demo_thirty':
+      return { ...base, status: s.status, timer: timerInfo('thirty'), words: s.status === 'result' ? step.words : step.words.map((w, i) => (s.ok[i] ? w : null)), ok: s.ok };
     case 'logo':
       return {
-        ...base, status: s.status, media: step.media, hide: step.hide, teams: teamChips(step),
+        ...base, variant: step.variant, test: !!step.test, question: step.question, status: s.status, media: step.media, hide: step.hide, teams: teamChips(step),
+        blurStep: s.blurStep || 0, blurMax: settings.blurPoints.length - 1, blurPoints: settings.blurPoints,
         name: s.status === 'closed' ? step.name : null
       };
     case 'thirty': {
       const o = s.order && s.order[s.turn];
       const turn = s.turns[s.turn];
-      const showWords = turn && (s.status === 'judging' || s.status === 'result');
+      // Tijdens de beurt alleen de goedgekeurde woorden (groen); daarna alle vijf
+      const words = !turn ? null : s.status === 'running' ? turn.words.map((w, i) => (turn.ok[i] ? w : null)) : turn.words;
       return {
         ...base, status: s.status, turn: s.turn + 1, total: s.order ? s.order.length : 0, timer: timerInfo('thirty'),
         team: o && teams[o.teamId] ? teams[o.teamId].name : null,
         explainer: o && devices[o.deviceId] ? devices[o.deviceId].label : null,
-        words: showWords ? turn.words : null, ok: null
+        words, ok: turn ? turn.ok : null
       };
     }
     case 'roundresult': {
@@ -965,7 +1046,7 @@ function publicStep(step) {
       return { ...base, title: `Ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
     }
     case 'joker':
-      return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined })) };
+      return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined, round: t.jokerRound && roundById[t.jokerRound] ? `Ronde ${roundById[t.jokerRound].no}: ${roundById[t.jokerRound].title}` : null })) };
     case 'final': {
       const out = { ...base, status: s.status, category: step.category, teams: teamChips(step) };
       if (s.status !== 'wager') { out.question = step.question; out.options = step.options; out.media = step.media; }
@@ -1011,7 +1092,9 @@ function hostPanel(step) {
         type: 'draw', status: s.status, turn: s.turn + 1, total: s.total || 0, smallTeams: small,
         teams: turn ? Object.values(teams).sort(byName).filter((t) => turn.words[t.teamId]).map((t) => ({
           teamId: t.teamId, name: t.name, word: turn.words[t.teamId].word, drawer: devices[turn.drawers[t.teamId]] ? devices[turn.drawers[t.teamId]].label : '?',
-          answer: turn.answers[t.teamId] ? turn.answers[t.teamId].text : null, ok: !!turn.ok[t.teamId]
+          answerer: devices[turn.answerers[t.teamId]] ? devices[turn.answerers[t.teamId]].label : '?',
+          answer: turn.answers[t.teamId] ? turn.answers[t.teamId].text : null, ok: !!turn.ok[t.teamId],
+          strokes: s.status === 'judging' || s.status === 'result' ? turn.strokes[t.teamId] || [] : null
         })) : []
       };
     }
@@ -1024,11 +1107,16 @@ function hostPanel(step) {
         words: turn ? turn.words : null, ok: turn ? turn.ok : null
       };
     }
+    case 'demo_draw':
+      return { type: 'demo_draw', status: s.status, word: step.word };
+    case 'demo_thirty':
+      return { type: 'demo_thirty', status: s.status, words: step.words, ok: s.ok };
     case 'logo': {
       const aw = logoAwards(step);
       const order = Object.entries(s.answers).filter(([id]) => teams[id]).sort((a, b) => a[1].at - b[1].at).map(([id]) => id);
       return {
-        type: 'logo', status: s.status, name: step.name, alt: step.alt, media: step.media,
+        type: 'logo', variant: step.variant, test: !!step.test, status: s.status, name: step.name, alt: step.alt, media: step.media,
+        blurStep: s.blurStep || 0, blurMax: settings.blurPoints.length - 1,
         teams: Object.values(teams).sort(byName).map((t) => {
           const a = s.answers[t.teamId];
           return { teamId: t.teamId, name: t.name, connected: teamConnected(t), answer: a ? a.text : null, place: a ? order.indexOf(t.teamId) + 1 : null, ok: !!s.judged[t.teamId], pts: aw[t.teamId] || 0 };
@@ -1040,7 +1128,7 @@ function hostPanel(step) {
     case 'final':
       return {
         type: 'final', status: s.status, answer: step.answer, options: step.options, question: step.question,
-        teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] ?? null, max: Math.max(0, totalBeforeFinal(t)), answer: s.answers[t.teamId] ?? null }))
+        teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, wager: s.wagers[t.teamId] ?? null, max: settings.finalMaxWager, answer: s.answers[t.teamId] ?? null }))
       };
     case 'tiebreak':
       return {
@@ -1058,12 +1146,19 @@ function mainAction() {
   const go = (label, run, hint) => ({ label, enabled: true, hint: hint || '', run });
   if (phase === 'LOBBY') {
     if (!steps.length) return none('Geen quiz geladen', 'Controleer questions.json');
+    if (lobbyStage === 'welcome') return go('📱 Toon het aanmeldscherm (QR-code)', () => { lobbyStage = 'join'; });
     if (!Object.keys(teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
     return go('▶️ Start de quiz', () => { phase = 'PLAY'; stepIndex = 0; enterStep(); });
   }
   if (phase === 'END') {
-    if (reveal === 'idle') return go('🥁 Start de ontknoping', () => { reveal = 'running'; });
-    if (reveal === 'running') return go('⏭️ Ontknoping overslaan', () => { reveal = 'done'; });
+    const list = ranking();
+    if (reveal === 'idle') return go('🥁 Start de ontknoping', () => { reveal = 'stepping'; revealN = 0; });
+    if (reveal === 'stepping' && revealN < list.length) {
+      const nextTeam = list[list.length - 1 - revealN];
+      const last = revealN === list.length - 1;
+      return go(last ? '🏆 Onthul de winnaar!' : `🎖️ Onthul plek ${nextTeam.rank}`, () => { revealN++; if (revealN >= list.length) reveal = 'done'; },
+        last ? 'Tromgeroffel…' : 'Reik eventueel eerst de prijs uit voor de vorige plek.');
+    }
     return go('🔍 Nakijken: alle rondes', () => { review = { scope: 'all', page: 0 }; });
   }
   const step = cur();
@@ -1075,6 +1170,7 @@ function mainAction() {
       return go('Volgende ▶️', next);
     case 'song':
       if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
+      if (step.test) return go('Volgende ▶️', next);
       if (hitsterDone()) return go(`🏁 Muziekronde klaar (${settings.hitsterTarget} kaarten) ▶️`, next, 'Een team heeft de tijdlijn vol; de overige liedjes worden overgeslagen.');
       if (!steps.slice(stepIndex + 1).some((x) => x.kind === 'song' && x.round === step.round)) return go('Volgende ▶️', next, `De liedjes zijn op voordat een team ${settings.hitsterTarget} kaarten had. Zet meer liedjes in de Excel.`);
       return go('Volgend liedje ▶️', next);
@@ -1086,13 +1182,13 @@ function mainAction() {
       if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
       return go('Volgende ▶️', next, 'Controleer eerst de antwoorden hieronder (✔ / ✘).');
     case 'memory':
-      if (s.status === 'idle') return go(`▶️ Start schrijven (${step.seconds || settings.memorySeconds} s)`, () => startWriting(step));
-      if (s.status === 'writing') return go('⏹️ Stop met schrijven', () => stopWriting(step));
+      if (s.status === 'idle') return go('▶️ Start schrijven', () => startWriting(step));
+      if (s.status === 'writing') return go('⏹️ Tijd is om: stop met schrijven', () => stopWriting(step), 'Er loopt geen klok: jij bepaalt wanneer de tijd om is.');
       if (s.status === 'judging') return go('✅ Nakijken klaar', () => { s.status = 'done'; });
       return go('Volgende ▶️', next);
     case 'draw':
       if (s.status === 'ready') return go(`▶️ Start beurt ${s.turn + 1} van ${s.total}`, () => startDrawTurn(step));
-      if (s.status === 'drawing') return go('⏹️ Beurt stoppen', () => endDrawTurn(step));
+      if (s.status === 'drawing') return none('⏳ Wachten tot elk team een antwoord heeft ingediend…', `Nog niet ingediend: ${eligibleDrawTeams(step, s.turns[s.turn]).filter((t) => !s.turns[s.turn].answers[t.teamId]).map((t) => t.name).join(', ') || '–'}`);
       if (s.status === 'judging') return go('✅ Beoordeling bevestigen', () => { s.turns[s.turn].done = true; s.status = 'result'; });
       if (s.status === 'result' && s.turn + 1 < (s.total || 0)) return go(`▶️ Volgende beurt (${s.turn + 2} van ${s.total})`, () => { s.turn++; s.status = 'ready'; });
       return go('Ronde afsluiten ▶️', next);
@@ -1102,6 +1198,14 @@ function mainAction() {
       if (s.status === 'judging') return go('✅ Uitslag bevestigen', () => { s.turns[s.turn].done = true; s.status = 'result'; });
       if (s.status === 'result' && s.turn + 1 < s.order.length) return go('Volgende beurt ▶️', () => { s.turn++; s.status = 'ready'; });
       return go('Ronde afsluiten ▶️', next);
+    case 'demo_draw':
+      if (s.status === 'ready') return go(`▶️ Start oefenbeurt: jij tekent "${step.word}"`, () => { s.status = 'drawing'; s.strokes = []; }, 'Teken in de bediening; de tekening verschijnt live op de tv. Iedereen raadt hardop.');
+      if (s.status === 'drawing') return go('✅ Onthul het woord', () => { s.status = 'result'; });
+      return go('Volgende ▶️', next);
+    case 'demo_thirty':
+      if (s.status === 'ready') return go('▶️ Start oefenbeurt (jij legt uit, 30 s)', () => { s.status = 'running'; timerStart((step.seconds || settings.thirtySeconds) * 1000, 'demo'); }, 'Leg de vijf woorden uit; tik goede antwoorden meteen aan.');
+      if (s.status === 'running') return go('⏹️ Stop', () => { timerClear(); s.status = 'result'; });
+      return go('Volgende ▶️', next);
     case 'joker': {
       const w = activeTeams().filter((t) => !hasAnswered(t, step)).map((t) => t.name);
       return w.length ? none('⏳ Teams kiezen hun joker…', `Wacht nog op: ${w.join(', ')}`) : go('Volgende ▶️', next);
@@ -1129,6 +1233,7 @@ function forceAction() {
   const s = ss(step);
   if (['mc', 'price', 'song', 'logo'].includes(step.kind) && s.status === 'open') return { label: '⏭️ Toch afsluiten zonder te wachten', run: () => closeStep(step) };
   if (step.kind === 'joker') return { label: '⏭️ Toch doorgaan', run: next };
+  if (step.kind === 'draw' && s.status === 'drawing') return { label: '⏭️ Beurt toch stoppen (niet iedereen heeft ingediend)', run: () => endDrawTurn(step) };
   if (step.kind === 'final' && s.status === 'wager') return { label: '⏭️ Toch de vraag tonen', run: () => { s.status = 'question'; } };
   if (step.kind === 'final' && s.status === 'question') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
   if (step.kind === 'tiebreak' && s.status === 'open') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
@@ -1150,7 +1255,8 @@ function broadcastState() {
     },
     standings: phase === 'END' ? ranking() : null,
     alerts: Object.values(alerts),
-    end: phase === 'END' ? { reveal, endView, scores: reveal !== 'idle' ? ranking() : null, breakdown: reveal === 'done' ? breakdown() : null } : null
+    theme: settings.theme, lobbyStage, welcome: content.welcome,
+    end: phase === 'END' ? { reveal, revealN, endView, scores: reveal !== 'idle' ? ranking() : null, breakdown: reveal === 'done' ? breakdown() : null } : null
   };
 
   io.to('tv_room').emit('state_update', {
@@ -1174,7 +1280,9 @@ function broadcastState() {
     settings, settingsLocked: phase !== 'LOBBY',
     stepNo: stepIndex + 1, stepTotal: steps.length,
     warnings: content.warnings,
-    quiz: { ...quizSource, steps: steps.length, rounds: rounds.length }
+    quiz: { ...quizSource, steps: steps.length, rounds: rounds.length },
+    plan: planView(), themes: THEMES,
+    hostScores: phase !== 'LOBBY' ? breakdown() : null // alleen voor de quizmasters
   });
 
   Object.values(devices).forEach((d) => {
@@ -1183,7 +1291,7 @@ function broadcastState() {
     if (!t) return;
     const isBase = t.baseDeviceId === d.deviceId;
     io.to(d.socketId).emit('state_update', {
-      phase, paused, showStandings: false, reviewing: !!review,
+      phase, paused, showStandings: false, reviewing: !!review, theme: settings.theme,
       standings: null,
       roundName: common.header.round,
       timer: null,
@@ -1214,34 +1322,38 @@ function phoneView(step, team, device, isBase) {
       };
     }
     case 'memory':
-      return { ...base, status: s.status, prompt: step.prompt, entries: (s.entries[id] || []).map((e) => ({ id: e.id, text: e.text, by: e.by })), timer: timerInfo('memory') };
+      return { ...base, status: s.status, test: !!step.test, prompt: step.prompt, entries: (s.entries[id] || []).map((e) => ({ id: e.id, text: e.text, by: e.by })) };
     case 'song': {
       const tl = ensureTimeline(team).map((sid) => ({ id: sid, year: songs[sid].year, title: songs[sid].title, artist: songs[sid].artist }));
       const r = s.results && s.results[id];
-      return { ...base, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, yearGuess: s.years[id] ?? null, result: r ? { ok: r.ok, exact: r.exact, yearGuess: r.yearGuess } : null,
+      return { ...base, test: !!step.test, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, yearGuess: s.years[id] ?? null, result: r ? { ok: r.ok, exact: r.exact, yearGuess: r.yearGuess } : null,
         target: settings.hitsterTarget,
         song: s.status === 'revealed' ? (({ title, artist, year }) => ({ title, artist, year }))(songOf(step)) : null };
     }
     case 'price': {
       const a = s.answers[id];
-      return { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, answered: !!a, given: a || null };
+      return { ...base, test: !!step.test, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, answered: !!a, given: a || null };
     }
     case 'draw': {
       const turn = s.turns[s.turn];
       // drawer = tekent, guesser = basistelefoon (geeft het antwoord), watcher = kijkt mee
       let role = 'idle';
-      if (turn && turn.drawers[id]) role = turn.drawers[id] === device.deviceId ? 'drawer' : isBase ? 'guesser' : 'watcher';
+      if (turn && turn.drawers[id]) role = turn.drawers[id] === device.deviceId ? 'drawer' : turn.answerers[id] === device.deviceId ? 'guesser' : 'watcher';
       const a = turn && turn.answers[id];
       return {
-        ...base, status: s.status, role, answered: !!a, given: a ? a.text : null, turn: s.turn + 1, total: s.total || 0, timer: timerInfo('draw'),
+        ...base, status: s.status, role, answered: !!a, given: a ? a.text : null, turn: s.turn + 1, total: s.total || 0,
+        answererLabel: turn && devices[turn.answerers[id]] ? devices[turn.answerers[id]].label : null,
         word: role === 'drawer' && turn ? turn.words[id].word : null,
         drawerLabel: turn && turn.drawers[id] && devices[turn.drawers[id]] ? devices[turn.drawers[id]].label : null,
         answerWord: (s.status === 'judging' || s.status === 'result') && turn && turn.words[id] ? turn.words[id].word : null
       };
     }
+    case 'demo_draw':
+    case 'demo_thirty':
+      return { ...base, status: s.status };
     case 'logo': {
       const a = s.answers[id];
-      return { ...base, status: s.status, answered: !!a, given: a ? a.text : null };
+      return { ...base, variant: step.variant, test: !!step.test, question: step.question, status: s.status, answered: !!a, given: a ? a.text : null };
     }
     case 'thirty': {
       const o = s.order && s.order[s.turn];
@@ -1261,7 +1373,7 @@ function phoneView(step, team, device, isBase) {
     case 'final': {
       const a = s.answers[id];
       return {
-        ...base, status: s.status, category: step.category, maxWager: Math.max(0, totalBeforeFinal(team)), wager: s.wagers[id] ?? null,
+        ...base, status: s.status, category: step.category, maxWager: settings.finalMaxWager, wager: s.wagers[id] ?? null,
         question: s.status !== 'wager' ? step.question : null, options: s.status !== 'wager' ? step.options : null,
         answered: a !== undefined, given: a !== undefined ? a : null
       };
@@ -1539,6 +1651,7 @@ io.on('connection', (socket) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const c = baseContext(socket, 'memory');
     if (!c || c.s.status !== 'writing') return reply({ ok: false });
+    if (!c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan antwoorden indienen.' });
     const clean = cleanText(text, 60);
     if (!clean) return reply({ ok: false });
     const list = (c.s.entries[c.team.teamId] = c.s.entries[c.team.teamId] || []);
@@ -1550,7 +1663,7 @@ io.on('connection', (socket) => {
   });
   socket.on('memory_remove', ({ id } = {}) => {
     const c = baseContext(socket, 'memory');
-    if (!c || c.s.status !== 'writing') return;
+    if (!c || c.s.status !== 'writing' || !c.isBase) return;
     const list = c.s.entries[c.team.teamId] || [];
     const i = list.findIndex((e) => e.id === id);
     if (i >= 0) { list.splice(i, 1); sync(); }
@@ -1608,7 +1721,7 @@ io.on('connection', (socket) => {
     if (!c) return reply({ ok: false, reason: 'not_open' });
     const id = c.team.teamId;
     if (!c.turn.words[id]) return reply({ ok: false, reason: 'not_open' });
-    if (!c.isBase) return reply({ ok: false, reason: 'not_base' });
+    if (c.turn.answerers[id] !== c.device.deviceId) return reply({ ok: false, reason: 'not_base' });
     if (c.turn.answers[id]) return reply({ ok: true, already: true });
     const clean = cleanText(text, 40);
     if (!clean) return reply({ ok: false, reason: 'invalid' });
@@ -1626,7 +1739,7 @@ io.on('connection', (socket) => {
     const clean = cleanText(text, 40);
     if (!clean) return reply({ ok: false, reason: 'invalid' });
     if (c.s.answers[c.team.teamId]) return reply({ ok: true, already: true });
-    c.s.answers[c.team.teamId] = { text: clean, at: Date.now() };
+    c.s.answers[c.team.teamId] = { text: clean, at: Date.now(), step: c.s.blurStep || 0 };
     c.s.judged[c.team.teamId] = logoMatches(c.step, clean); // voorstel; de quizmaster beslist
     reply({ ok: true });
     sync();
@@ -1647,7 +1760,7 @@ io.on('connection', (socket) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const c = baseContext(socket, 'final');
     if (!c || !c.isBase || c.s.status !== 'wager') return reply({ ok: false });
-    const max = Math.max(0, totalBeforeFinal(c.team));
+    const max = settings.finalMaxWager;
     if (!Number.isInteger(amount) || amount < 0 || amount > max) return reply({ ok: false, message: `Je kunt tussen 0 en ${max} punten inzetten.` });
     c.s.wagers[c.team.teamId] = amount;
     reply({ ok: true });
@@ -1757,11 +1870,20 @@ io.on('connection', (socket) => {
   socket.on('blur_next', ({ all } = {}) => {
     if (!isRemote(socket)) return;
     const step = cur();
-    if (!step || step.kind !== 'mc' || step.variant !== 'blur') return;
+    if (!step || !((step.kind === 'mc' || step.kind === 'logo') && step.variant === 'blur')) return;
     const s = ss(step);
     if (s.status !== 'open') return;
     s.blurStep = all ? settings.blurPoints.length - 1 : Math.min(settings.blurPoints.length - 1, s.blurStep + 1);
     sync();
+  });
+  socket.on('demo_ops', ({ ops } = {}) => {
+    if (!isRemote(socket)) return;
+    const step = cur();
+    if (!step || step.kind !== 'demo_draw' || ss(step).status !== 'drawing' || !Array.isArray(ops)) return;
+    const clean = ops.slice(0, 40).map(cleanOp).filter(Boolean);
+    clean.forEach((op) => applyOp(ss(step).strokes, op));
+    io.to('tv_room').emit('demo_ops', { ops: clean });
+    scheduleSave();
   });
   socket.on('song_replay', () => {
     if (!isRemote(socket)) return;
@@ -1781,10 +1903,16 @@ io.on('connection', (socket) => {
   socket.on('thirty_toggle', ({ index } = {}) => {
     if (!isRemote(socket)) return;
     const step = cur();
-    if (!step || step.kind !== 'thirty') return;
+    if (!step || !Number.isInteger(index) || index < 0 || index > 4) return;
     const s = ss(step);
+    if (step.kind === 'demo_thirty') {
+      if (s.status === 'ready') return;
+      s.ok[index] = !s.ok[index];
+      return sync();
+    }
+    if (step.kind !== 'thirty') return;
     const turn = s.turns[s.turn];
-    if (!turn || s.status !== 'judging' || !Number.isInteger(index) || index < 0 || index > 4) return;
+    if (!turn || !['running', 'judging', 'result'].includes(s.status)) return;
     turn.ok[index] = !turn.ok[index];
     sync();
   });
@@ -1819,6 +1947,25 @@ io.on('connection', (socket) => {
   });
 
   // ---------- Bediening: noodknoppen ----------
+  socket.on('set_theme', ({ theme } = {}) => {
+    if (!isRemote(socket) || !THEMES.includes(theme)) return;
+    settings.theme = theme;
+    sync();
+  });
+  socket.on('set_plan', ({ plan } = {}) => {
+    if (!isRemote(socket)) return;
+    if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'De rondevolgorde kan alleen vóór de start worden aangepast.' });
+    settings = sanitizeSettings({ roundPlan: plan }, settings);
+    compileQuiz(content.warnings.filter((w) => !/Ronde/.test(w)));
+    ssAll = {};
+    Object.values(teams).forEach((t) => { t.timeline = null; t.jokerRound = null; });
+    sync();
+  });
+  socket.on('lobby_stage', ({ stage } = {}) => {
+    if (!isRemote(socket) || phase !== 'LOBBY') return;
+    lobbyStage = stage === 'join' ? 'join' : 'welcome';
+    sync();
+  });
   socket.on('update_settings', (partial) => {
     if (!isRemote(socket)) return;
     if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'Instellingen kunnen alleen vóór de start worden gewijzigd.' });
@@ -1944,7 +2091,7 @@ io.on('connection', (socket) => {
   });
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
-    phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; endView = 'ranking';
+    phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
     ssAll = {}; teams = {}; devices = {}; alerts = {};
     timerClear();
     io.emit('quiz_reset');

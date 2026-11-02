@@ -1,0 +1,61 @@
+/* Thema's: de quizmaster kiest in de bediening. body[data-theme] verandert kleuren en decoratie op alle schermen. */
+body { transition: background 0.6s; }
+.fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.fx-layer span { position: absolute; top: -5vh; animation: fx-fall linear infinite; opacity: 0.85; }
+@keyframes fx-fall { to { transform: translateY(110vh) rotate(360deg); } }
+@keyframes fx-twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.2); } }
+.fx-layer.twinkle span { top: auto; animation: fx-twinkle ease-in-out infinite; }
+body > *:not(.fx-layer) { position: relative; z-index: 2; }
+#tv-alerts, #toast, #move-dialog, #tv-timerbar { z-index: 60 !important; }
+
+/* ---------- Winter: ijsblauw met sneeuw ---------- */
+body[data-theme="winter"] { background: linear-gradient(180deg, #0b1e3b 0%, #1e3a5f 60%, #3b6ea5 100%) fixed; }
+body[data-theme="winter"] .card, body[data-theme="winter"] .qbox, body[data-theme="winter"] details { background: rgba(15, 40, 75, 0.88); }
+body[data-theme="winter"] .btn-primary { background: #38bdf8; color: #0b1e3b; }
+body[data-theme="winter"] .qo, body[data-theme="winter"] .tchip, body[data-theme="winter"] .pill, body[data-theme="winter"] .btn-option, body[data-theme="winter"] .word { background: rgba(148, 197, 255, 0.18); }
+body[data-theme="winter"] .qo .letter, body[data-theme="winter"] #join-url { color: #bae6fd; }
+body[data-theme="winter"] .tv-title { color: #e0f2fe; text-shadow: 0 0 20px rgba(186, 230, 253, 0.7); }
+
+/* ---------- Kerst: rood, groen en goud met sneeuw ---------- */
+body[data-theme="kerst"] { background: radial-gradient(circle at 50% -10%, #b91c1c 0%, #14532d 55%, #052e16 100%) fixed; }
+body[data-theme="kerst"] .card, body[data-theme="kerst"] .qbox, body[data-theme="kerst"] details { background: rgba(5, 46, 22, 0.88); border: 1px solid rgba(250, 204, 21, 0.35); }
+body[data-theme="kerst"] .btn-primary { background: #dc2626; color: #fff; }
+body[data-theme="kerst"] .qo, body[data-theme="kerst"] .tchip, body[data-theme="kerst"] .pill, body[data-theme="kerst"] .btn-option, body[data-theme="kerst"] .word { background: rgba(127, 29, 29, 0.55); }
+body[data-theme="kerst"] .pill.points { background: #ca8a04; }
+body[data-theme="kerst"] .qo .letter { color: #fde047; }
+body[data-theme="kerst"] .tv-title { color: #fef3c7; text-shadow: 0 0 18px rgba(250, 204, 21, 0.6); }
+body[data-theme="kerst"] .tlcard { background: linear-gradient(135deg, #b91c1c, #15803d); }
+
+/* ---------- Oud & nieuw: zwart en goud met fonkels ---------- */
+body[data-theme="oudennieuw"] { background: radial-gradient(circle at 50% 120%, #312e81 0%, #0a0a0a 65%) fixed; }
+body[data-theme="oudennieuw"] .card, body[data-theme="oudennieuw"] .qbox, body[data-theme="oudennieuw"] details { background: rgba(10, 10, 10, 0.9); border: 1px solid rgba(234, 179, 8, 0.45); }
+body[data-theme="oudennieuw"] .btn-primary { background: #eab308; color: #0a0a0a; }
+body[data-theme="oudennieuw"] .qo, body[data-theme="oudennieuw"] .tchip, body[data-theme="oudennieuw"] .pill, body[data-theme="oudennieuw"] .btn-option, body[data-theme="oudennieuw"] .word { background: rgba(234, 179, 8, 0.14); }
+body[data-theme="oudennieuw"] .qo .letter { color: #facc15; }
+body[data-theme="oudennieuw"] .tv-title { color: #fde68a; text-shadow: 0 0 22px rgba(250, 204, 21, 0.75); }
+body[data-theme="oudennieuw"] .tlcard { background: linear-gradient(135deg, #a16207, #312e81); }
+
+/* ---------- Zomer: zonnig ---------- */
+body[data-theme="zomer"] { background: linear-gradient(180deg, #0369a1 0%, #0ea5e9 55%, #fbbf24 100%) fixed; }
+body[data-theme="zomer"] .card, body[data-theme="zomer"] .qbox, body[data-theme="zomer"] details { background: rgba(7, 89, 133, 0.85); }
+body[data-theme="zomer"] .btn-primary { background: #f97316; color: #fff; }
+body[data-theme="zomer"] .qo, body[data-theme="zomer"] .tchip, body[data-theme="zomer"] .pill, body[data-theme="zomer"] .btn-option, body[data-theme="zomer"] .word { background: rgba(255, 255, 255, 0.18); }
+body[data-theme="zomer"] .qo .letter { color: #fde047; }
+body[data-theme="zomer"] .tlcard { background: linear-gradient(135deg, #f97316, #db2777); }
+
+/* ---------- Halloween: oranje en paars ---------- */
+body[data-theme="halloween"] { background: radial-gradient(circle at 50% 0%, #4c1d95 0%, #1a1025 60%, #0a0510 100%) fixed; }
+body[data-theme="halloween"] .card, body[data-theme="halloween"] .qbox, body[data-theme="halloween"] details { background: rgba(26, 16, 37, 0.9); border: 1px solid rgba(249, 115, 22, 0.4); }
+body[data-theme="halloween"] .btn-primary { background: #f97316; color: #1a1025; }
+body[data-theme="halloween"] .qo, body[data-theme="halloween"] .tchip, body[data-theme="halloween"] .pill, body[data-theme="halloween"] .btn-option, body[data-theme="halloween"] .word { background: rgba(124, 58, 237, 0.3); }
+body[data-theme="halloween"] .qo .letter { color: #fb923c; }
+body[data-theme="halloween"] .tv-title { color: #fdba74; text-shadow: 0 0 18px rgba(249, 115, 22, 0.7); }
+body[data-theme="halloween"] .tlcard { background: linear-gradient(135deg, #ea580c, #6d28d9); }
+
+/* Hoekdecoratie op de tv */
+body.tv[data-theme]::after { position: fixed; right: 1.5vw; bottom: 1vh; font-size: 7vw; opacity: 0.35; z-index: 1; pointer-events: none; }
+body.tv[data-theme="winter"]::after { content: "⛄"; }
+body.tv[data-theme="kerst"]::after { content: "🎄"; }
+body.tv[data-theme="oudennieuw"]::after { content: "🥂"; }
+body.tv[data-theme="zomer"]::after { content: "☀️"; }
+body.tv[data-theme="halloween"]::after { content: "🎃"; }

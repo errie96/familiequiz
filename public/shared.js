@@ -303,7 +303,35 @@ window.QuizFX = (function () {
     return () => timers.forEach(clearTimeout);
   }
 
-  return { unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal };
+  // Thema: kleuren via themes.css, plus vallende sneeuw of fonkels
+  const FX = { winter: ["❄", "❅", "❆"], kerst: ["❄", "❅", "✨"], oudennieuw: ["✨", "⭐", "🎆"], halloween: ["🦇", "🍂"], zomer: [] };
+  let currentTheme = null;
+  function applyTheme(theme) {
+    theme = theme || "standaard";
+    if (theme === currentTheme) return;
+    currentTheme = theme;
+    document.body.dataset.theme = theme;
+    document.querySelectorAll(".fx-layer").forEach((x) => x.remove());
+    const chars = FX[theme];
+    if (!chars || !chars.length) return;
+    const layer = document.createElement("div");
+    layer.className = "fx-layer" + (theme === "oudennieuw" ? " twinkle" : "");
+    const n = document.body.classList.contains("tv") ? 36 : 16;
+    for (let i = 0; i < n; i++) {
+      const f = document.createElement("span");
+      f.textContent = chars[i % chars.length];
+      f.style.left = Math.random() * 100 + "vw";
+      f.style.fontSize = (10 + Math.random() * 22) + "px";
+      if (theme === "oudennieuw") { f.style.top = Math.random() * 100 + "vh"; f.style.animationDuration = (1.5 + Math.random() * 3) + "s"; }
+      else f.style.animationDuration = (8 + Math.random() * 12) + "s";
+      f.style.animationDelay = (-Math.random() * 15) + "s";
+      f.style.color = theme === "kerst" || theme === "winter" ? "#fff" : "";
+      layer.appendChild(f);
+    }
+    document.body.prepend(layer);
+  }
+
+  return { unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

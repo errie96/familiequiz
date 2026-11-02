@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Familiequiz - Bediening</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="themes.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
   <style>
@@ -59,6 +60,7 @@
       <div class="row">
         <button id="btn-review" class="btn-option hidden" style="text-align:center;">🔍 Nakijken (alles)</button>
         <button id="btn-time" class="btn-option hidden" style="text-align:center;">⏱️ +10 sec</button>
+        <button id="btn-welcome" class="btn-option hidden" style="text-align:center;">↩ Welkomstpagina</button>
       </div>
     </div>
 
@@ -85,6 +87,25 @@
         <button id="end-rank" class="btn-option" style="text-align:center;">🏆 Eindstand op tv</button>
       </div>
     </div>
+
+    <details id="scores-panel">
+      <summary>📊 Scores (alleen zichtbaar voor de quizmasters)</summary>
+      <p class="muted" style="margin:4px 0 8px;">De spelers en de tv zien de stand pas aan het einde. 🃏 = joker.</p>
+      <div id="scores-table" style="overflow:auto; font-size:13px;"></div>
+    </details>
+
+    <details id="theme-panel">
+      <summary>🎨 Thema <span id="theme-badge" class="muted"></span></summary>
+      <p class="muted" style="margin:4px 0 8px;">Verandert de kleuren en decoratie op de tv en alle telefoons. Kan altijd, ook tijdens de quiz.</p>
+      <div id="theme-list" class="row" style="flex-wrap:wrap;"></div>
+    </details>
+
+    <details id="plan-panel">
+      <summary>🗂️ Rondes: volgorde, aan/uit, in 2 delen</summary>
+      <p id="plan-note" class="muted" style="margin:4px 0 8px;"></p>
+      <div id="plan-list"></div>
+      <button id="plan-save" class="btn-primary">Rondevolgorde opslaan</button>
+    </details>
 
     <details id="quiz-panel">
       <summary>📋 Vragenlijst (Excel) <span id="quiz-badge" class="muted"></span></summary>
@@ -126,8 +147,7 @@
       <div class="setting"><label for="s-round">Punten per ronde (alle rondes even veel)</label><input type="number" id="s-round" min="10" max="1000"></div>
       <div class="setting"><label for="s-timer">Tijdslimiet bij meerkeuze</label><input type="checkbox" id="s-timer"></div>
       <div class="setting"><label for="s-time">Standaardtijd (seconden)</label><input type="number" id="s-time" min="5" max="300"></div>
-      <div class="setting"><label for="s-mem">Geheugenronde: seconden schrijven</label><input type="number" id="s-mem" min="20" max="900"></div>
-      <div class="setting"><label for="s-draw">Tekenronde: seconden per beurt</label><input type="number" id="s-draw" min="15" max="300"></div>
+      <div class="setting"><label for="s-wager">Slotvraag: maximale inzet</label><input type="number" id="s-wager" min="0" max="100000"></div>
       <div class="setting"><label for="s-thirty">30 Seconds: seconden per beurt</label><input type="number" id="s-thirty" min="10" max="120"></div>
       <div class="setting"><label for="s-blur">Foto blur: punten per stap</label><input type="text" id="s-blur"></div>
       <div class="setting"><label for="s-price">Prijzen: punten dichtstbij, 2e, 3e…</label><input type="text" id="s-price"></div>
@@ -220,6 +240,7 @@
     $("btn-prev").onclick = () => socket.emit("prev_step");
     $("btn-review").onclick = () => socket.emit("review_open");
     $("btn-time").onclick = () => socket.emit("add_time");
+    $("btn-welcome").onclick = () => socket.emit("lobby_stage", { stage: "welcome" });
     $("rv-prev").onclick = () => socket.emit("review_nav", { dir: -1 });
     $("rv-next").onclick = () => socket.emit("review_nav", { dir: 1 });
     $("rv-close").onclick = () => socket.emit("review_close");
@@ -236,7 +257,7 @@
     const parseList = (txt) => String(txt).split(/[ ,;]+/).filter(Boolean).map(Number);
     $("btn-save-settings").onclick = () => socket.emit("update_settings", {
       roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value),
-      memorySeconds: Number($("s-mem").value), drawSeconds: Number($("s-draw").value), thirtySeconds: Number($("s-thirty").value),
+      finalMaxWager: Number($("s-wager").value), thirtySeconds: Number($("s-thirty").value),
       blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value), logoPoints: parseList($("s-logo").value), hitsterTarget: Number($("s-hitster").value)
     });
 
@@ -250,6 +271,8 @@
     function renderPanel(state) {
       const box = $("panel");
       const p = state.panel, step = state.step;
+      if (!(p && p.type === "demo_draw" && p.status === "drawing")) demoPadEl = null;
+      else if (demoPadEl && box.contains(demoPadEl)) return;
       box.replaceChildren();
       if (!p || state.phase !== "PLAY") return box.classList.add("hidden");
       box.classList.remove("hidden");
@@ -341,7 +364,12 @@
         p.teams.forEach((t) => {
           const row = el("div", "line");
           const left = el("div");
-          left.append(el("div", "", `${t.name} · tekent: ${t.drawer}`), el("div", "muted", `Woord: ${t.word}`), el("div", "", t.answer ? `Antwoord: ${t.answer}` : "⏳ nog geen antwoord"));
+          left.append(el("div", "", `${t.name} · tekent: ${t.drawer} · invuller: ${t.answerer}`), el("div", "muted", `Woord: ${t.word}`), el("div", "", t.answer ? `Antwoord: ${t.answer}` : "⏳ nog geen antwoord"));
+          if (t.strokes) {
+            const wrap = el("div", "padwrap"); wrap.style.width = "160px"; wrap.style.marginTop = "6px";
+            const cv = el("canvas"); wrap.append(cv); left.append(wrap);
+            requestAnimationFrame(() => QuizFX.paintStrokes(cv, t.strokes));
+          }
           row.append(left);
           if (p.status !== "ready" && t.answer) row.append(toggle(t.ok, () => socket.emit("draw_judge", { teamId: t.teamId, ok: !t.ok })));
           box.append(row);
@@ -349,7 +377,13 @@
       }
 
       if (p.type === "logo") {
-        box.append(el("h3", "", `Logo: ${p.name}`));
+        box.append(el("h3", "", `${p.test ? "Oefenvraag · " : ""}${p.variant === "blur" ? "Foto" : "Logo"}: ${p.name}`));
+        if (p.variant === "blur") {
+          const bl = el("button", "btn-primary", `🔍 Scherper maken (${p.blurStep} van ${p.blurMax})`);
+          bl.disabled = p.status !== "open" || p.blurStep >= p.blurMax;
+          bl.onclick = () => socket.emit("blur_next");
+          box.append(bl);
+        }
         if (p.alt && p.alt.length) box.append(el("p", "muted", `Ook goed: ${p.alt.join(", ")}`));
         box.append(el("p", "muted", "Antwoorden staan op volgorde van binnenkomst; de snelste goede krijgt de meeste punten. Keur goed of fout (automatisch voorgesteld)."));
         p.teams.slice().sort((a, b) => (a.place || 99) - (b.place || 99)).forEach((t) => {
@@ -367,12 +401,28 @@
           p.words.forEach((w, i) => {
             const row = el("div", "line");
             row.append(el("span", "", w));
-            if (p.status === "judging") row.append(toggle(!!p.ok[i], () => socket.emit("thirty_toggle", { index: i })));
-            else row.append(el("span", "", p.ok[i] ? "✔" : p.status === "result" ? "✘" : ""));
+            if (p.status !== "ready") row.append(toggle(!!p.ok[i], () => socket.emit("thirty_toggle", { index: i })));
             box.append(row);
           });
         }
-        box.append(el("p", "muted", p.status === "judging" ? "Tik op de woorden die goed geraden zijn en bevestig." : ""));
+        box.append(el("p", "muted", p.status === "running" ? "Tik een woord aan zodra het goed geraden is: het kleurt meteen groen op de tv." : p.status === "judging" ? "Controleer en bevestig." : ""));
+      }
+
+      if (p.type === "demo_thirty") {
+        box.append(el("h3", "", "Oefenronde 30 Seconds: jij legt uit"));
+        p.words.forEach((w, i) => {
+          const row = el("div", "line");
+          row.append(el("span", "", w));
+          if (p.status !== "ready") row.append(toggle(!!p.ok[i], () => socket.emit("thirty_toggle", { index: i })));
+          box.append(row);
+        });
+        box.append(el("p", "muted", "Leg de woorden uit aan de zaal en tik ze aan zodra ze goed geraden zijn."));
+      }
+
+      if (p.type === "demo_draw") {
+        box.append(el("h3", "", `Oefenronde tekenen: "${p.word}"`));
+        if (p.status === "drawing") box.append(drawPad());
+        else box.append(el("p", "muted", p.status === "ready" ? "Druk op Start; daarna verschijnt hier je tekenvlak. De tekening komt live op de tv." : "Klaar."));
       }
 
       if (p.type === "joker") {
@@ -398,6 +448,34 @@
         });
       }
     }
+    // Tekenvlak voor de oefenronde (de quizmaster tekent, de tv kijkt live mee)
+    let demoPadEl = null;
+    function drawPad() {
+      if (demoPadEl) return demoPadEl;
+      const box = el("div");
+      const wrap = el("div", "padwrap");
+      const canvas = el("canvas");
+      wrap.append(canvas);
+      let strokes = [], drawing = null, pending = [], timer = null, color = "#111827";
+      const repaint = () => QuizFX.paintStrokes(canvas, strokes);
+      const flush = () => { clearTimeout(timer); timer = null; if (pending.length) { socket.emit("demo_ops", { ops: pending }); pending = []; } };
+      const queue = (op) => { pending.push(op); if (!timer) timer = setTimeout(flush, 60); };
+      const pos = (e) => { const r = canvas.getBoundingClientRect(); return [Math.round(((e.clientX - r.left) / r.width) * 1000), Math.round(((e.clientY - r.top) / r.height) * 1000)]; };
+      canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); canvas.setPointerCapture(e.pointerId); const p = pos(e); drawing = { id: "q" + Date.now().toString(36), c: color, w: 5, p: [p] }; strokes.push(drawing); queue({ t: "p", id: drawing.id, c: color, w: 5, p: [p] }); repaint(); });
+      canvas.addEventListener("pointermove", (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); drawing.p.push(p); queue({ t: "p", id: drawing.id, c: drawing.c, w: 5, p: [p] }); repaint(); });
+      const end = () => { drawing = null; flush(); };
+      canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+      const tools = el("div", "row");
+      [["Zwart", "#111827"], ["Rood", "#dc2626"], ["Blauw", "#2563eb"]].forEach(([l, c]) => { const bt = el("button", "btn-option", l); bt.style.textAlign = "center"; bt.onclick = () => { color = c; }; tools.append(bt); });
+      const undo = el("button", "btn-option", "↩"); undo.onclick = () => { strokes.pop(); queue({ t: "u" }); repaint(); };
+      const clr = el("button", "btn-option", "🗑"); clr.onclick = () => { strokes = []; queue({ t: "x" }); repaint(); };
+      tools.append(undo, clr);
+      box.append(wrap, tools);
+      requestAnimationFrame(repaint);
+      demoPadEl = box;
+      return box;
+    }
+
     // Team-id opzoeken op naam (voor draw_judge)
     function findTeamId(name) { const t = (S && S.teams || []).find((x) => x.name === name); return t ? t.teamId : null; }
 
@@ -526,6 +604,54 @@
     }
     const spSong = () => (S && S.panel && S.panel.type === "song" ? S.panel.song : null);
 
+    // ---------------- Scores, thema en rondeplan ----------------
+    function renderScores(st) {
+      const b = st.hostScores;
+      if (!b) return $("scores-table").replaceChildren(el("p", "muted", "Na de start verschijnen hier de scores."));
+      QuizFX.renderTable($("scores-table"), {
+        columns: ["Team", ...b.rounds.map((r) => r.title), "Slot", "Totaal"],
+        rows: b.rows.map((r) => [r.name, ...r.rounds.map((x) => `${x.pts}${x.joker ? "🃏" : ""}`), r.final === null ? "–" : String(r.final), String(r.total)])
+      });
+    }
+    const THEME_NAMES = { standaard: "Standaard", winter: "❄️ Winter", kerst: "🎄 Kerst", oudennieuw: "🥂 Oud & nieuw", zomer: "☀️ Zomer", halloween: "🎃 Halloween" };
+    function renderThemes(st) {
+      $("theme-badge").textContent = THEME_NAMES[st.theme] || st.theme;
+      const box = $("theme-list");
+      if (box.childElementCount !== st.themes.length) {
+        box.replaceChildren();
+        st.themes.forEach((t) => { const bt = el("button", "btn-option btn-small", THEME_NAMES[t] || t); bt.dataset.t = t; bt.onclick = () => socket.emit("set_theme", { theme: t }); box.append(bt); });
+      }
+      box.querySelectorAll("button").forEach((bt) => { bt.style.outline = bt.dataset.t === st.theme ? "2px solid #fbbf24" : ""; });
+    }
+    // Concept van de rondevolgorde: pas na "opslaan" naar de server
+    let planDraft = [], planKey = "", planLocked = false;
+    function renderPlan(st) {
+      planLocked = st.phase !== "LOBBY";
+      $("plan-note").textContent = planLocked ? "Na de start kan de volgorde niet meer veranderen." : "Zet de rondes in de gewenste volgorde (▲▼), zet rondes aan/uit, of speel een ronde in 2 delen (de vragen worden verdeeld; elk deel is evenveel punten waard). Daarna opslaan.";
+      $("plan-save").disabled = planLocked;
+      const key = JSON.stringify(st.plan);
+      if (key !== planKey) { planKey = key; planDraft = st.plan.map((x) => ({ ...x })); }
+      drawPlan();
+    }
+    function drawPlan() {
+      const box = $("plan-list");
+      box.replaceChildren();
+      planDraft.forEach((r, i) => {
+        const row = el("div", "line");
+        const left = el("span", "", `${i + 1}. ${r.title}${r.split ? " (2 delen)" : ""}`);
+        if (!r.on) left.style.opacity = "0.45";
+        const right = el("span");
+        const mk = (label, fn, dis) => { const bt = el("button", "btn-option tg", label); bt.disabled = planLocked || dis; bt.onclick = () => { fn(); drawPlan(); }; bt.style.marginLeft = "4px"; right.append(bt); };
+        mk("▲", () => { [planDraft[i - 1], planDraft[i]] = [planDraft[i], planDraft[i - 1]]; }, i === 0);
+        mk("▼", () => { [planDraft[i + 1], planDraft[i]] = [planDraft[i], planDraft[i + 1]]; }, i === planDraft.length - 1);
+        mk(r.on ? "aan" : "uit", () => { r.on = !r.on; });
+        mk(r.split ? "2 delen ✔" : "2 delen", () => { r.split = !r.split; }, !r.canSplit);
+        row.append(left, right);
+        box.append(row);
+      });
+    }
+    $("plan-save").onclick = () => socket.emit("set_plan", { plan: planDraft.map((r) => ({ id: r.id, on: r.on, split: r.split })) });
+
     // ---------------- Hoofdlus ----------------
     let settingsFilled = false;
     socket.on("state_update", (state) => {
@@ -560,9 +686,19 @@
         $("rv-prev").disabled = state.review.page <= 0;
         $("rv-next").disabled = state.review.page >= state.review.total - 1;
         QuizFX.renderTable($("rv-table"), state.review.data);
+        if (state.review.data && state.review.data.images) state.review.data.images.forEach((im) => {
+          const wrap = el("div", "padwrap"); wrap.style.cssText = "width:150px; display:inline-block; margin:4px;";
+          const cv = el("canvas"); wrap.append(cv); $("rv-table").append(wrap);
+          requestAnimationFrame(() => QuizFX.paintStrokes(cv, im.strokes));
+        });
       }
 
       renderPanel(state);
+      QuizFX.applyTheme(state.theme);
+      $("btn-welcome").classList.toggle("hidden", !(state.phase === "LOBBY" && state.lobbyStage === "join"));
+      renderScores(state);
+      renderThemes(state);
+      renderPlan(state);
       spOnState(state);
       $("quiz-badge").textContent = state.quiz.kind === "excel" ? "● uit Excel" : "○ questions.json";
       $("quiz-status").textContent = `Bron: ${state.quiz.file} · ingelezen ${state.quiz.loadedAt} · ${state.quiz.rounds} rondes, ${state.quiz.steps} schermen`;
@@ -590,11 +726,11 @@
       // Instellingen
       const locked = state.settingsLocked;
       $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
-      ["s-round", "s-timer", "s-time", "s-mem", "s-draw", "s-thirty", "s-blur", "s-price", "s-logo", "s-hitster", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+      ["s-round", "s-timer", "s-time", "s-wager", "s-thirty", "s-blur", "s-price", "s-logo", "s-hitster", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
       const ae = document.activeElement && document.activeElement.id;
       if (!settingsFilled || !ae || !ae.startsWith("s-")) {
         $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime;
-        $("s-mem").value = state.settings.memorySeconds; $("s-draw").value = state.settings.drawSeconds; $("s-thirty").value = state.settings.thirtySeconds;
+        $("s-wager").value = state.settings.finalMaxWager; $("s-thirty").value = state.settings.thirtySeconds;
         $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", "); $("s-hitster").value = state.settings.hitsterTarget;
         settingsFilled = true;
       }

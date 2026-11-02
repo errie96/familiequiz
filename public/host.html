@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Familiequiz - Tv-scherm</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="themes.css">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
   <script>
@@ -66,6 +67,23 @@
     #v-review { overflow: auto; }
     #review-sub { text-align: center; color: #fbbf24; font-size: clamp(16px, 2.2vw, 40px); margin-bottom: 1.5vh; }
     #v-pause { text-align: center; padding-top: 12vh; }
+    /* Tussenpagina: "Nu gaan we door naar…" */
+    .trans-pre { font-size: clamp(26px, 4vw, 76px); color: #fbbf24; font-weight: 800; letter-spacing: 0.02em; }
+    .trans-pre.show { animation: trans-in 0.7s ease-out both; }
+    .trans-spin { display: inline-block; animation: trans-spin 1.6s cubic-bezier(.5,0,.3,1) both; }
+    @keyframes trans-spin { 0% { transform: scale(0.2) rotate(-540deg); opacity: 0; } 70% { transform: scale(1.25) rotate(15deg); opacity: 1; } 100% { transform: scale(1) rotate(0); } }
+    @keyframes trans-in { from { transform: translateY(30px) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+    .trans-title { animation: trans-pop 0.8s cubic-bezier(.34,1.56,.64,1) both; }
+    @keyframes trans-pop { from { transform: scale(0.3); opacity: 0; filter: blur(8px); } to { transform: scale(1); opacity: 1; filter: none; } }
+    .hide-until { opacity: 0; }
+    /* 30 Seconds: vakjes die groen kleuren */
+    .slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.2vw; margin: 3vh auto; max-width: 90vw; }
+    .slot { background: #334155; border-radius: 14px; padding: 1.2em 0.4em; text-align: center; font-size: clamp(18px, 2.6vw, 50px); font-weight: bold; min-height: 3.2em; display: flex; align-items: center; justify-content: center; transition: background 0.4s, transform 0.4s; }
+    .slot.ok { background: #16a34a; transform: scale(1.06); box-shadow: 0 0 30px rgba(74, 222, 128, 0.6); }
+    .slot.no { background: #7f1d1d; }
+    /* Ontknoping */
+    #end-step-hint { text-align: center; color: #94a3b8; font-size: clamp(16px, 2vw, 36px); margin-top: 2vh; }
+    .review-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(18vw, 1fr)); gap: 1vw; margin-top: 1.5vh; }
   </style>
 </head>
 <body class="tv">
@@ -82,6 +100,12 @@
   </header>
 
   <main>
+    <section id="v-welcome" class="view hidden tv-center" style="padding-top:3vh;">
+      <div class="huge trans-spin" id="welcome-emoji" style="font-size:clamp(50px,9vw,170px);">🎉</div>
+      <h1 class="tv-title trans-title" id="welcome-title" style="font-size:clamp(38px,6vw,110px); margin-bottom:1vh;"></h1>
+      <p class="tv-sub" id="welcome-text" style="max-width:72vw; margin:1vh auto 0; font-size:clamp(18px,2.2vw,42px); line-height:1.35;"></p>
+    </section>
+
     <section id="v-lobby" class="view">
       <h1 class="tv-title">Familiequiz 🏆</h1>
       <div class="lobby-grid">
@@ -98,7 +122,14 @@
       </div>
     </section>
 
+    <section id="v-demodraw" class="view hidden">
+      <h1 class="tv-title" id="dd-title" style="text-align:center; font-size:clamp(28px,4.4vw,80px);"></h1>
+      <div class="padwrap" style="width:min(62vw,110vh); margin:0 auto;"><canvas id="dd-canvas"></canvas></div>
+      <p class="tv-sub" id="dd-sub"></p>
+    </section>
+
     <section id="v-info" class="view hidden tv-center">
+      <div class="trans-pre hidden" id="info-pre">Nu gaan we door naar…</div>
       <div class="huge" id="info-emoji"></div>
       <h1 class="tv-title" id="info-title"></h1>
       <p class="tv-sub" id="info-text" style="max-width:70vw; margin:0 auto;"></p>
@@ -213,7 +244,7 @@
     const socket = io();
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-    const VIEWS = ["v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
+    const VIEWS = ["v-welcome", "v-demodraw", "v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
     function showView(id) { VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id)); }
 
     // ---------- Geluid: de browser wil eerst één klik of toetsdruk ----------
@@ -291,14 +322,33 @@
     let renderedMedia = null;
     const mediaKey = (...a) => a.join("|");
 
+    let infoShown = null, infoTimers = [];
     function renderInfo(s) {
       showView("v-info");
+      const p = $("info-points");
+      if (infoShown === s.id) return;
+      infoShown = s.id;
+      infoTimers.forEach(clearTimeout); infoTimers = [];
       $("info-emoji").textContent = s.emoji || "";
       $("info-title").textContent = s.title;
       $("info-text").textContent = s.text || "";
-      const p = $("info-points");
       p.classList.toggle("hidden", !s.roundIntro);
       if (s.roundIntro) p.textContent = `💯 Hier kun je ${s.points} punten verdienen`;
+      const pre = $("info-pre");
+      ["info-emoji", "info-title", "info-text", "info-points"].forEach((id) => $(id).classList.remove("trans-spin", "trans-title", "hide-until"));
+      if (!s.transition) { pre.classList.add("hidden"); return; }
+      // "Nu gaan we door naar…" → tromgeroffel → de naam van de ronde of categorie springt in beeld
+      pre.textContent = s.roundIntro ? "Nu gaan we door naar…" : "Volgende categorie…";
+      pre.classList.remove("hidden", "show"); void pre.offsetWidth; pre.classList.add("show");
+      ["info-emoji", "info-title", "info-text", "info-points"].forEach((id) => $(id).classList.add("hide-until"));
+      [0, 250, 500, 750, 1000, 1250].forEach((t) => infoTimers.push(setTimeout(QuizFX.drumHit, t)));
+      infoTimers.push(setTimeout(() => {
+        $("info-emoji").classList.remove("hide-until"); $("info-emoji").classList.add("trans-spin");
+        $("info-title").classList.remove("hide-until"); $("info-title").classList.add("trans-title");
+        QuizFX.fanfare();
+        if (typeof confetti === "function") confetti({ particleCount: 160, spread: 100, origin: { y: 0.6 } });
+      }, 1500));
+      infoTimers.push(setTimeout(() => { $("info-text").classList.remove("hide-until"); $("info-points").classList.remove("hide-until"); $("info-text").classList.add("trans-title"); }, 2600));
     }
 
     function renderMc(s) {
@@ -447,6 +497,41 @@
       }
     }
 
+    function thirtySlots(words, ok, all) {
+      const box = el("div", "slots");
+      (words || []).forEach((w, i) => {
+        const good = ok && ok[i];
+        const d = el("div", "slot" + (good ? " ok" : all ? " no" : ""), w ? w : "?");
+        box.append(d);
+      });
+      return box;
+    }
+    let ddKey = null, ddStrokes = [];
+    function renderDemoDraw(s) {
+      showView("v-demodraw");
+      $("dd-title").textContent = s.status === "result" ? `Het woord was: ${s.word}` : s.status === "drawing" ? "✏️ Oefenen: de quizmaster tekent! Wat is het?" : "✏️ Oefenronde tekenen";
+      $("dd-sub").textContent = s.status === "drawing" ? "Roep het antwoord! Zo gaat het straks ook bij jullie: de tekening verschijnt live op de telefoons van je team." : s.status === "ready" ? "De quizmaster doet het eerst één keer voor." : "";
+      if (ddKey !== s.id + s.status) { ddKey = s.id + s.status; ddStrokes = (s.strokes || []).map((x) => ({ ...x, p: [...x.p] })); }
+      requestAnimationFrame(() => QuizFX.paintStrokes($("dd-canvas"), ddStrokes));
+    }
+    socket.on("demo_ops", (data) => {
+      (data.ops || []).forEach((op) => {
+        if (op.t === "x") ddStrokes = [];
+        else if (op.t === "u") ddStrokes.pop();
+        else { let st = ddStrokes.find((x) => x.id === op.id); if (!st) { st = { id: op.id, c: op.c, w: op.w, p: [] }; ddStrokes.push(st); } st.p.push(...op.p); }
+      });
+      QuizFX.paintStrokes($("dd-canvas"), ddStrokes);
+    });
+    function renderDemoThirty(s) {
+      showView("v-thirty");
+      $("th-title").textContent = s.status === "result" ? "Oefenbeurt: dit waren de woorden" : s.status === "running" ? "⏱️ Oefenen: de quizmaster legt uit!" : "⏱️ Oefenronde 30 Seconds";
+      const body = $("th-body");
+      body.replaceChildren();
+      if (s.status === "ready") { body.append(el("p", "tv-sub", "De quizmaster doet het eerst één keer voor. Goede antwoorden kleuren groen.")); return; }
+      if (s.status === "running") { const t = el("div", "bigtimer", ""); t.id = "th-bigtimer"; body.append(t); }
+      body.append(thirtySlots(s.words, s.ok, s.status === "result"));
+    }
+
     function renderThirty(s) {
       showView("v-thirty");
       const body = $("th-body");
@@ -459,16 +544,10 @@
         $("th-title").textContent = `${who} legt uit!`;
         const t = el("div", "bigtimer", "");
         t.id = "th-bigtimer";
-        body.append(t);
+        body.append(t, thirtySlots(s.words, s.ok, false));
       } else if (s.status === "judging" || s.status === "result") {
-        $("th-title").textContent = s.status === "judging" ? `Tijd om! De quizmaster keurt de antwoorden van ${s.team}…` : `${s.team}: dit waren de woorden`;
-        const w = el("div", "words");
-        s.words.forEach((word) => {
-          const r = el("div", "word");
-          r.append(el("span", "", word));
-          w.append(r);
-        });
-        body.append(w);
+        $("th-title").textContent = s.status === "judging" ? `Tijd om! De quizmaster keurt de laatste antwoorden van ${s.team}…` : `${s.team}: dit waren de woorden`;
+        body.append(thirtySlots(s.words, s.ok, true));
       } else {
         $("th-title").textContent = "⏱️ 30 Seconds";
       }
@@ -500,13 +579,27 @@
     let logoKey = null;
     function renderLogoStep(s) {
       showView("v-mc");
-      $("mc-cat").classList.add("hidden");
-      $("mc-question").textContent = s.status === "closed" ? `Dit was: ${s.name}` : "Welk logo is dit?";
-      const key = s.id + s.status;
-      if (logoKey !== key) { logoKey = key; QuizFX.renderLogo($("mc-media"), s.media, s.hide, s.status === "closed", s.media ? s.media.src : "Logo ontbreekt"); }
-      $("mc-dots").classList.add("hidden");
-      $("mc-pointsnow").classList.toggle("hidden", s.status === "closed");
-      $("mc-pointsnow").textContent = "Typ het merk op de basistelefoon. Hoe sneller goed, hoe meer punten!";
+      $("mc-cat").classList.toggle("hidden", !s.test);
+      $("mc-cat").textContent = "Oefenvraag";
+      const closed = s.status === "closed";
+      if (s.variant === "blur") {
+        $("mc-question").textContent = closed ? `Dit was: ${s.name}` : (s.question || "Wat zien we op deze foto?");
+        QuizFX.renderBlur($("mc-media"), s.media, closed ? s.blurMax : s.blurStep, s.blurMax, s.media ? s.media.src : "Foto ontbreekt");
+        const dots = $("mc-dots");
+        dots.classList.toggle("hidden", closed);
+        dots.replaceChildren();
+        for (let i = 0; i <= s.blurMax; i++) dots.appendChild(el("i", i <= s.blurStep ? "on" : ""));
+        const pts = s.blurPoints[Math.min(s.blurStep, s.blurPoints.length - 1)];
+        $("mc-pointsnow").classList.toggle("hidden", closed);
+        $("mc-pointsnow").textContent = s.test ? "Oefenfoto: typ wat je ziet op de basistelefoon." : `Typ je antwoord op de basistelefoon. Nu goed = ${pts} punten!`;
+      } else {
+        $("mc-question").textContent = closed ? `Dit was: ${s.name}` : "Welk logo is dit?";
+        const key = s.id + s.status;
+        if (logoKey !== key) { logoKey = key; QuizFX.renderLogo($("mc-media"), s.media, s.hide, closed, s.media ? s.media.src : "Logo ontbreekt"); }
+        $("mc-dots").classList.add("hidden");
+        $("mc-pointsnow").classList.toggle("hidden", closed);
+        $("mc-pointsnow").textContent = "Typ het merk op de basistelefoon. Hoe sneller goed, hoe meer punten!";
+      }
       $("mc-options").replaceChildren();
       $("mc-explain").textContent = "";
       chips($("mc-teams"), s.teams, true);
@@ -557,16 +650,13 @@
       s.teams.forEach((t) => box.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
     }
 
-    // ---------- Einduitslag ----------
-    let revealAnimating = false, revealShown = false, prevReveal = null, cancelReveal = null;
+    // ---------- Einduitslag: plek voor plek, de quizmaster bepaalt het tempo ----------
+    let revealedN = 0;
     function resetReveal() {
-      if (cancelReveal) cancelReveal();
-      cancelReveal = null; revealAnimating = false; revealShown = false; prevReveal = null;
+      revealedN = 0;
       $("tv-scoreboard").replaceChildren();
       $("winner-banner").classList.add("hidden");
     }
-    const revealOptions = (onFinish) => ({ table: $("tv-scoreboard"), banner: $("winner-banner"), winnerText: $("winner-name-text"), onFinish });
-
     function renderEnd(end) {
       showView("v-end");
       const rs = end.reveal;
@@ -576,37 +666,29 @@
       $("end-breakdown").classList.toggle("hidden", !showBreak);
       if (showBreak) {
         const b = end.breakdown;
-        const page = {
+        QuizFX.renderTable($("breakdown-table"), {
           columns: ["Team", ...b.rounds.map((r) => r.title), "Slot", "Totaal"],
-          rows: b.rows.map((r) => [
-            r.name,
-            ...r.rounds.map((x) => `${x.pts}${x.joker ? " 🃏" : ""}`),
-            r.final === null ? "–" : { t: `${r.final >= 0 ? "+" : ""}${r.final}`, ok: r.final > 0 ? true : r.final < 0 ? false : null },
-            `${r.total}`
-          ])
-        };
-        QuizFX.renderTable($("breakdown-table"), page);
+          rows: b.rows.map((r) => [r.name, ...r.rounds.map((x) => `${x.pts}${x.joker ? " 🃏" : ""}`), r.final === null ? "–" : { t: `${r.final >= 0 ? "+" : ""}${r.final}`, ok: r.final > 0 ? true : r.final < 0 ? false : null }, `${r.total}`])
+        });
         return;
       }
-      if (revealAnimating) { prevReveal = rs; return; }
-      if (rs === "running" && end.scores) {
-        if (prevReveal === "idle") {
-          revealAnimating = true;
-          cancelReveal = QuizFX.runReveal(end.scores, revealOptions(() => { revealAnimating = false; revealShown = true; socket.emit("reveal_done"); }));
-        } else {
-          QuizFX.runReveal(end.scores, { ...revealOptions(null), instant: true });
-          revealShown = true;
-          socket.emit("reveal_done");
-        }
-      } else if (rs === "done" && end.scores && !revealShown) {
-        QuizFX.runReveal(end.scores, { ...revealOptions(null), instant: true });
-        revealShown = true;
-      } else if (rs === "idle") {
-        revealShown = false;
-        $("tv-scoreboard").replaceChildren();
-        $("winner-banner").classList.add("hidden");
+      if (rs === "idle" || !end.scores) { resetReveal(); return; }
+      const list = end.scores;
+      const target = Math.min(end.revealN, list.length);
+      if (target < revealedN) resetReveal();
+      const fresh = target - revealedN > 0 && target - revealedN <= 1;
+      while (revealedN < target) {
+        const player = list[list.length - 1 - revealedN];
+        const li = QuizFX.rankRow(player);
+        $("tv-scoreboard").prepend(li);
+        if (fresh) { setTimeout(() => li.classList.add("show"), 50); QuizFX.drumHit(); } else li.classList.add("show");
+        revealedN++;
       }
-      prevReveal = rs;
+      const all = revealedN >= list.length;
+      if (all && $("winner-banner").classList.contains("hidden")) {
+        QuizFX.showWinners(list, $("winner-banner"), $("winner-name-text"));
+        if (fresh) { QuizFX.fanfare(); QuizFX.launchConfetti(); }
+      }
     }
 
     // ---------- Hoofdlus ----------
@@ -616,6 +698,8 @@
     socket.on("state_update", (state) => {
       const step = state.step;
       const inQuiz = state.phase === "PLAY";
+      QuizFX.applyTheme(state.theme);
+      if (!step || step.kind !== "info") infoShown = null;
 
       $("tv-round").textContent = state.header.round || "Familiequiz";
       const prog = state.header.progress;
@@ -659,6 +743,18 @@
         $("review-title").textContent = state.review.data.title;
         $("review-sub").textContent = state.review.data.subtitle || "";
         QuizFX.renderTable($("review-table"), state.review.data);
+        if (state.review.data.images) {
+          const g = el("div", "review-gallery");
+          state.review.data.images.forEach((im) => {
+            const card = el("div", "gcard");
+            const wrap = el("div", "padwrap"); const cv = el("canvas"); wrap.append(cv);
+            card.append(wrap, el("div", "", `${im.ok ? "✔" : "✘"} ${im.label}`));
+            card.style.outline = im.ok ? "3px solid #22c55e" : "3px solid #7f1d1d";
+            g.append(card);
+            requestAnimationFrame(() => QuizFX.paintStrokes(cv, im.strokes));
+          });
+          $("review-table").append(g);
+        }
         $("review-page").textContent = `Pagina ${state.review.page + 1} van ${state.review.total}`;
         return;
       }
@@ -668,6 +764,14 @@
         return;
       }
 
+      if (state.phase === "LOBBY" && state.lobbyStage === "welcome") {
+        showView("v-welcome");
+        $("welcome-emoji").textContent = state.welcome.emoji || "🎉";
+        $("welcome-title").textContent = state.welcome.title;
+        $("welcome-text").textContent = state.welcome.text;
+        resetReveal();
+        return;
+      }
       if (state.phase === "LOBBY") {
         showView("v-lobby");
         chips($("lobby-teams"), state.teamList, false, (t) => ` (${t.members})`);
@@ -687,10 +791,12 @@
         case "price": renderPrice(step); break;
         case "draw": renderDraw(step, state); break;
         case "thirty": renderThirty(step); break;
+        case "demo_draw": renderDemoDraw(step); break;
+        case "demo_thirty": renderDemoThirty(step); break;
         case "roundresult": renderRoundResult(step); break;
         case "joker":
           showView("v-joker");
-          chips($("joker-teams"), step.chosen.map((c) => ({ name: c.name, answered: c.done })), true);
+          chips($("joker-teams"), step.chosen.map((c) => ({ name: c.name, answered: c.done })), true, (t) => { const c = step.chosen.find((x) => x.name === t.name); return c && c.round ? `  🃏 ${c.round}` : "  …kiest nog"; });
           break;
         case "final": $("final-emoji").textContent = "🎰"; renderFinal(step); break;
         case "tiebreak": renderTiebreak(step); break;

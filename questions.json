@@ -52,6 +52,21 @@
    "intro": "Vijf categorieën van tien meerkeuzevragen: algemene kennis, nieuws 2026, lokaal nieuws uit Drenthe, sport en social media. Alleen de basistelefoon dient het antwoord van het team in.",
    "categories": [
     {
+     "name": "Oefenvraag",
+     "questions": [
+      {
+       "question": "Hoeveel poten heeft een spin?",
+       "options": [
+        "6",
+        "8",
+        "10",
+        "12"
+       ],
+       "answer": 1
+      }
+     ]
+    },
+    {
      "name": "Algemene kennis",
      "questions": [
       {
@@ -613,161 +628,146 @@
    "type": "blur",
    "title": "Foto blur",
    "emoji": "📸",
-   "intro": "Een foto wordt steeds scherper. Hoe eerder jullie het goede antwoord indienen, hoe meer punten. Eén poging per vraag! Eerst doen we een testvraag.",
-   "test": {
-    "question": "Wat zien we hier?",
-    "options": [
-     "De Euromast",
-     "De Atomium",
-     "De Eiffeltoren",
-     "De Tower Bridge"
-    ],
-    "answer": 2,
-    "media": {
-     "kind": "image",
-     "src": "blur/eiffeltoren.jpg"
-    }
-   },
+   "intro": "Een foto wordt steeds scherper. Typ op de basistelefoon wat je ziet: één antwoord per foto. Hoe eerder goed, hoe meer punten; de quizmaster keurt de antwoorden.",
    "questions": [
     {
-     "question": "Welke bekende Drentse plek zien we hier?",
-     "options": [
-      "Een grafheuvel bij Havelte",
-      "Het Drents Museum",
-      "Een hunebed bij Borger",
-      "Kamp Westerbork"
+     "question": "Wat zien we hier?",
+     "name": "De Eiffeltoren",
+     "alt": [
+      "Eiffeltoren",
+      "Eiffel"
      ],
-     "answer": 2,
+     "media": {
+      "kind": "image",
+      "src": "blur/eiffeltoren.jpg"
+     },
+     "practice": true
+    },
+    {
+     "question": "Welke bekende Drentse plek zien we hier?",
+     "name": "Een hunebed bij Borger",
+     "alt": [
+      "hunebed",
+      "Borger"
+     ],
      "media": {
       "kind": "image",
       "src": "blur/hunebed.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welke toren is dit?",
-     "options": [
-      "De Martinitoren",
-      "De Domtoren in Utrecht",
-      "De Euromast",
-      "De Belfort in Brugge"
+     "name": "De Domtoren in Utrecht",
+     "alt": [
+      "Domtoren",
+      "Dom"
      ],
-     "answer": 1,
      "media": {
       "kind": "image",
       "src": "blur/domtoren.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welk bouwwerk is dit?",
-     "options": [
-      "De Euromast",
-      "De Erasmusbrug",
-      "De Rotterdamse Markthal",
-      "De Domtoren"
+     "name": "De Euromast",
+     "alt": [
+      "Euromast"
      ],
-     "answer": 0,
      "media": {
       "kind": "image",
       "src": "blur/euromast.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welke bekende Nederlandse dijk zien we hier?",
-     "options": [
-      "De Deltawerken",
-      "De Brouwersdam",
-      "De Houtribdijk",
-      "De Afsluitdijk"
+     "name": "De Afsluitdijk",
+     "alt": [
+      "Afsluitdijk"
      ],
-     "answer": 3,
      "media": {
       "kind": "image",
       "src": "blur/afsluitdijk.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welk museum zien we hier?",
-     "options": [
-      "Het Van Gogh Museum",
-      "Het Stedelijk Museum",
-      "Het Rijksmuseum",
-      "Het Drents Museum"
+     "name": "Het Rijksmuseum",
+     "alt": [
+      "Rijksmuseum"
      ],
-     "answer": 2,
      "media": {
       "kind": "image",
       "src": "blur/rijksmuseum.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welke bekende plek met molens is dit?",
-     "options": [
-      "Zaanse Schans",
-      "Kinderdijk",
-      "Schermerhorn",
-      "Schiedam"
+     "name": "Kinderdijk",
+     "alt": [
+      "molens Kinderdijk"
      ],
-     "answer": 1,
      "media": {
       "kind": "image",
       "src": "blur/kinderdijk.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welk circuit zien we hier?",
-     "options": [
-      "TT Circuit Assen",
-      "Circuit Zandvoort",
-      "Spa-Francorchamps",
-      "Circuit Zolder"
+     "name": "TT Circuit Assen",
+     "alt": [
+      "TT circuit",
+      "circuit Assen",
+      "TT Assen"
      ],
-     "answer": 0,
      "media": {
       "kind": "image",
       "src": "blur/tt-circuit.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welk dier zien we hier?",
-     "options": [
-      "Een neushoorn",
-      "Een nijlpaard",
-      "Een tapir",
-      "Een olifant"
+     "name": "Een olifant",
+     "alt": [
+      "olifant"
      ],
-     "answer": 3,
      "media": {
       "kind": "image",
       "src": "blur/olifant.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welk beroemd monument is dit?",
-     "options": [
-      "De Arc de Triomphe",
-      "Het Colosseum",
-      "De Brandenburger Tor",
-      "De Sagrada Família"
+     "name": "De Brandenburger Tor",
+     "alt": [
+      "Brandenburger Tor",
+      "Brandenburger Tür"
      ],
-     "answer": 2,
      "media": {
       "kind": "image",
       "src": "blur/brandenburger-tor.jpg"
-     }
+     },
+     "practice": false
     },
     {
      "question": "Welke stad zien we hier?",
-     "options": [
-      "Amsterdam",
-      "Venetië",
-      "Brugge",
-      "Kopenhagen"
+     "name": "Venetië",
+     "alt": [
+      "Venetie",
+      "Venice"
      ],
-     "answer": 1,
      "media": {
       "kind": "image",
       "src": "blur/venetie.jpg"
-     }
+     },
+     "practice": false
     }
    ]
   },
@@ -777,14 +777,30 @@
    "title": "Het geheugen van vorig jaar",
    "emoji": "🧠",
    "prompt": "Wat stond er vorig jaar op het bord? Schrijf zoveel mogelijk op!",
-   "seconds": 120,
    "items": [
     "VOORBEELD 1: vervang dit door wat er op het bord stond",
     "VOORBEELD 2",
     "VOORBEELD 3",
     "VOORBEELD 4",
     "VOORBEELD 5"
-   ]
+   ],
+   "practice": {
+    "prompt": "Oefenen: noem zoveel mogelijk Drentse gemeenten!",
+    "items": [
+     "Aa en Hunze",
+     "Assen",
+     "Borger-Odoorn",
+     "Coevorden",
+     "De Wolden",
+     "Emmen",
+     "Hoogeveen",
+     "Meppel",
+     "Midden-Drenthe",
+     "Noordenveld",
+     "Tynaarlo",
+     "Westerveld"
+    ]
+   }
   },
   {
    "id": "r4",
@@ -793,6 +809,12 @@
    "emoji": "🎵",
    "startCards": 2,
    "songs": [
+    {
+     "title": "Imagine",
+     "artist": "John Lennon",
+     "year": 1971,
+     "practice": true
+    },
     {
      "title": "Billie Jean",
      "artist": "Michael Jackson",
@@ -986,6 +1008,14 @@
    "intro": "Van tien boodschappen schatten jullie de prijs van nu én van 15 jaar geleden. Wie het dichtstbij zit, krijgt de meeste punten.",
    "items": [
     {
+     "name": "Pakje roomboter",
+     "unit": "250 g",
+     "emoji": "🧈",
+     "now": 2.79,
+     "ago": 1.15,
+     "practice": true
+    },
+    {
      "name": "Liter halfvolle melk",
      "unit": "huismerk",
      "emoji": "🥛",
@@ -1062,8 +1092,14 @@
    "type": "draw",
    "title": "Tekenen",
    "emoji": "✏️",
-   "seconds": 75,
    "words": [
+    {
+     "word": "Huis",
+     "alt": [
+      "woning"
+     ],
+     "practice": true
+    },
     {
      "word": "Fiets",
      "alt": []
@@ -1197,6 +1233,16 @@
    "emoji": "⏱️",
    "seconds": 30,
    "cards": [
+    {
+     "words": [
+      "Sinterklaas",
+      "Fiets",
+      "Koffie",
+      "Voetbal",
+      "Regenboog"
+     ],
+     "practice": true
+    },
     [
      "Rutte",
      "Efteling",
@@ -1333,6 +1379,15 @@
    "hide": 0.5,
    "questions": [
     {
+     "name": "Google",
+     "alt": [],
+     "media": {
+      "kind": "image",
+      "src": "logos/google.png"
+     },
+     "practice": true
+    },
+    {
      "name": "Albert Heijn",
      "alt": [
       "AH",
@@ -1454,5 +1509,10 @@
    "unit": "treden",
    "answer": 465
   }
- ]
+ ],
+ "welcome": {
+  "emoji": "🎉",
+  "title": "Welkom bij de Familiequiz!",
+  "text": "Fijn dat jullie er zijn! Vanavond strijden de teams om de eeuwige roem: met meerkeuzevragen, wazige foto's, muziek, tekenwerk en nog veel meer. Pak je telefoon erbij, zo gaan we teams maken."
+ }
 }
