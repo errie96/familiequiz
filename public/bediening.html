@@ -101,21 +101,12 @@
     <details id="spotify-panel">
       <summary>🎵 Spotify (muziekronde) <span id="sp-badge" class="muted"></span></summary>
       <p id="sp-status" class="muted" style="margin:4px 0 8px;"></p>
-      <button id="sp-connect" class="btn-primary">Verbind met Spotify</button>
-      <div id="sp-tools" class="hidden">
-        <label class="muted">Afspeelapparaat (open Spotify op het apparaat bij de tv/speakers):</label>
-        <select id="sp-device"></select>
-        <div class="row">
-          <button id="sp-refresh" class="btn-option" style="text-align:center;">↻ Apparaten</button>
-          <button id="sp-test" class="btn-option" style="text-align:center;">▶️ Test</button>
-          <button id="sp-pause" class="btn-option" style="text-align:center;">⏸ Pauze</button>
-        </div>
-        <button id="sp-disconnect" class="btn-option" style="text-align:center; font-size:13px;">Ontkoppelen</button>
-      </div>
-      <p class="muted" style="font-size:12px; margin-top:8px;">
-        Eenmalig vooraf: Spotify Premium, en in je Spotify-app (developer dashboard) de Redirect-URI <b id="sp-redirect"></b> toevoegen.
-        Open deze pagina daarvoor via <b>http://127.0.0.1:3000/bediening.html</b> (of https op Render). Houd deze pagina tijdens de muziekronde open.
-        Elk liedje start dan vanzelf op het gekozen apparaat.
+      <p class="muted" style="font-size:12px;">
+        De muziek speelt af in de browser van het tv-scherm, net als bij Hitster. Koppelen doe je vooraf op de computer aan de tv:
+        open daar <b id="sp-tvurl"></b>, klik in de lobby op <b>Spotify koppelen</b> en log in.
+        Eenmalig nodig: Spotify Premium, deze Redirect-URI in je Spotify-app (developer dashboard), en het Spotify-account onder <i>User Management</i>.
+        Gebruik Chrome, Edge of Firefox op een computer (een smart-tv-browser kan het meestal niet).
+        Lokaal moet de tv-pagina via http://127.0.0.1:3000 openen, niet via het netwerkadres.
       </p>
     </details>
 
@@ -308,12 +299,17 @@
         const r = el("div", "row");
         const replay = el("button", "btn-option", "🔁 Opnieuw afspelen op tv");
         replay.style.textAlign = "center";
-        replay.textContent = spConnected() ? "🔁 Opnieuw afspelen (Spotify)" : "🔁 Opnieuw afspelen op tv";
-        replay.disabled = !p.song.hasAudio && !spConnected();
-        replay.onclick = () => (spConnected() ? spPlay(p.song) : socket.emit("song_replay"));
+        replay.textContent = "🔁 Opnieuw afspelen";
+        replay.onclick = () => socket.emit("song_replay");
+        const pz = el("button", "btn-option", "⏸ Muziek stoppen");
+        pz.style.textAlign = "center";
+        pz.onclick = () => socket.emit("song_pause");
+        r.append(pz);
         r.append(replay);
         box.append(r);
-        if (!p.song.hasAudio && !spConnected()) {
+        const tvSp = state.tvStatus && state.tvStatus.spotify;
+        if (tvSp) box.append(el("p", "muted", `Spotify op de tv: ${tvSp.text}`));
+        if (!p.song.hasAudio && !(tvSp && tvSp.ok)) {
           const a = el("a", "lnk", "Open dit liedje in Spotify");
           a.href = p.song.spotify; a.target = "_blank"; a.rel = "noopener";
           box.append(el("p", "muted", "Geen geluidsbestand ingesteld: speel het liedje zelf af (bijv. via Spotify) zodat het via de tv-speakers te horen is."), a);
@@ -449,109 +445,13 @@
       e.target.value = "";
     };
 
-    // ---------------- Spotify (PKCE, alleen in deze pagina) ----------------
-    const SP = {
-      clientId: localStorage.getItem("sp_client") || "3fc7ebb5540449dc92fa1ee9f4e97fff",
-      redirect: location.origin + location.pathname,
-      scope: "user-read-playback-state user-modify-playback-state"
-    };
-    $("sp-redirect").textContent = SP.redirect;
-    const spStatus = (t) => { $("sp-status").textContent = t || ""; };
-    const spConnected = () => !!localStorage.getItem("sp_refresh");
-    const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    async function spLogin() {
-      if (!window.crypto || !crypto.subtle) return spStatus("Dit werkt alleen via http://127.0.0.1:3000/bediening.html of een https-adres.");
-      const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
-      localStorage.setItem("sp_verifier", verifier);
-      const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-      const q = new URLSearchParams({ client_id: SP.clientId, response_type: "code", redirect_uri: SP.redirect, scope: SP.scope, code_challenge_method: "S256", code_challenge: challenge });
-      location.href = "https://accounts.spotify.com/authorize?" + q;
-    }
-    async function spTokenRequest(params) {
-      const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: SP.clientId, ...params }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error_description || d.error || "token");
-      localStorage.setItem("sp_access", d.access_token);
-      localStorage.setItem("sp_exp", String(Date.now() + (d.expires_in - 60) * 1000));
-      if (d.refresh_token) localStorage.setItem("sp_refresh", d.refresh_token);
-    }
-    async function spToken() {
-      if (!spConnected()) return null;
-      if (Date.now() > Number(localStorage.getItem("sp_exp") || 0)) {
-        try { await spTokenRequest({ grant_type: "refresh_token", refresh_token: localStorage.getItem("sp_refresh") }); }
-        catch (e) { spStatus("Spotify-sessie verlopen: verbind opnieuw."); return null; }
-      }
-      return localStorage.getItem("sp_access");
-    }
-    async function spApi(method, path, body) {
-      const t = await spToken();
-      if (!t) return { status: 401 };
-      const r = await fetch("https://api.spotify.com/v1" + path, { method, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
-      let json = null;
-      try { json = await r.json(); } catch (e) { /* 204 zonder inhoud */ }
-      return { status: r.status, json };
-    }
-    async function spDevices() {
-      const r = await spApi("GET", "/me/player/devices");
-      const sel = $("sp-device");
-      const keep = localStorage.getItem("sp_device") || sel.value;
-      sel.replaceChildren(new Option("Het actieve apparaat", ""));
-      ((r.json && r.json.devices) || []).forEach((d) => sel.append(new Option(`${d.name} (${d.type})${d.is_active ? " ●" : ""}`, d.id)));
-      sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
-      spStatus(r.status === 200 ? (sel.options.length > 1 ? "Verbonden met Spotify." : "Verbonden, maar geen apparaat gevonden: open Spotify op het apparaat bij de tv.") : "Apparaten ophalen mislukte (status " + r.status + ").");
-    }
-    async function spFind(song) {
-      const clean = song.title.replace(/\(.*?\)/g, "").replace(/\.\.\./g, "").trim();
-      for (const q of [`track:"${clean}" artist:"${song.artist}"`, `${clean} ${song.artist}`]) {
-        const r = await spApi("GET", `/search?q=${encodeURIComponent(q)}&type=track&limit=1&market=NL`);
-        const item = r.json && r.json.tracks && r.json.tracks.items && r.json.tracks.items[0];
-        if (item) return item;
-      }
-      return null;
-    }
-    async function spPlay(song) {
-      if (!spConnected()) return;
-      const item = await spFind(song);
-      if (!item) return spStatus(`"${song.title}" niet gevonden in Spotify: speel hem zelf af.`);
-      const dev = $("sp-device").value;
-      const r = await spApi("PUT", "/me/player/play" + (dev ? "?device_id=" + dev : ""), { uris: [item.uri], position_ms: 0 });
-      if (r.status === 204 || r.status === 200) spStatus(`▶️ Speelt: ${item.name}`);
-      else if (r.status === 404) spStatus("Geen actief Spotify-apparaat. Open Spotify op het apparaat bij de tv, kies het in de lijst en tik op ↻.");
-      else if (r.status === 403) spStatus("Spotify weigerde afspelen (Premium nodig?).");
-      else spStatus("Afspelen mislukte (status " + r.status + ").");
-    }
-    const spPause = () => (spConnected() ? spApi("PUT", "/me/player/pause" + ($("sp-device").value ? "?device_id=" + $("sp-device").value : "")) : null);
-    function spRefreshUi() {
-      const on = spConnected();
-      $("sp-connect").classList.toggle("hidden", on);
-      $("sp-tools").classList.toggle("hidden", !on);
-      $("sp-badge").textContent = on ? "● verbonden" : "○ niet verbonden";
-      if (!on) spStatus("Nog niet verbonden. Doe dit vooraf, vóór de quiz begint.");
-    }
-    $("sp-connect").onclick = spLogin;
-    $("sp-refresh").onclick = spDevices;
-    $("sp-device").onchange = () => localStorage.setItem("sp_device", $("sp-device").value);
-    $("sp-test").onclick = () => spPlay({ title: "Bohemian Rhapsody", artist: "Queen" });
-    $("sp-pause").onclick = spPause;
-    $("sp-disconnect").onclick = () => { ["sp_access", "sp_refresh", "sp_exp", "sp_device"].forEach((k) => localStorage.removeItem(k)); spRefreshUi(); };
-    (async () => {
-      const code = new URLSearchParams(location.search).get("code");
-      if (code) {
-        try { await spTokenRequest({ grant_type: "authorization_code", code, redirect_uri: SP.redirect, code_verifier: localStorage.getItem("sp_verifier") || "" }); $("spotify-panel").open = true; }
-        catch (e) { $("spotify-panel").open = true; spStatus("Koppelen mislukte: " + e.message + " (staat de Redirect-URI in je Spotify-app?)"); }
-        history.replaceState(null, "", location.pathname);
-      }
-      spRefreshUi();
-      if (spConnected()) spDevices();
-    })();
-    // Bij elke muziekvraag het liedje vanzelf starten; bij pauze of een ander scherm stoppen
-    let spLast = null;
-    function spOnState(st) {
-      if (!spConnected()) return;
-      if (st.paused) { if (spLast) spPause(); return; }
-      const song = st.step && st.step.kind === "song" && st.panel && st.panel.type === "song" ? st.panel.song : null;
-      if (song) { if (spLast !== st.step.id) { spLast = st.step.id; spPlay(song); } }
-      else if (spLast) { spLast = null; spPause(); }
+    // ---------------- Spotify: status van de speler op de tv ----------------
+    $("sp-tvurl").textContent = location.origin.replace(/\/\/[^:/]+/, (m) => (location.hostname === "127.0.0.1" || location.protocol === "https:" ? m : "//127.0.0.1")) + "/host.html";
+    function renderSpotify(st) {
+      const s = st.tvStatus && st.tvStatus.spotify;
+      $("sp-badge").textContent = s ? (s.ok ? "● klaar" : "○ let op") : "○ geen tv-melding";
+      $("sp-status").textContent = s ? `Tv (${s.at}): ${s.text}` : "Het tv-scherm heeft nog niets gemeld. Is host.html geopend?";
+      $("sp-status").style.color = s && !s.ok ? "#fbbf24" : "";
     }
 
     // ---------------- Hoofdlus ----------------
@@ -591,7 +491,7 @@
       }
 
       renderPanel(state);
-      spOnState(state);
+      renderSpotify(state);
       $("quiz-badge").textContent = state.quiz.kind === "excel" ? "● uit Excel" : "○ questions.json";
       $("quiz-status").textContent = `Bron: ${state.quiz.file} · ingelezen ${state.quiz.loadedAt} · ${state.quiz.rounds} rondes, ${state.quiz.steps} schermen`;
       $("quiz-reload").disabled = $("quiz-upload-btn").disabled = state.settingsLocked;

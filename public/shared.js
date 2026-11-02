@@ -305,3 +305,101 @@ window.QuizFX = (function () {
 
   return { unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal };
 })();
+
+// Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
+// Wordt gebruikt door het tv-scherm: die browser (de laptop aan de tv) is de speler.
+window.QuizSpotify = (function () {
+  const CLIENT_ID = localStorage.getItem("sp_client") || "3fc7ebb5540449dc92fa1ee9f4e97fff";
+  const SCOPE = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state";
+  const redirect = () => location.origin + location.pathname;
+  // Oude tokens zonder "streaming"-rechten tellen niet: dan opnieuw koppelen
+  const connected = () => !!localStorage.getItem("sp_refresh") && localStorage.getItem("sp_scope") === SCOPE;
+  const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  async function login() {
+    if (!window.crypto || !crypto.subtle) throw new Error("Koppelen kan alleen via http://127.0.0.1:3000/host.html of een https-adres.");
+    const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+    localStorage.setItem("sp_verifier", verifier);
+    const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+    const q = new URLSearchParams({ client_id: CLIENT_ID, response_type: "code", redirect_uri: redirect(), scope: SCOPE, code_challenge_method: "S256", code_challenge: challenge });
+    location.href = "https://accounts.spotify.com/authorize?" + q;
+  }
+  async function tokenRequest(params) {
+    const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: CLIENT_ID, ...params }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error_description || d.error || "token");
+    localStorage.setItem("sp_access", d.access_token);
+    localStorage.setItem("sp_exp", String(Date.now() + (d.expires_in - 60) * 1000));
+    if (d.refresh_token) localStorage.setItem("sp_refresh", d.refresh_token);
+  }
+  // Na terugkomen van Spotify: ?code=... of ?error=... afhandelen
+  async function handleRedirect() {
+    const q = new URLSearchParams(location.search);
+    const code = q.get("code"), err = q.get("error");
+    if (!code && !err) return null;
+    history.replaceState(null, "", location.pathname);
+    if (err) return { ok: false, message: err === "access_denied" ? "toegang geweigerd" : err };
+    try {
+      await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirect(), code_verifier: localStorage.getItem("sp_verifier") || "" });
+      localStorage.setItem("sp_scope", SCOPE);
+      return { ok: true };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+  async function token() {
+    if (!connected()) return null;
+    if (Date.now() > Number(localStorage.getItem("sp_exp") || 0)) {
+      try { await tokenRequest({ grant_type: "refresh_token", refresh_token: localStorage.getItem("sp_refresh") }); }
+      catch (e) { return null; }
+    }
+    return localStorage.getItem("sp_access");
+  }
+  async function api(method, path, body) {
+    const t = await token();
+    if (!t) return { status: 401, json: null };
+    const r = await fetch("https://api.spotify.com/v1" + path, { method, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    let json = null;
+    try { json = await r.json(); } catch (e) { /* 204 zonder inhoud */ }
+    return { status: r.status, json };
+  }
+  async function find(title, artist) {
+    const clean = String(title).replace(/\(.*?\)/g, "").replace(/\.\.\./g, "").trim();
+    for (const q of [`track:"${clean}" artist:"${artist}"`, `${clean} ${artist}`]) {
+      const r = await api("GET", `/search?q=${encodeURIComponent(q)}&type=track&limit=1&market=NL`);
+      const item = r.json && r.json.tracks && r.json.tracks.items && r.json.tracks.items[0];
+      if (item) return item;
+      if (r.status === 401 || r.status === 403) return null;
+    }
+    return null;
+  }
+  const play = (uri, deviceId) => api("PUT", "/me/player/play" + (deviceId ? "?device_id=" + deviceId : ""), { uris: [uri], position_ms: 0 });
+  const pause = (deviceId) => api("PUT", "/me/player/pause" + (deviceId ? "?device_id=" + deviceId : ""));
+  function disconnect() { ["sp_access", "sp_refresh", "sp_exp", "sp_scope"].forEach((k) => localStorage.removeItem(k)); }
+
+  // Speler in deze browser
+  let player = null;
+  function startPlayer(name, onStatus) {
+    return new Promise((resolve) => {
+      const go = () => {
+        player = new window.Spotify.Player({ name, getOAuthToken: (cb) => token().then((t) => cb(t || "")), volume: 0.9 });
+        player.addListener("ready", ({ device_id }) => { onStatus(true, "Spotify-speler klaar"); resolve(device_id); });
+        player.addListener("not_ready", () => onStatus(false, "Spotify-speler offline (internet?)"));
+        player.addListener("initialization_error", (e) => { onStatus(false, "Deze browser kan Spotify niet afspelen (" + e.message + "). Gebruik Chrome, Edge of Firefox op een computer."); resolve(null); });
+        player.addListener("authentication_error", (e) => { onStatus(false, "Spotify-login niet geldig: koppel opnieuw (" + e.message + ")"); resolve(null); });
+        player.addListener("account_error", (e) => { onStatus(false, "Spotify Premium is nodig (" + e.message + ")"); resolve(null); });
+        player.addListener("playback_error", (e) => onStatus(false, "Afspeelfout: " + e.message));
+        player.connect();
+      };
+      if (window.Spotify && window.Spotify.Player) return go();
+      window.onSpotifyWebPlaybackSDKReady = go;
+      const s = document.createElement("script");
+      s.src = "https://sdk.scdn.co/spotify-player.js";
+      s.onerror = () => { onStatus(false, "De Spotify-speler kon niet laden (geen internet?)"); resolve(null); };
+      document.head.appendChild(s);
+    });
+  }
+  // Moet vanuit een klik of toetsdruk (autoplay-regels van de browser)
+  const activate = () => { try { if (player && player.activateElement) player.activateElement(); } catch (e) { /* oudere SDK */ } };
+  const resume = () => { if (player) player.resume().catch(() => {}); };
+
+  return { connected, login, handleRedirect, find, play, pause, resume, disconnect, startPlayer, activate, redirect };
+})();

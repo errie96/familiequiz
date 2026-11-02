@@ -53,12 +53,16 @@ De server leest dit bestand zelf in; er is geen extra pakket voor nodig. Tot vla
 foto's/logo's/audio moeten nog in `public/media/` (zie daar de README).
 Liedjes zonder `audio`: koppel Spotify (hieronder) of speel het liedje zelf af.
 
-## Spotify koppelen (host, vooraf)
-1. Je hebt Spotify Premium nodig. Zet in het developer dashboard van je Spotify-app de Redirect-URI die in de bediening staat (bij `Spotify`) bij *Redirect URIs*.
-2. Open `http://127.0.0.1:3000/bediening.html` (lokaal) of de https-link op Render. Dit werkt niet via een gewoon netwerk-IP.
-3. Klap `Spotify` open, tik op **Verbind met Spotify**, kies daarna het afspeelapparaat (Spotify moet daarop openstaan) en probeer **Test**.
-4. Houd de bedieningspagina open tijdens de muziekronde: elk liedje start dan vanzelf op dat apparaat.
-De Client ID kan in `public/bediening.html` (`SP.clientId`) of via `localStorage.sp_client` worden aangepast.
+## Spotify koppelen (vooraf, op de computer aan de tv)
+De muziek speelt af in de browser van het tv-scherm (Spotify Web Playback SDK), net als in de Hitster-app.
+1. Eenmalig in je Spotify-app (developer dashboard): voeg `http://127.0.0.1:3000/host.html` toe als Redirect URI
+   (en voor Render ook `https://<jouw-naam>.onrender.com/host.html`), en zet het Spotify-account onder *User Management*. Spotify Premium is nodig.
+2. Open op de computer aan de tv `http://127.0.0.1:3000/host.html` (niet het netwerkadres) in Chrome, Edge of Firefox.
+   Een smart-tv-browser kan meestal geen Spotify afspelen.
+3. Klik in de lobby op **Spotify koppelen** en log in. Daarna staat er "Spotify-speler klaar". Druk één keer op OK/klik om het geluid toe te staan.
+4. Bij elke muziekvraag start de tv het liedje zelf. In de bediening zie je wat er speelt, met knoppen *Opnieuw afspelen* en *Muziek stoppen*.
+   Gaat er iets mis, dan staat de melding van de tv in de bediening (blokje Spotify en bij de muziekvraag).
+De Client ID staat in `public/shared.js` (`QuizSpotify`).
 
 ## Opslaan en Render
 De stand staat in `data/state.json`; na een herstart staat de quiz op pauze. Online draaien via Render: zie `render.yaml`
