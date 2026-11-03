@@ -58,3 +58,61 @@ test('invalid question entries are skipped with a warning instead of crashing', 
   assert.ok(result.steps.some((step) => step.kind === 'final'));
   assert.ok(result.warnings.some((warning) => warning.includes('ongeldig')));
 });
+
+const os = require('node:os');
+const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles } = require('../lib/state-store');
+
+function temporaryStateFile() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'familiequiz-state-'));
+  return { dir, file: path.join(dir, 'data', 'state.json') };
+}
+
+test('state snapshots are written as valid JSON and previous versions are backed up', (t) => {
+  const { dir, file } = temporaryStateFile();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  writeJsonWithBackup(file, { version: 2, teams: { a: 'Team A' } });
+  writeJsonWithBackup(file, { version: 2, teams: { b: 'Team B' } });
+
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).teams, { b: 'Team B' });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file + '.bak', 'utf8')).teams, { a: 'Team A' });
+  assert.equal(readJsonWithBackup(file).source, 'primary');
+});
+
+test('a corrupt primary state file recovers from the last valid backup', (t) => {
+  const { dir, file } = temporaryStateFile();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  writeJsonWithBackup(file, { version: 2, teams: { a: 'Team A' } });
+  writeJsonWithBackup(file, { version: 2, teams: { b: 'Team B' } });
+  fs.writeFileSync(file, '{ invalid json');
+
+  const recovered = readJsonWithBackup(file);
+  assert.equal(recovered.source, 'backup');
+  assert.deepEqual(recovered.data.teams, { a: 'Team A' });
+});
+
+test('missing or corrupt primary and backup files return no snapshot', (t) => {
+  const { dir, file } = temporaryStateFile();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  assert.equal(readJsonWithBackup(file), null);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '{ broken');
+  fs.writeFileSync(file + '.bak', '{ also broken');
+  assert.equal(readJsonWithBackup(file), null);
+});
+
+test('fresh reset removes primary, temporary and backup state files', (t) => {
+  const { dir, file } = temporaryStateFile();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  for (const candidate of [file, file + '.tmp', file + '.bak', file + '.bak.tmp']) {
+    fs.writeFileSync(candidate, '{}');
+  }
+  removeStateFiles(file);
+  for (const candidate of [file, file + '.tmp', file + '.bak', file + '.bak.tmp']) {
+    assert.equal(fs.existsSync(candidate), false);
+  }
+});
