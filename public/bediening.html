@@ -52,6 +52,7 @@
       <button id="btn-main" class="btn-primary big">...</button>
       <p id="main-hint" class="muted" style="text-align:center; min-height:1.2em;"></p>
       <button id="btn-force" class="btn-option hidden" style="text-align:center;"></button>
+      <button id="btn-undo" class="btn-option" style="text-align:center; margin-top:6px;" disabled>↶ Niets om ongedaan te maken</button>
       <div class="row">
         <button id="btn-prev" class="btn-option" style="text-align:center;">⬅️ Vorige</button>
         <button id="btn-pause" class="btn-pause">☕ Pauze</button>
@@ -249,6 +250,9 @@
     let S = null;
     $("btn-main").onclick = () => socket.emit("host_main");
     $("btn-force").onclick = () => socket.emit("host_force");
+    $("btn-undo").onclick = () => {
+      if (S && S.controls && S.controls.undo && S.controls.undo.enabled && confirm("Laatste correctie ongedaan maken?")) socket.emit("undo_last");
+    };
     $("btn-pause").onclick = () => socket.emit("toggle_pause");
     $("btn-standings").onclick = () => socket.emit("toggle_standings");
     $("btn-prev").onclick = () => socket.emit("prev_step");
@@ -753,6 +757,9 @@
       const f = state.controls.force;
       $("btn-force").classList.toggle("hidden", !f);
       if (f) $("btn-force").textContent = f.label;
+      const undo = state.controls.undo || { enabled: false, label: "↶ Niets om ongedaan te maken" };
+      $("btn-undo").textContent = undo.label;
+      $("btn-undo").disabled = !undo.enabled || !!state.review;
       $("btn-pause").textContent = state.paused ? "▶️ Hervat" : "☕ Pauze";
       $("btn-pause").disabled = state.phase !== "PLAY";
       $("btn-prev").disabled = state.phase !== "PLAY";

@@ -10,6 +10,7 @@ const { loadContent, decadeOf } = require('./lib/content');
 const { fromExcel } = require('./lib/fromExcel');
 const { newId, cleanText, norm, fuzzyEq, shuffle } = require('./lib/util');
 const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles } = require('./lib/state-store');
+const { pushUndo, applyUndoEntry } = require('./lib/undo');
 
 const PORT = process.env.PORT || 3000;
 const ON_RENDER = !!process.env.RENDER;
@@ -171,7 +172,7 @@ function replan(order) {
   settings.roundPlan = order.map((p) => ({ id: p.id, on: p.on !== false, base: p.base || undefined, category: p.category || undefined }));
   compileQuiz(content.warnings.filter((w) => !/Ronde/.test(w)));
   if (curId) { const i = steps.findIndex((x) => x.id === curId); if (i >= 0) stepIndex = i; }
-  if (phase === 'LOBBY') { ssAll = {}; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
+  if (phase === 'LOBBY') { ssAll = {}; undoHistory = []; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
 }
 let dynSongs = {};  // liedjes die de bediening voor een extra muziekronde heeft gevonden (id -> liedje)
 let dynStart = {};  // rondeId -> ids van de startkaarten van die extra muziekronde
@@ -253,6 +254,8 @@ let endView = 'ranking'; // ranking | breakdown (op de tv na de ontknoping)
 let ssAll = {};      // stepId -> dynamische status van die stap
 let alerts = {};     // deviceId -> spiekmelding (blijft staan tot de speler terug is)
 let seq = 0;
+let undoHistory = [];
+const UNDO_LIMIT = 30;
 
 const timer = { tag: null, totalMs: 0, remainingMs: 0, startedAt: 0, handle: null };
 
@@ -964,6 +967,7 @@ function saveNow() {
       phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
+      undoHistory,
       devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
     };
     writeJsonWithBackup(STATE_FILE, snapshot);
@@ -998,6 +1002,7 @@ function loadSaved() {
   dynStart = data.dynStart && typeof data.dynStart === 'object' ? data.dynStart : {};
   compileQuiz(content.warnings);
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
+  undoHistory = Array.isArray(data.undoHistory) ? data.undoHistory.slice(-UNDO_LIMIT) : [];
   phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
   stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), steps.length - 1);
   reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
@@ -1340,7 +1345,7 @@ function broadcastState() {
     ...common,
     step: step ? publicStep(step) : null,
     panel: step ? hostPanel(step) : null,
-    controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null },
+    controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null, undo: { enabled: undoHistory.length > 0, label: undoHistory.length ? `↶ Ongedaan maken: ${undoHistory[undoHistory.length - 1].label}` : '↶ Niets om ongedaan te maken' } },
     teams: Object.values(teams).map((t) => ({
       teamId: t.teamId, name: t.name, connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
       members: teamDevices(t).map((d) => ({ deviceId: d.deviceId, label: d.label, role: d.deviceId === t.baseDeviceId ? 'base' : 'member', connected: d.connected }))
@@ -1997,7 +2002,11 @@ io.on('connection', (socket) => {
     const step = cur();
     if (!step || step.kind !== 'memory') return;
     const e = (ss(step).entries[teamId] || []).find((x) => x.id === entryId);
-    if (e) { e.ok = !!ok; sync(); }
+    if (e && e.ok !== !!ok) {
+      pushUndo(undoHistory, { type: 'memory_judge', stepId: step.id, teamId, entryId, before: e.ok, label: 'beoordeling geheugen' }, UNDO_LIMIT);
+      e.ok = !!ok;
+      sync();
+    }
   });
   socket.on('thirty_toggle', ({ index } = {}) => {
     if (!isRemote(socket)) return;
@@ -2006,12 +2015,14 @@ io.on('connection', (socket) => {
     const s = ss(step);
     if (step.kind === 'demo_thirty') {
       if (s.status === 'ready') return;
+      pushUndo(undoHistory, { type: 'thirty_toggle', stepId: step.id, index, before: s.ok[index], demo: true, label: 'oefenronde 30 Seconds' }, UNDO_LIMIT);
       s.ok[index] = !s.ok[index];
       return sync();
     }
     if (step.kind !== 'thirty') return;
     const turn = s.turns[s.turn];
     if (!turn || !['running', 'judging', 'result'].includes(s.status)) return;
+    pushUndo(undoHistory, { type: 'thirty_toggle', stepId: step.id, index, before: turn.ok[index], demo: false, turnIndex: s.turn, label: '30 Seconds-beoordeling' }, UNDO_LIMIT);
     turn.ok[index] = !turn.ok[index];
     sync();
   });
@@ -2023,8 +2034,11 @@ io.on('connection', (socket) => {
     const s = ss(step);
     const turn = s.turns[s.turn];
     if (!turn || !turn.words[teamId] || s.status === 'ready') return;
-    turn.ok[teamId] = !!ok;
-    sync();
+    if (turn.ok[teamId] !== !!ok) {
+      pushUndo(undoHistory, { type: 'draw_judge', stepId: step.id, teamId, turnIndex: s.turn, before: turn.ok[teamId], label: 'tekenantwoord' }, UNDO_LIMIT);
+      turn.ok[teamId] = !!ok;
+      sync();
+    }
   });
   socket.on('logo_judge', ({ teamId, ok } = {}) => {
     if (!isRemote(socket)) return;
@@ -2032,8 +2046,11 @@ io.on('connection', (socket) => {
     if (!step || step.kind !== 'logo') return;
     const s = ss(step);
     if (!s.answers[teamId]) return;
-    s.judged[teamId] = !!ok;
-    sync();
+    if (s.judged[teamId] !== !!ok) {
+      pushUndo(undoHistory, { type: 'logo_judge', stepId: step.id, teamId, beforePresent: Object.prototype.hasOwnProperty.call(s.judged, teamId), before: s.judged[teamId], label: 'logo-beoordeling' }, UNDO_LIMIT);
+      s.judged[teamId] = !!ok;
+      sync();
+    }
   });
   socket.on('add_time', () => {
     if (!isRemote(socket) || !timer.tag) return;
@@ -2106,6 +2123,7 @@ io.on('connection', (socket) => {
     if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'De vragen kunnen alleen vóór de start opnieuw worden ingelezen.' });
     loadQuiz();
     ssAll = {};
+    undoHistory = [];
     Object.values(teams).forEach((t) => { t.timelines = {}; });
     sync();
   });
@@ -2137,8 +2155,14 @@ io.on('connection', (socket) => {
     const step = cur();
     if (!team || !step || !['mc', 'price', 'final', 'tiebreak', 'logo'].includes(step.kind)) return;
     const s = ss(step);
-    if (step.kind === 'final' || step.kind === 'tiebreak') { if (s.status === 'question' || s.status === 'open') delete s.answers[teamId]; }
-    else if (s.status === 'open' || (step.kind === 'mc' && s.status === 'closed')) {
+    const allowed = step.kind === 'final' || step.kind === 'tiebreak'
+      ? s.status === 'question' || s.status === 'open'
+      : s.status === 'open' || (step.kind === 'mc' && s.status === 'closed');
+    if (allowed && (Object.prototype.hasOwnProperty.call(s.answers || {}, teamId) || Object.prototype.hasOwnProperty.call(s.judged || {}, teamId))) {
+      pushUndo(undoHistory, { type: 'clear_answer', stepId: step.id, teamId,
+        answerPresent: Object.prototype.hasOwnProperty.call(s.answers || {}, teamId), answer: s.answers && s.answers[teamId],
+        judgedPresent: Object.prototype.hasOwnProperty.call(s.judged || {}, teamId), judged: s.judged && s.judged[teamId],
+        status: s.status, label: `antwoord van ${teams[teamId] ? teams[teamId].name : 'team'} herstellen` }, UNDO_LIMIT);
       delete s.answers[teamId];
       if (s.judged) delete s.judged[teamId];
       if (step.kind === 'mc' && s.status === 'closed') s.status = 'open';
@@ -2150,9 +2174,19 @@ io.on('connection', (socket) => {
     const step = cur();
     if (!step || step.kind !== 'mc') return;
     const s = ss(step);
-    if (mode === 'void' || mode === 'all_correct') s.voided = mode;
-    else if (mode === null) s.voided = null;
-    else return;
+    if (mode === 'void' || mode === 'all_correct') {
+      if (s.voided !== mode) { pushUndo(undoHistory, { type: 'void_question', stepId: step.id, before: s.voided ?? null, label: 'vraagbeoordeling' }, UNDO_LIMIT); s.voided = mode; }
+    } else if (mode === null) {
+      if (s.voided !== null) { pushUndo(undoHistory, { type: 'void_question', stepId: step.id, before: s.voided ?? null, label: 'vraagbeoordeling' }, UNDO_LIMIT); s.voided = null; }
+    } else return;
+    sync();
+  });
+  socket.on('undo_last', () => {
+    if (!isRemote(socket)) return;
+    const entry = undoHistory[undoHistory.length - 1];
+    if (!entry) return socket.emit('host_error', { message: 'Er is niets om ongedaan te maken.' });
+    if (!applyUndoEntry(entry, steps, ssAll)) return socket.emit('host_error', { message: 'Deze correctie kan niet meer worden teruggedraaid.' });
+    undoHistory.pop();
     sync();
   });
   socket.on('alert_dismiss', ({ key } = {}) => {
@@ -2220,7 +2254,7 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {};
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; undoHistory = [];
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
