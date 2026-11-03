@@ -973,7 +973,7 @@ function saveNow() {
 }
 function loadSaved() {
   if (FRESH) { removeStateFiles(STATE_FILE); return false; }
-  const saved = readJsonWithBackup(STATE_FILE);
+  const saved = readJsonWithBackup(STATE_FILE, (snapshot) => snapshot.version === 2 && snapshot.teams && typeof snapshot.teams === 'object');
   if (!saved) return false;
   const data = saved.data;
   if (saved.source === 'backup') console.warn('Het hoofd-opslagbestand is ongeldig; de vorige geldige reservekopie wordt hersteld.');
@@ -2222,6 +2222,8 @@ io.on('connection', (socket) => {
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
     ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {};
     timerClear();
+    // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
+    try { removeStateFiles(STATE_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
     io.emit('quiz_reset');
     broadcastState();
   });
