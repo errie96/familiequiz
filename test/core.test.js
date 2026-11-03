@@ -116,3 +116,29 @@ test('fresh reset removes primary, temporary and backup state files', (t) => {
     assert.equal(fs.existsSync(candidate), false);
   }
 });
+
+test('an unusable but valid JSON primary falls back to a compatible backup', (t) => {
+  const { dir, file } = temporaryStateFile();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  writeJsonWithBackup(file, { version: 2, teams: { a: 'Team A' } });
+  writeJsonWithBackup(file, { version: 2, teams: { b: 'Team B' } });
+  fs.writeFileSync(file, JSON.stringify({ version: 99, teams: {} }));
+
+  const recovered = readJsonWithBackup(file, (snapshot) => snapshot.version === 2 && snapshot.teams);
+  assert.equal(recovered.source, 'backup');
+  assert.deepEqual(recovered.data.teams, { a: 'Team A' });
+});
+
+test('a damaged primary does not replace a known-good backup during the next save', (t) => {
+  const { dir, file } = temporaryStateFile();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  writeJsonWithBackup(file, { version: 2, revision: 1 });
+  writeJsonWithBackup(file, { version: 2, revision: 2 });
+  fs.writeFileSync(file, '{ damaged');
+  writeJsonWithBackup(file, { version: 2, revision: 3 });
+
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).revision, 3);
+  assert.equal(JSON.parse(fs.readFileSync(file + '.bak', 'utf8')).revision, 1);
+});
