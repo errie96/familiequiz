@@ -9,6 +9,9 @@ const { Server } = require('socket.io');
 const { loadContent, decadeOf } = require('./lib/content');
 const { fromExcel } = require('./lib/fromExcel');
 const { newId, cleanText, norm, fuzzyEq, shuffle } = require('./lib/util');
+const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles } = require('./lib/state-store');
+const { pushUndo, applyUndoEntry } = require('./lib/undo');
+const { HISTORY_VERSION, DEFAULT_LIMIT: HISTORY_LIMIT, createHistoryEntry, appendHistory, isHistorySnapshot } = require('./lib/quiz-history');
 
 const PORT = process.env.PORT || 3000;
 const ON_RENDER = !!process.env.RENDER;
@@ -22,6 +25,9 @@ if (!HOST_PIN) {
 }
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+const PHOTOS_FILE = path.join(DATA_DIR, 'teamphotos.json'); // teamfoto's apart, zodat state.json klein blijft
+const MAX_PHOTO_CHARS = 200000;
 const FRESH = process.argv.includes('--fresh') || process.env.FRESH === '1';
 
 const MAX_TEAM_NAME = 24;
@@ -56,6 +62,13 @@ function getJoinUrl() {
 }
 app.get('/api/join-url', (req, res) => res.json({ url: getJoinUrl() }));
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
+// Teamfoto als los plaatje: zo hoeft de foto niet bij elke update opnieuw mee naar tv en telefoons
+app.get('/teamfoto/:teamId', (req, res) => {
+  const photo = teamPhotos[req.params.teamId];
+  if (!photo) return res.status(404).end();
+  const buf = Buffer.from(photo.dataUrl.split(',')[1], 'base64');
+  res.set('Cache-Control', 'public, max-age=31536000, immutable').type('image/jpeg').send(buf);
+});
 
 // ---------------------------------------------------------------
 // Instellingen (config.json = standaard; de quizmaster past ze in de lobby aan)
@@ -140,7 +153,13 @@ function extraRaw(p, b) {
   // Geen oefenronde meer bij een extra ronde
   if (r.type === 'draw') r.words = (r.words || []).filter(notPractice);
   if (r.type === 'thirty') r.cards = (r.cards || []).filter(notPractice);
-  if (r.type === 'hitster') { r.songs = []; r.dynamic = true; r.category = HITSTER_CATS[p.category] ? p.category : 'original'; }
+  if (r.type === 'hitster') {
+    const category = HITSTER_CATS[p.category] ? p.category : 'original';
+    const fallback = (baseRaw.hitsterLibrary || (baseRaw.rounds.find((round) => round.type === 'hitster') || {}).songs || []).map((song) => ({ ...song, category: song.category || 'original' }));
+    r.songs = fallback.filter((song) => song.category === category); // alleen deze categorie; daarna Spotify
+    r.dynamic = true;
+    r.category = category;
+  }
   return r;
 }
 function applyPlan(raw) {
@@ -162,7 +181,10 @@ function extraOptions() {
   const list = (baseRaw && baseRaw.rounds) || [];
   return {
     rounds: list.filter((r) => EXTRA_TYPES.includes(r.type)).map((r) => ({ id: r.id, title: r.title, type: r.type })),
-    categories: Object.entries(HITSTER_CATS).map(([id, name]) => ({ id, name }))
+    categories: Object.entries(HITSTER_CATS).map(([id, name]) => {
+      const n = ((baseRaw && baseRaw.hitsterLibrary) || []).filter((song) => (song.category || 'original') === id).length;
+      return { id, name: `${name} · ${n ? n + ' nummers uit de lijst, daarna Spotify' : 'alleen Spotify'}`, count: n };
+    })
   };
 }
 function replan(order) {
@@ -170,10 +192,30 @@ function replan(order) {
   settings.roundPlan = order.map((p) => ({ id: p.id, on: p.on !== false, base: p.base || undefined, category: p.category || undefined }));
   compileQuiz(content.warnings.filter((w) => !/Ronde/.test(w)));
   if (curId) { const i = steps.findIndex((x) => x.id === curId); if (i >= 0) stepIndex = i; }
-  if (phase === 'LOBBY') { ssAll = {}; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
+  if (phase === 'LOBBY') { ssAll = {}; undoHistory = []; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
 }
-let dynSongs = {};  // liedjes die de bediening voor een extra muziekronde heeft gevonden (id -> liedje)
-let dynStart = {};  // rondeId -> ids van de startkaarten van die extra muziekronde
+let dynSongs = {};  // liedjes die de bediening online vindt (id -> liedje)
+let dynStart = {};  // rondeId -> online startkaarten
+let roundPhotos = {}; // rondeId -> teamId -> gecomprimeerde teamfoto (alleen tijdelijk in geheugen)
+let teamPhotos = {};  // teamId -> { dataUrl, v }: vaste teamfoto, bewaard in data/teamphotos.json
+const validPhoto = (d) => typeof d === 'string' && d.length <= MAX_PHOTO_CHARS && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d);
+const photoUrl = (teamId) => (teamPhotos[teamId] ? `/teamfoto/${encodeURIComponent(teamId)}?v=${teamPhotos[teamId].v}` : null);
+function savePhotos() {
+  try { writeJsonWithBackup(PHOTOS_FILE, { version: 1, photos: teamPhotos }); }
+  catch (e) { console.error('Teamfoto\'s opslaan mislukt:', e.message); }
+}
+function loadPhotos() {
+  if (FRESH) { try { removeStateFiles(PHOTOS_FILE); } catch (e) { /* bestond niet */ } return; }
+  const saved = readJsonWithBackup(PHOTOS_FILE, (x) => x && x.version === 1 && x.photos && typeof x.photos === 'object');
+  const photos = saved && saved.data ? saved.data.photos : {};
+  teamPhotos = {};
+  for (const [teamId, p] of Object.entries(photos)) if (teams[teamId] && p && validPhoto(p.dataUrl)) teamPhotos[teamId] = { dataUrl: p.dataUrl, v: Number(p.v) || Date.now() };
+}
+function setTeamPhoto(teamId, dataUrl) {
+  if (dataUrl) teamPhotos[teamId] = { dataUrl, v: Date.now() };
+  else delete teamPhotos[teamId];
+  savePhotos();
+}
 function addDynSong(id, t) {
   const song = {
     id, key: `${t.title}|${t.artist}`.toLowerCase(), title: t.title, artist: t.artist, year: t.year, dynamic: true,
@@ -198,6 +240,7 @@ function cleanTrack(t) {
 function usedSongKeys() {
   const keys = new Set();
   steps.forEach((x) => { const id = x.kind === 'song' && ssAll[x.id] && ssAll[x.id].songId; if (id && songs[id]) keys.add(songs[id].key); });
+  Object.values(roundById).forEach((round) => (round.startIds || []).forEach((id) => { if (songs[id]) keys.add(songs[id].key); }));
   Object.values(dynStart).flat().forEach((id) => { if (songs[id]) keys.add(songs[id].key); });
   return [...keys];
 }
@@ -252,6 +295,10 @@ let endView = 'ranking'; // ranking | breakdown (op de tv na de ontknoping)
 let ssAll = {};      // stepId -> dynamische status van die stap
 let alerts = {};     // deviceId -> spiekmelding (blijft staan tot de speler terug is)
 let seq = 0;
+let undoHistory = [];
+const UNDO_LIMIT = 30;
+let gameId = null;
+let historyEntries = [];
 
 const timer = { tag: null, totalMs: 0, remainingMs: 0, startedAt: 0, handle: null };
 
@@ -475,7 +522,7 @@ function tiebreakWinners(step) {
 }
 
 function ranking() {
-  const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, score: scoreOf(t) })).sort((a, b) => b.score - a.score || byName(a, b));
+  const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, photo: photoUrl(t.teamId), score: scoreOf(t) })).sort((a, b) => b.score - a.score || byName(a, b));
   list.forEach((item) => { item.rank = 1 + list.filter((o) => o.score > item.score).length; });
   return list;
 }
@@ -543,7 +590,16 @@ function closeStep(step) {
 // Het liedje van een muziekvraag: bij de eerste keer willekeurig gekozen uit de nog niet gespeelde liedjes
 function songOf(step) {
   const s = ss(step);
-  if (step.dynamic) return (s.songId && songs[s.songId]) || null;
+  if (step.dynamic) {
+    if (s.songId && songs[s.songId]) return songs[s.songId];
+    const round = roundById[step.round];
+    const used = new Set(usedSongKeys());
+    const primary = (round && round.pool || []).filter((id) => songs[id] && !used.has(songs[id].key));
+    const fallback = (round && round.fallbackPool || []).filter((id) => songs[id] && !used.has(songs[id].key));
+    const pool = primary.length ? primary : fallback;
+    if (pool.length) { s.songId = pool[Math.floor(Math.random() * pool.length)]; return songs[s.songId]; }
+    return null;
+  }
   if (!s.songId || !songs[s.songId]) {
     const round = roundById[step.round];
     const pool = (round && (step.test ? round.practicePool : round.pool)) || [];
@@ -577,12 +633,20 @@ function revealSong(step) {
 }
 
 // Elke muziekronde heeft een eigen tijdlijn per team (een extra ronde begint opnieuw met startkaarten)
+function dynamicStartIds(roundId) {
+  const round = roundById[roundId];
+  return [...(round && round.startIds || []), ...(dynStart[roundId] || [])];
+}
+function dynamicStartReady(roundId) {
+  const round = roundById[roundId];
+  return !round || dynamicStartIds(roundId).length >= (round.startCards || 2);
+}
 function ensureTimeline(team, roundId) {
   team.timelines = team.timelines || {};
   if (!team.timelines[roundId]) {
     const round = roundById[roundId];
-    const start = round && round.dynamic ? dynStart[roundId] : round && round.startIds;
-    if (round && round.dynamic && !(start && start.length)) return []; // startkaarten nog niet binnen
+    const start = round && round.dynamic ? dynamicStartIds(roundId) : round && round.startIds;
+    if (round && round.dynamic && !dynamicStartReady(roundId)) return [];
     team.timelines[roundId] = start ? [...start].filter((id) => songs[id]).sort((a, b) => songs[a].year - songs[b].year) : [];
   }
   return team.timelines[roundId];
@@ -636,7 +700,10 @@ function enterStep() {
   if (step.kind === 'draw' && !s.plan) planDraw(step);
   if (step.kind === 'thirty' && !s.order) planThirty(step);
   if (step.kind === 'song') {
-    if (step.dynamic && (!s.songId || !dynStart[step.round])) s.status = 'loading'; // de bediening zoekt het liedje op
+    if (step.dynamic) {
+      const song = songOf(step); // probeer eerst de Excel-bibliotheek
+      s.status = song && dynamicStartReady(step.round) ? 'open' : 'loading';
+    }
     Object.values(teams).forEach((t) => ensureTimeline(t, step.round));
   }
   if (step.kind === 'tiebreak' && !s.teams) s.teams = tiedLeaders();
@@ -646,7 +713,11 @@ function enterStep() {
 const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tiebreak', 'logo'].includes(step.kind);
 
 const tiebreakPlayed = () => steps.some((x) => x.kind === 'tiebreak' && ssAll[x.id] && (ssAll[x.id].teams || []).length);
-function finishQuiz() { phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear(); }
+function finishQuiz() {
+  if (phase === 'END') return;
+  phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear();
+  archiveFinishedQuiz();
+}
 function next() {
   if (stepIndex + 1 >= steps.length) return finishQuiz();
   stepIndex++;
@@ -951,6 +1022,29 @@ function reviewPages(scope) {
 // Opslaan en hervatten
 // ---------------------------------------------------------------
 let saveTimer = null;
+function loadHistory() {
+  const saved = readJsonWithBackup(HISTORY_FILE, isHistorySnapshot);
+  historyEntries = saved ? saved.data.entries.slice(0, HISTORY_LIMIT) : [];
+  if (saved && saved.source === 'backup') console.warn('De quizgeschiedenis is hersteld uit de reservekopie.');
+}
+function saveHistory() {
+  writeJsonWithBackup(HISTORY_FILE, { version: HISTORY_VERSION, entries: historyEntries });
+}
+function archiveFinishedQuiz() {
+  if (!gameId || historyEntries.some((entry) => entry.gameId === gameId)) return;
+  const entry = createHistoryEntry({
+    gameId,
+    completedAt: new Date().toISOString(),
+    quiz: quizSource,
+    theme: settings.theme,
+    ranking: ranking(),
+    breakdown: breakdown()
+  });
+  historyEntries = appendHistory(historyEntries, entry, HISTORY_LIMIT);
+  try { saveHistory(); }
+  catch (error) { console.error('Quizgeschiedenis opslaan mislukt:', error.message); }
+}
+
 function scheduleSave() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => { saveTimer = null; saveNow(); }, 250);
@@ -960,22 +1054,23 @@ function saveNow() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart,
+      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart, gameId,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
+      undoHistory,
       devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
     };
-    const tmp = STATE_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(snapshot));
-    fs.renameSync(tmp, STATE_FILE);
+    writeJsonWithBackup(STATE_FILE, snapshot);
   } catch (e) {
     console.error('Opslaan mislukt:', e.message);
   }
 }
 function loadSaved() {
-  if (FRESH) { try { fs.unlinkSync(STATE_FILE); } catch (e) { /* bestond niet */ } return false; }
-  let data;
-  try { data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (e) { return false; }
+  if (FRESH) { removeStateFiles(STATE_FILE); return false; }
+  const saved = readJsonWithBackup(STATE_FILE, (snapshot) => snapshot.version === 2 && snapshot.teams && typeof snapshot.teams === 'object');
+  if (!saved) return false;
+  const data = saved.data;
+  if (saved.source === 'backup') console.warn('Het hoofd-opslagbestand is ongeldig; de vorige geldige reservekopie wordt hersteld.');
   if (!data || data.version !== 2 || typeof data.teams !== 'object' || !steps.length) return false;
 
   teams = {};
@@ -993,11 +1088,15 @@ function loadSaved() {
   }
   seq = Math.max(seq, data.seq || 0, ...Object.values(teams).map((t) => t.seq), ...Object.values(devices).map((d) => d.seq));
   settings = sanitizeSettings(data.settings, settings);
+  gameId = typeof data.gameId === 'string' ? data.gameId : null;
   dynSongs = data.dynSongs && typeof data.dynSongs === 'object' ? data.dynSongs : {};
   dynStart = data.dynStart && typeof data.dynStart === 'object' ? data.dynStart : {};
   compileQuiz(content.warnings);
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
+  undoHistory = Array.isArray(data.undoHistory) ? data.undoHistory.slice(-UNDO_LIMIT) : [];
   phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
+  // Oude opgeslagen quizzen van vóór de geschiedenisfunctie krijgen alsnog een sessie-ID.
+  if (phase !== 'LOBBY' && !gameId) gameId = crypto.randomUUID();
   stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), steps.length - 1);
   reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
   revealN = Number.isInteger(data.revealN) ? data.revealN : 0;
@@ -1102,7 +1201,7 @@ function publicStep(step) {
     }
     case 'roundresult': {
       const round = roundById[step.round];
-      return { ...base, title: `Ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
+      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
     }
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined, round: t.jokerRound && roundById[t.jokerRound] ? `Ronde ${roundById[t.jokerRound].no}: ${roundById[t.jokerRound].title}` : null })) };
@@ -1143,7 +1242,7 @@ function hostPanel(step) {
       if (!song || s.status === 'loading') {
         const round = roundById[step.round];
         return { type: 'song', status: 'loading', dynamic: true, stepId: step.id, roundId: step.round, category: round.category, categoryName: HITSTER_CATS[round.category],
-          needSong: !s.songId, needStart: dynStart[step.round] ? 0 : (round.startCards || 2), exclude: usedSongKeys() };
+          needSong: !s.songId, needStart: Math.max(0, (round.startCards || 2) - dynamicStartIds(step.round).length), exclude: usedSongKeys() };
       }
       return { type: 'song', uri: song.uri || null, target: settings.hitsterTarget, cards: Object.values(teams).sort(byName).map((t) => ({ name: t.name, n: ensureTimeline(t, step.round).length })), status: s.status, song: { id: step.id, uri: song.uri || null, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
     }
@@ -1213,7 +1312,7 @@ function mainAction() {
     if (!settings.maxTeams) return none('📱 Toon het aanmeldscherm (QR-code)', 'Vul eerst bij Teams in hoeveel teams er maximaal mee mogen doen.');
     if (lobbyStage === 'welcome') return go('📱 Toon het aanmeldscherm (QR-code)', () => { lobbyStage = 'join'; });
     if (!Object.keys(teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
-    return go('▶️ Start de quiz', () => { phase = 'PLAY'; stepIndex = 0; enterStep(); });
+    return go('▶️ Start de quiz', () => { gameId = crypto.randomUUID(); phase = 'PLAY'; stepIndex = 0; enterStep(); });
   }
   if (phase === 'END') {
     const list = ranking();
@@ -1328,8 +1427,8 @@ function broadcastState() {
 
   io.to('tv_room').emit('state_update', {
     ...common,
-    step: step ? publicStep(step) : null,
-    teamList: Object.values(teams).map((t) => ({ name: t.name, connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
+    step: step ? { ...publicStep(step), ...(step.kind === 'roundresult' ? { photos: Object.entries(roundPhotos[step.round] || {}).map(([teamId, photo]) => ({ team: teams[teamId] ? teams[teamId].name : 'Team', dataUrl: photo.dataUrl })) } : {}) } : null,
+    teamList: Object.values(teams).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
     maxTeams: settings.maxTeams
   });
 
@@ -1339,9 +1438,9 @@ function broadcastState() {
     ...common,
     step: step ? publicStep(step) : null,
     panel: step ? hostPanel(step) : null,
-    controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null },
+    controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null, undo: { enabled: undoHistory.length > 0, label: undoHistory.length ? `↶ Ongedaan maken: ${undoHistory[undoHistory.length - 1].label}` : '↶ Niets om ongedaan te maken' } },
     teams: Object.values(teams).map((t) => ({
-      teamId: t.teamId, name: t.name, connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
+      teamId: t.teamId, name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
       members: teamDevices(t).map((d) => ({ deviceId: d.deviceId, label: d.label, role: d.deviceId === t.baseDeviceId ? 'base' : 'member', connected: d.connected }))
     })).sort(byName),
     rounds: rounds.map((r) => ({ id: r.id, no: r.no, title: r.title, introId: `${r.id}_intro` })),
@@ -1350,7 +1449,8 @@ function broadcastState() {
     warnings: content.warnings,
     quiz: { ...quizSource, steps: steps.length, rounds: rounds.length },
     plan: planView(), extraOptions: extraOptions(), themes: THEMES,
-    hostScores: phase !== 'LOBBY' ? breakdown() : null // alleen voor de quizmasters
+    hostScores: phase !== 'LOBBY' ? breakdown() : null, // alleen voor de quizmasters
+    history: historyEntries // alleen in de beveiligde bediening; nooit naar tv of spelers
   });
 
   Object.values(devices).forEach((d) => {
@@ -1365,7 +1465,7 @@ function broadcastState() {
       timer: null,
       view: phase === 'PLAY' ? phoneView(step, t, d, isBase) : phase === 'END' ? { type: 'end' } : { type: 'lobby' },
       me: {
-        memberId: d.memberId, teamId: t.teamId, teamName: t.name, label: d.label, role: isBase ? 'base' : 'member',
+        memberId: d.memberId, teamId: t.teamId, teamName: t.name, photo: photoUrl(t.teamId), label: d.label, role: isBase ? 'base' : 'member',
         baseLabel: devices[t.baseDeviceId] ? devices[t.baseDeviceId].label : '', proposal: proposalFor(t, d),
         members: teamDevices(t).map((m) => ({ memberId: m.memberId, label: m.label, role: m.deviceId === t.baseDeviceId ? 'base' : 'member', connected: m.connected }))
       }
@@ -1435,10 +1535,12 @@ function phoneView(step, team, device, isBase) {
         words: role === 'explainer' && turn && (s.status === 'running' || s.status === 'judging') ? turn.words : null
       };
     }
-    case 'roundresult':
-      return { ...base };
+    case 'roundresult': {
+      const photos = roundPhotos[step.round] || {};
+      return { ...base, photoUploaded: !!photos[id] };
+    }
     case 'joker':
-      return { ...base, rounds: rounds.map((r) => ({ id: r.id, title: `Ronde ${r.no}: ${r.title}` })), chosen: team.jokerRound };
+      return { ...base, rounds: rounds.map((r) => ({ id: r.id, title: `Ronde ${r.no}: ${r.title}` })), chosen: team.jokerRound, submitted: s.choices[id] !== undefined };
     case 'final': {
       const a = s.answers[id];
       return {
@@ -1533,6 +1635,7 @@ function removeTeam(teamId) {
   Object.values(ssAll).forEach((s) => {
     ['answers', 'placements', 'entries', 'wagers', 'choices'].forEach((k) => { if (s[k]) delete s[k][teamId]; });
   });
+  if (teamPhotos[teamId]) setTeamPhoto(teamId, null);
   delete teams[teamId];
 }
 
@@ -1957,30 +2060,73 @@ io.on('connection', (socket) => {
     io.to('tv_room').emit('demo_ops', { ops: clean });
     scheduleSave();
   });
-  socket.on('provide_track', ({ stepId, track } = {}) => {
-    if (!isRemote(socket)) return;
+  socket.on('provide_track', ({ stepId, track } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!isRemote(socket)) return reply({ ok: false, reason: 'not_host' });
     const step = steps.find((x) => x.id === stepId);
-    if (!step || !step.dynamic) return;
+    if (!step || !step.dynamic) return reply({ ok: false, reason: 'invalid_step' });
     const s = ss(step);
+    if (s.songId) return reply({ ok: true, already: true });
     const t = cleanTrack(track);
-    if (!t || s.songId) return;
-    if (usedSongKeys().includes(`${t.title}|${t.artist}`.toLowerCase())) return;
+    if (!t) return reply({ ok: false, reason: 'invalid_track' });
+    if (usedSongKeys().includes(`${t.title}|${t.artist}`.toLowerCase())) return reply({ ok: false, reason: 'duplicate' });
     s.songId = `${step.id}_t`;
     addDynSong(s.songId, t);
-    if (s.status === 'loading' && dynStart[step.round]) { s.status = 'open'; Object.values(teams).forEach((tm) => ensureTimeline(tm, step.round)); }
+    if (s.status === 'loading' && dynamicStartReady(step.round)) { s.status = 'open'; Object.values(teams).forEach((tm) => ensureTimeline(tm, step.round)); }
+    reply({ ok: true });
     sync();
   });
-  socket.on('provide_start', ({ roundId, tracks } = {}) => {
-    if (!isRemote(socket) || !roundById[roundId] || !roundById[roundId].dynamic || dynStart[roundId] || !Array.isArray(tracks)) return;
-    const ids = tracks.map(cleanTrack).filter(Boolean).slice(0, 4).map((t, i) => { const id = `${roundId}_start${i + 1}`; addDynSong(id, t); return id; });
-    if (!ids.length) return;
-    dynStart[roundId] = ids;
+  socket.on('provide_start', ({ roundId, tracks } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!isRemote(socket) || !roundById[roundId] || !roundById[roundId].dynamic || !Array.isArray(tracks)) return reply({ ok: false, reason: 'invalid_round' });
+    const round = roundById[roundId];
+    const need = Math.max(0, (round.startCards || 2) - dynamicStartIds(roundId).length);
+    if (!need) return reply({ ok: true, already: true, accepted: 0 });
+    const used = new Set(usedSongKeys());
+    const clean = tracks.map(cleanTrack).filter(Boolean).filter((track) => {
+      const key = `${track.title}|${track.artist}`.toLowerCase();
+      if (used.has(key)) return false;
+      used.add(key);
+      return true;
+    }).slice(0, need);
+    const current = dynStart[roundId] || [];
+    const ids = clean.map((track, i) => { const id = `${roundId}_online_start${current.length + i + 1}`; addDynSong(id, track); return id; });
+    dynStart[roundId] = [...current, ...ids];
     const step = cur();
     if (step && step.kind === 'song' && step.round === roundId) {
-      const s = ss(step);
-      Object.values(teams).forEach((tm) => ensureTimeline(tm, roundId));
-      if (s.status === 'loading' && s.songId) s.status = 'open';
+      const state = ss(step);
+      Object.values(teams).forEach((team) => ensureTimeline(team, roundId));
+      if (state.status === 'loading' && state.songId && dynamicStartReady(roundId)) state.status = 'open';
     }
+    reply({ ok: ids.length > 0, accepted: ids.length, remaining: Math.max(0, need - ids.length), reason: ids.length ? null : 'no_unique_tracks' });
+    sync();
+  });
+  socket.on('team_photo', ({ dataUrl } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'roundresult');
+    if (!c || !c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan een teamfoto indienen.' });
+    if (!validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
+    roundPhotos[c.step.round] = roundPhotos[c.step.round] || {};
+    roundPhotos[c.step.round][c.team.teamId] = { dataUrl, uploadedAt: Date.now() };
+    if (!teamPhotos[c.team.teamId]) setTeamPhoto(c.team.teamId, dataUrl); // eerste foto wordt meteen de teamfoto
+    reply({ ok: true });
+    sync();
+  });
+  // Vaste teamfoto: de basistelefoon kan hem op elk moment instellen, vervangen of weghalen
+  socket.on('set_team_photo', ({ dataUrl } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const device = deviceOf(socket);
+    const team = device && teams[device.teamId];
+    if (!team) return reply({ ok: false, message: 'Je zit niet (meer) in een team.' });
+    if (team.baseDeviceId !== device.deviceId) return reply({ ok: false, message: 'Alleen de basistelefoon kan de teamfoto aanpassen.' });
+    if (dataUrl !== null && !validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
+    setTeamPhoto(team.teamId, dataUrl);
+    reply({ ok: true });
+    sync();
+  });
+  socket.on('remove_team_photo', ({ teamId } = {}) => {
+    if (!isRemote(socket) || !teams[teamId]) return;
+    setTeamPhoto(teamId, null);
     sync();
   });
   socket.on('song_replay', () => {
@@ -1996,7 +2142,11 @@ io.on('connection', (socket) => {
     const step = cur();
     if (!step || step.kind !== 'memory') return;
     const e = (ss(step).entries[teamId] || []).find((x) => x.id === entryId);
-    if (e) { e.ok = !!ok; sync(); }
+    if (e && e.ok !== !!ok) {
+      pushUndo(undoHistory, { type: 'memory_judge', stepId: step.id, teamId, entryId, before: e.ok, label: 'beoordeling geheugen' }, UNDO_LIMIT);
+      e.ok = !!ok;
+      sync();
+    }
   });
   socket.on('thirty_toggle', ({ index } = {}) => {
     if (!isRemote(socket)) return;
@@ -2005,12 +2155,14 @@ io.on('connection', (socket) => {
     const s = ss(step);
     if (step.kind === 'demo_thirty') {
       if (s.status === 'ready') return;
+      pushUndo(undoHistory, { type: 'thirty_toggle', stepId: step.id, index, before: s.ok[index], demo: true, label: 'oefenronde 30 Seconds' }, UNDO_LIMIT);
       s.ok[index] = !s.ok[index];
       return sync();
     }
     if (step.kind !== 'thirty') return;
     const turn = s.turns[s.turn];
     if (!turn || !['running', 'judging', 'result'].includes(s.status)) return;
+    pushUndo(undoHistory, { type: 'thirty_toggle', stepId: step.id, index, before: turn.ok[index], demo: false, turnIndex: s.turn, label: '30 Seconds-beoordeling' }, UNDO_LIMIT);
     turn.ok[index] = !turn.ok[index];
     sync();
   });
@@ -2022,8 +2174,11 @@ io.on('connection', (socket) => {
     const s = ss(step);
     const turn = s.turns[s.turn];
     if (!turn || !turn.words[teamId] || s.status === 'ready') return;
-    turn.ok[teamId] = !!ok;
-    sync();
+    if (turn.ok[teamId] !== !!ok) {
+      pushUndo(undoHistory, { type: 'draw_judge', stepId: step.id, teamId, turnIndex: s.turn, before: turn.ok[teamId], label: 'tekenantwoord' }, UNDO_LIMIT);
+      turn.ok[teamId] = !!ok;
+      sync();
+    }
   });
   socket.on('logo_judge', ({ teamId, ok } = {}) => {
     if (!isRemote(socket)) return;
@@ -2031,8 +2186,11 @@ io.on('connection', (socket) => {
     if (!step || step.kind !== 'logo') return;
     const s = ss(step);
     if (!s.answers[teamId]) return;
-    s.judged[teamId] = !!ok;
-    sync();
+    if (s.judged[teamId] !== !!ok) {
+      pushUndo(undoHistory, { type: 'logo_judge', stepId: step.id, teamId, beforePresent: Object.prototype.hasOwnProperty.call(s.judged, teamId), before: s.judged[teamId], label: 'logo-beoordeling' }, UNDO_LIMIT);
+      s.judged[teamId] = !!ok;
+      sync();
+    }
   });
   socket.on('add_time', () => {
     if (!isRemote(socket) || !timer.tag) return;
@@ -2105,6 +2263,7 @@ io.on('connection', (socket) => {
     if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'De vragen kunnen alleen vóór de start opnieuw worden ingelezen.' });
     loadQuiz();
     ssAll = {};
+    undoHistory = [];
     Object.values(teams).forEach((t) => { t.timelines = {}; });
     sync();
   });
@@ -2136,8 +2295,14 @@ io.on('connection', (socket) => {
     const step = cur();
     if (!team || !step || !['mc', 'price', 'final', 'tiebreak', 'logo'].includes(step.kind)) return;
     const s = ss(step);
-    if (step.kind === 'final' || step.kind === 'tiebreak') { if (s.status === 'question' || s.status === 'open') delete s.answers[teamId]; }
-    else if (s.status === 'open' || (step.kind === 'mc' && s.status === 'closed')) {
+    const allowed = step.kind === 'final' || step.kind === 'tiebreak'
+      ? s.status === 'question' || s.status === 'open'
+      : s.status === 'open' || (step.kind === 'mc' && s.status === 'closed');
+    if (allowed && (Object.prototype.hasOwnProperty.call(s.answers || {}, teamId) || Object.prototype.hasOwnProperty.call(s.judged || {}, teamId))) {
+      pushUndo(undoHistory, { type: 'clear_answer', stepId: step.id, teamId,
+        answerPresent: Object.prototype.hasOwnProperty.call(s.answers || {}, teamId), answer: s.answers && s.answers[teamId],
+        judgedPresent: Object.prototype.hasOwnProperty.call(s.judged || {}, teamId), judged: s.judged && s.judged[teamId],
+        status: s.status, label: `antwoord van ${teams[teamId] ? teams[teamId].name : 'team'} herstellen` }, UNDO_LIMIT);
       delete s.answers[teamId];
       if (s.judged) delete s.judged[teamId];
       if (step.kind === 'mc' && s.status === 'closed') s.status = 'open';
@@ -2149,9 +2314,19 @@ io.on('connection', (socket) => {
     const step = cur();
     if (!step || step.kind !== 'mc') return;
     const s = ss(step);
-    if (mode === 'void' || mode === 'all_correct') s.voided = mode;
-    else if (mode === null) s.voided = null;
-    else return;
+    if (mode === 'void' || mode === 'all_correct') {
+      if (s.voided !== mode) { pushUndo(undoHistory, { type: 'void_question', stepId: step.id, before: s.voided ?? null, label: 'vraagbeoordeling' }, UNDO_LIMIT); s.voided = mode; }
+    } else if (mode === null) {
+      if (s.voided !== null) { pushUndo(undoHistory, { type: 'void_question', stepId: step.id, before: s.voided ?? null, label: 'vraagbeoordeling' }, UNDO_LIMIT); s.voided = null; }
+    } else return;
+    sync();
+  });
+  socket.on('undo_last', () => {
+    if (!isRemote(socket)) return;
+    const entry = undoHistory[undoHistory.length - 1];
+    if (!entry) return socket.emit('host_error', { message: 'Er is niets om ongedaan te maken.' });
+    if (!applyUndoEntry(entry, steps, ssAll)) return socket.emit('host_error', { message: 'Deze correctie kan niet meer worden teruggedraaid.' });
+    undoHistory.pop();
     sync();
   });
   socket.on('alert_dismiss', ({ key } = {}) => {
@@ -2219,8 +2394,10 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {};
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; roundPhotos = {}; teamPhotos = {}; undoHistory = []; gameId = null;
     timerClear();
+    // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
+    try { removeStateFiles(STATE_FILE); removeStateFiles(PHOTOS_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
     io.emit('quiz_reset');
     broadcastState();
   });
@@ -2237,7 +2414,9 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------
 // Opstarten
 // ---------------------------------------------------------------
+loadHistory();
 const restored = loadSaved();
+loadPhotos();
 function shutdown() { saveNow(); process.exit(0); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

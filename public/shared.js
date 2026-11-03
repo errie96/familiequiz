@@ -259,7 +259,10 @@ window.QuizFX = (function () {
     const label = document.createElement("span");
     const b = document.createElement("b");
     b.textContent = badge;
-    label.append(b, document.createTextNode("\u00a0 " + player.name));
+    label.style.cssText = "display:inline-flex; align-items:center; gap:0.5em;";
+    label.append(b);
+    if (player.photo) label.append(avatar(player.name, player.photo, isWinner ? "2.4em" : "1.8em"));
+    label.append(document.createTextNode(player.name));
     const pts = document.createElement("b");
     pts.textContent = `${player.score} pt`;
     pts.style.color = isWinner ? "#fde047" : "#38bdf8";
@@ -336,7 +339,33 @@ window.QuizFX = (function () {
   const setTexts = (t) => { if (t) TEXTS = t; };
   const t = (key, vars) => String(TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] !== undefined ? vars[k] : m));
 
-  return { setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  // Foto van de telefoon verkleinen tot een lichte JPEG (data-URL) voor de server
+  async function compressPhoto(file, maxSide = 800, square = false) {
+    if (!file) throw new Error("Kies eerst een foto.");
+    const image = await createImageBitmap(file);
+    let sx = 0, sy = 0, sw = image.width, sh = image.height;
+    if (square) { const side = Math.min(sw, sh); sx = (sw - side) / 2; sy = (sh - side) / 2; sw = sh = side; }
+    const scale = Math.min(1, maxSide / Math.max(sw, sh));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sw * scale));
+    canvas.height = Math.max(1, Math.round(sh * scale));
+    canvas.getContext("2d").drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    if (image.close) image.close();
+    let dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    if (dataUrl.length > 180000) dataUrl = canvas.toDataURL("image/jpeg", 0.45);
+    if (dataUrl.length > 200000) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
+    return dataUrl;
+  }
+  // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
+  function avatar(name, photo, size) {
+    const a = document.createElement(photo ? "img" : "span");
+    a.className = "team-avatar";
+    a.style.cssText = `width:${size};height:${size};border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#475569;color:#fff;font-weight:bold;font-size:calc(${size} * 0.45);vertical-align:middle;`;
+    if (photo) { a.src = photo; a.alt = ""; }
+    else a.textContent = (String(name || "?").trim()[0] || "?").toUpperCase();
+    return a;
+  }
+  return { compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
@@ -515,7 +544,7 @@ window.QuizSpotify = (function () {
     }
     // Liever een nummer uit het juiste jaarbereik (gevonden met het genre-filter van Spotify) dan niets
     if (unknown.length) return asTrack(pick(unknown));
-    if (mismatch.length) return asTrack(pick(mismatch));
+    // Geen nummer uit een aantoonbaar verkeerde artiestencategorie gebruiken.
     if (!lastError) lastError = "Spotify vond geen passend nummer in deze categorie.";
     return null;
   }

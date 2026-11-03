@@ -52,6 +52,7 @@
       <button id="btn-main" class="btn-primary big">...</button>
       <p id="main-hint" class="muted" style="text-align:center; min-height:1.2em;"></p>
       <button id="btn-force" class="btn-option hidden" style="text-align:center;"></button>
+      <button id="btn-undo" class="btn-option" style="text-align:center; margin-top:6px;" disabled>↶ Niets om ongedaan te maken</button>
       <div class="row">
         <button id="btn-prev" class="btn-option" style="text-align:center;">⬅️ Vorige</button>
         <button id="btn-pause" class="btn-pause">☕ Pauze</button>
@@ -92,6 +93,12 @@
       <summary>📊 Scores (alleen zichtbaar voor de quizmasters)</summary>
       <p class="muted" style="margin:4px 0 8px;">De spelers en de tv zien de stand pas aan het einde. 🃏 = joker.</p>
       <div id="scores-table" style="overflow:auto; font-size:13px;"></div>
+    </details>
+
+    <details id="history-panel">
+      <summary>🗂️ Quizgeschiedenis <span id="history-count" class="muted"></span></summary>
+      <p class="muted" style="margin:4px 0 8px;">Afgeronde quizzen met eindstand en punten per ronde. De laatste 50 quizzen worden bewaard, ook als je een nieuwe quiz start.</p>
+      <div id="history-list"></div>
     </details>
 
     <details id="theme-panel">
@@ -249,6 +256,9 @@
     let S = null;
     $("btn-main").onclick = () => socket.emit("host_main");
     $("btn-force").onclick = () => socket.emit("host_force");
+    $("btn-undo").onclick = () => {
+      if (S && S.controls && S.controls.undo && S.controls.undo.enabled && confirm("Laatste correctie ongedaan maken?")) socket.emit("undo_last");
+    };
     $("btn-pause").onclick = () => socket.emit("toggle_pause");
     $("btn-standings").onclick = () => socket.emit("toggle_standings");
     $("btn-prev").onclick = () => socket.emit("prev_step");
@@ -343,7 +353,7 @@
 
       if (p.type === "song" && p.status === "loading") {
         box.append(el("h3", "", `🔎 ${p.categoryName}: liedje zoeken…`));
-        box.append(el("p", "muted", QuizSpotify.connected() ? "Zoekt automatisch een nummer op Spotify in deze categorie." : "Spotify is niet verbonden: er wordt een iTunes-fragment van 30 seconden gezocht (speelt op de tv)."));
+        box.append(el("p", "muted", "De Excel-bibliotheek wordt eerst gebruikt. Als de gekozen categorie én de standaardbibliotheek op zijn, wordt online gezocht via Spotify (of iTunes als reserve)."));
         box.append(el("p", "muted", trackStatus || ""));
         const again = el("button", "btn-option", "🔁 Opnieuw zoeken");
         again.style.textAlign = "center";
@@ -527,11 +537,14 @@
       state.teams.forEach((t) => {
         const d = el("div", "team");
         const head = el("div", "head");
-        head.append(el("b", "", `${t.connected ? "●" : "○"} ${t.name}${t.joker ? " · 🃏 " + t.joker : ""}`));
+        const title = el("b", "", `${t.connected ? "●" : "○"} ${t.name}${t.joker ? " · 🃏 " + t.joker : ""}`);
+        if (t.photo) { title.prepend(QuizFX.avatar(t.name, t.photo, "28px"), " "); }
+        head.append(title);
         const acts = el("span");
         const rn = el("button", "btn-option btn-small", "✏️"); rn.onclick = () => { const n = prompt("Nieuwe teamnaam:", t.name); if (n) socket.emit("rename_team", { teamId: t.teamId, name: n }); };
         const rm = el("button", "btn-option btn-small", "🗑"); rm.onclick = () => { if (confirm(`Team ${t.name} verwijderen?`)) socket.emit("remove_team", { teamId: t.teamId }); };
         acts.append(rn, rm);
+        if (t.photo) { const rp = el("button", "btn-option btn-small", "🖼✕"); rp.title = "Teamfoto verwijderen"; rp.onclick = () => { if (confirm(`Teamfoto van ${t.name} verwijderen?`)) socket.emit("remove_team_photo", { teamId: t.teamId }); }; acts.prepend(rp); }
         head.append(acts);
         d.append(head);
         t.members.forEach((m) => {
@@ -587,19 +600,49 @@
         trackStatus = "Startkaarten zoeken…";
         const exclude = [...p.exclude];
         const tracks = [];
-        for (let i = 0; i < p.needStart; i++) {
-          const t = await QuizSpotify.randomTrack(p.category, exclude);
-          if (t) { tracks.push(t); exclude.push(QuizSpotify.keyOf(t)); }
+        for (let n = 0; n < p.needStart; n++) {
+          const track = await QuizSpotify.randomTrack(p.category, exclude);
+          if (!track) break;
+          tracks.push(track);
+          exclude.push(QuizSpotify.keyOf(track));
         }
-        if (tracks.length) socket.emit("provide_start", { roundId: p.roundId, tracks });
-        else { trackStatus = `Geen startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`; delete trackBusy["start" + p.roundId]; renderPanel(S); }
+        if (tracks.length) {
+          socket.emit("provide_start", { roundId: p.roundId, tracks }, (res) => {
+            if (!res || !res.ok) {
+              trackBusy["start" + p.roundId] = true; // voorkom een automatische retry-lus; handmatig opnieuw zoeken blijft mogelijk
+              trackStatus = `Geen unieke startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
+            } else {
+              delete trackBusy["start" + p.roundId];
+              trackStatus = res.remaining ? "Nog niet alle startkaarten gevonden; de resterende worden gezocht…" : "Startkaarten uit de online muziekbibliotheek zijn klaar.";
+            }
+            renderPanel(S);
+          });
+        } else {
+          trackStatus = `Geen startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
+          delete trackBusy["start" + p.roundId];
+          renderPanel(S);
+        }
       }
       if (p.needSong && !trackBusy[p.stepId]) {
         trackBusy[p.stepId] = true;
-        trackStatus = "Liedje zoeken…";
-        const t = await QuizSpotify.randomTrack(p.category, p.exclude);
-        if (t) socket.emit("provide_track", { stepId: p.stepId, track: t });
-        else { trackStatus = `Geen liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`; delete trackBusy[p.stepId]; renderPanel(S); }
+        trackStatus = "Lokale bibliotheek is op: online een liedje zoeken…";
+        const exclude = [...p.exclude];
+        let accepted = false;
+        for (let attempt = 0; attempt < 3 && !accepted; attempt++) {
+          const track = await QuizSpotify.randomTrack(p.category, exclude);
+          if (!track) break;
+          const result = await new Promise((resolve) => socket.emit("provide_track", { stepId: p.stepId, track }, resolve));
+          if (result && result.ok) accepted = true;
+          else exclude.push(QuizSpotify.keyOf(track));
+        }
+        if (!accepted) {
+          trackBusy[p.stepId] = true; // handmatige herhaalactie voorkomt dat dezelfde mislukte zoekopdracht blijft lopen
+          trackStatus = `Geen nieuw passend liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`;
+        } else {
+          delete trackBusy[p.stepId];
+          trackStatus = "Nieuw liedje gevonden.";
+        }
+        renderPanel(S);
       }
     }
 
@@ -661,6 +704,61 @@
       QuizFX.renderTable($("scores-table"), {
         columns: ["Team", ...b.rounds.map((r) => r.title), "Slot", "Totaal"],
         rows: b.rows.map((r) => [r.name, ...r.rounds.map((x) => `${x.pts}${x.joker ? "🃏" : ""}`), r.final === null ? "–" : String(r.final), String(r.total)])
+      });
+    }
+    let renderedHistoryKey = null;
+    function renderHistory(entries) {
+      const list = Array.isArray(entries) ? entries : [];
+      $("history-count").textContent = `(${list.length})`;
+      const key = list.map((entry) => entry.gameId).join("|");
+      if (key === renderedHistoryKey) return;
+      renderedHistoryKey = key;
+
+      const box = $("history-list");
+      box.replaceChildren();
+      if (!list.length) {
+        box.append(el("p", "muted", "Er is nog geen afgeronde quiz opgeslagen. De eerste verschijnt hier na de ontknoping."));
+        return;
+      }
+
+      list.forEach((entry) => {
+        const details = el("details", "qbox");
+        const summary = el("summary");
+        const date = new Date(entry.completedAt);
+        const dateText = Number.isNaN(date.getTime()) ? String(entry.completedAt || "Onbekende datum") : date.toLocaleString("nl-NL");
+        const winners = Array.isArray(entry.winners) ? entry.winners : [];
+        const winnerText = winners.length > 1 ? `Gedeelde winst: ${winners.join(", ")}` : winners[0] || "Geen winnaar";
+        summary.textContent = `${dateText} · ${winnerText} · ${entry.teamCount || 0} teams`;
+        details.append(summary);
+
+        const meta = el("p", "muted", `${entry.quiz && entry.quiz.file || "Vragenlijst onbekend"} · ${entry.quiz && entry.quiz.rounds || 0} rondes · Thema: ${entry.theme || "standaard"}`);
+        details.append(meta);
+
+        const table = el("div");
+        table.style.overflow = "auto";
+        table.style.fontSize = "13px";
+        const rounds = entry.breakdown && Array.isArray(entry.breakdown.rounds) ? entry.breakdown.rounds : [];
+        const rows = entry.breakdown && Array.isArray(entry.breakdown.rows) ? entry.breakdown.rows : [];
+        const ranking = Array.isArray(entry.ranking) ? entry.ranking : [];
+        QuizFX.renderTable(table, {
+          columns: ["Plek", "Team", ...rounds.map((round) => round.title || round.full || "Ronde"), "Slot", "Totaal"],
+          rows: ranking.map((team) => {
+            const detail = rows.find((row) => row.name === team.name);
+            const scores = detail && Array.isArray(detail.rounds) ? detail.rounds : [];
+            return [
+              team.rank ? `${team.rank}.` : "–",
+              team.name,
+              ...rounds.map((round, index) => {
+                const score = scores[index];
+                return score ? `${score.pts}${score.joker ? " 🃏" : ""}` : "–";
+              }),
+              detail && detail.final !== null ? String(detail.final) : "–",
+              String(team.score)
+            ];
+          })
+        });
+        details.append(table);
+        box.append(details);
       });
     }
     const THEME_NAMES = { standaard: "Standaard", winter: "❄️ Winter", kerst: "🎄 Kerst", oudennieuw: "🥂 Oud & nieuw", zomer: "☀️ Zomer", halloween: "🎃 Halloween" };
@@ -742,6 +840,7 @@
     socket.on("state_update", (state) => {
       S = state;
       renderAlerts(state.alerts);
+      renderHistory(state.history);
       const w = $("warnings");
       w.classList.toggle("hidden", !state.warnings.length);
       w.textContent = state.warnings.length ? "⚠️ " + state.warnings.join(" · ") : "";
@@ -753,6 +852,9 @@
       const f = state.controls.force;
       $("btn-force").classList.toggle("hidden", !f);
       if (f) $("btn-force").textContent = f.label;
+      const undo = state.controls.undo || { enabled: false, label: "↶ Niets om ongedaan te maken" };
+      $("btn-undo").textContent = undo.label;
+      $("btn-undo").disabled = !undo.enabled || !!state.review;
       $("btn-pause").textContent = state.paused ? "▶️ Hervat" : "☕ Pauze";
       $("btn-pause").disabled = state.phase !== "PLAY";
       $("btn-prev").disabled = state.phase !== "PLAY";
