@@ -592,14 +592,14 @@
           if (t) { tracks.push(t); exclude.push(QuizSpotify.keyOf(t)); }
         }
         if (tracks.length) socket.emit("provide_start", { roundId: p.roundId, tracks });
-        else { trackStatus = "Geen startkaarten gevonden (internet?). Tik op Opnieuw zoeken."; delete trackBusy["start" + p.roundId]; renderPanel(S); }
+        else { trackStatus = `Geen startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`; delete trackBusy["start" + p.roundId]; renderPanel(S); }
       }
       if (p.needSong && !trackBusy[p.stepId]) {
         trackBusy[p.stepId] = true;
         trackStatus = "Liedje zoeken…";
         const t = await QuizSpotify.randomTrack(p.category, p.exclude);
         if (t) socket.emit("provide_track", { stepId: p.stepId, track: t });
-        else { trackStatus = "Geen liedje gevonden (internet?). Tik op Opnieuw zoeken, of sla dit liedje over."; delete trackBusy[p.stepId]; renderPanel(S); }
+        else { trackStatus = `Geen liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`; delete trackBusy[p.stepId]; renderPanel(S); }
       }
     }
 
