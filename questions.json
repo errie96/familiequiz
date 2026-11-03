@@ -774,9 +774,9 @@
   {
    "id": "r3",
    "type": "memory",
-   "title": "Het geheugen van vorig jaar",
+   "title": "Geheugenronde",
    "emoji": "🧠",
-   "prompt": "Wat stond er vorig jaar op het bord? Schrijf zoveel mogelijk op!",
+   "prompt": "Wat kun je je herinneren? Schrijf zoveel mogelijk op!",
    "items": [
     "VOORBEELD 1: vervang dit door wat er op het bord stond",
     "VOORBEELD 2",
