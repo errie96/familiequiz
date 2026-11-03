@@ -751,6 +751,50 @@
         return noop;
       },
 
+      // ----- Teamfoto (direct na het aanmelden) -----
+      teamphoto(box, v) {
+        const d = el("div"); d.style.textAlign = "center";
+        const e = el("div", "", "📸"); e.style.fontSize = "54px";
+        d.append(e, el("h2", "", QuizFX.t("teamfoto.titel")));
+        box.append(d, el("p", "note", QuizFX.t("teamfoto.tekst.tel")));
+        const preview = el("div"); preview.style.cssText = "display:flex; justify-content:center; margin:14px 0;";
+        preview.append(QuizFX.avatar(me ? me.teamName : "", v.photo, "160px"));
+        box.append(preview);
+        const status = el("p", "note");
+        if (!v.isBase) {
+          status.textContent = v.photo ? "✅ Jullie teamfoto staat erin! Kijk op het grote scherm." : v.skipped ? "Jullie team doet het zonder foto." : `De basistelefoon (${me ? me.baseLabel : ""}) maakt de foto. Ga er samen voor staan!`;
+          box.append(status);
+          return noop;
+        }
+        const input = el("input"); input.type = "file"; input.accept = "image/*"; input.className = "hidden";
+        const shoot = el("button", "btn-primary", v.photo ? "📸 Opnieuw maken" : "📸 Teamfoto maken");
+        shoot.style.background = "#22c55e";
+        shoot.onclick = () => input.click();
+        input.onchange = async () => {
+          const file = input.files && input.files[0];
+          input.value = "";
+          if (!file) return;
+          shoot.disabled = true; status.textContent = "Foto voorbereiden…";
+          try {
+            const dataUrl = await QuizFX.compressPhoto(file, 480, true);
+            socket.emit("set_team_photo", { dataUrl }, (res) => {
+              shoot.disabled = false;
+              status.textContent = res && res.ok ? "✅ Teamfoto opgeslagen!" : (res && res.message) || "Opslaan is niet gelukt.";
+            });
+          } catch (error) { shoot.disabled = false; status.textContent = error.message || "Foto kon niet worden verwerkt."; }
+        };
+        box.append(input, shoot);
+        if (!v.photo && !v.skipped) {
+          const skip = el("button", "btn-option", "Overslaan (zonder foto)");
+          skip.style.textAlign = "center";
+          skip.onclick = () => { if (confirm("Doorgaan zonder teamfoto? Je kunt later in het teamblok alsnog een foto maken.")) socket.emit("teamphoto_skip", null, () => {}); };
+          box.append(skip);
+        }
+        status.textContent = v.photo ? "✅ Teamfoto staat op het grote scherm. Niet tevreden? Maak hem opnieuw." : v.skipped ? "Jullie gaan zonder foto verder." : "Kies de camera of een foto uit je galerij.";
+        box.append(status);
+        return noop;
+      },
+
       // ----- Joker -----
       joker(box, v) {
         const d = el("div"); d.style.textAlign = "center";
@@ -871,6 +915,7 @@
         case "demo_draw": case "demo_thirty": return [v.type, v.id, v.status].join("|");
         case "thirty": return [v.id, v.status, v.role, v.turn, v.words ? 1 : 0].join("|");
         case "joker": return [v.id, v.isBase].join("|");
+        case "teamphoto": return [v.id, v.isBase, v.photo, v.skipped].join("|");
         case "final": return [v.id, v.status, v.answered, v.wager !== null, v.isBase, v.result ? 1 : 0].join("|");
         case "tiebreak": return [v.id, v.status, v.answered, v.isBase, v.inGame].join("|");
         case "info": return [v.type, v.id].join("|");

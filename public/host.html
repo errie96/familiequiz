@@ -188,6 +188,13 @@
       <div id="rr-photos" class="chips-row" style="margin-top:2vh; flex-wrap:wrap;"></div>
     </section>
 
+    <section id="v-teamphoto" class="view hidden tv-center">
+      <div class="huge">📸</div>
+      <h1 class="tv-title" data-t="teamfoto.titel">Tijd voor de teamfoto!</h1>
+      <p class="tv-sub" style="max-width:70vw; margin:0 auto;" data-t="teamfoto.tekst.tv"></p>
+      <div id="teamphoto-grid" style="display:flex; flex-wrap:wrap; gap:2.5vw; justify-content:center; margin-top:4vh;"></div>
+    </section>
+
     <section id="v-joker" class="view hidden tv-center">
       <div class="huge">🃏</div>
       <h1 class="tv-title" data-t="joker.titel">Zet je joker in!</h1>
@@ -248,7 +255,7 @@
     const socket = io();
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-    const VIEWS = ["v-welcome", "v-demodraw", "v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
+    const VIEWS = ["v-welcome", "v-demodraw", "v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-teamphoto", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
     function showView(id) { VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id)); if (typeof scheduleFit === "function") scheduleFit(); }
 
     // ---------- Geluid: de browser wil eerst één klik of toetsdruk ----------
@@ -843,6 +850,22 @@
         case "demo_draw": renderDemoDraw(step); break;
         case "demo_thirty": renderDemoThirty(step); break;
         case "roundresult": renderRoundResult(step); break;
+        case "teamphoto": {
+          showView("v-teamphoto");
+          const grid = $("teamphoto-grid");
+          grid.replaceChildren();
+          step.teams.forEach((t) => {
+            const card = el("div");
+            card.style.cssText = "display:flex; flex-direction:column; align-items:center; gap:1vh; width:clamp(120px,16vw,300px);" + (t.connected ? "" : " opacity:0.45;");
+            const pic = QuizFX.avatar(t.name, t.photo, "clamp(110px,14vw,280px)");
+            if (!t.photo) { pic.style.border = "4px dashed #64748b"; pic.style.background = "transparent"; pic.style.color = "#64748b"; }
+            else { pic.style.border = "4px solid #4ade80"; }
+            const label = el("div", "tchip" + (t.photo ? " done" : ""), (t.photo ? "✓ " : "") + t.name + (t.skipped && !t.photo ? " (zonder foto)" : t.photo ? "" : " …"));
+            card.append(pic, label);
+            grid.append(card);
+          });
+          break;
+        }
         case "joker":
           showView("v-joker");
           chips($("joker-teams"), step.chosen.map((c) => ({ name: c.name, answered: c.done })), true, (t) => { const c = step.chosen.find((x) => x.name === t.name); return c && c.round ? `  🃏 ${c.round}` : "  …kiest nog"; });

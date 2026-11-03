@@ -458,6 +458,16 @@
         else box.append(el("p", "muted", p.status === "ready" ? "Druk op Start; daarna verschijnt hier je tekenvlak. De tekening komt live op de tv." : "Klaar."));
       }
 
+      if (p.type === "teamphoto") {
+        box.append(el("h3", "", "Teamfoto's"));
+        p.teams.forEach((t) => {
+          const line = el("div", "line");
+          if (t.photo) line.append(QuizFX.avatar(t.name, t.photo, "40px"), " ");
+          line.append(`${t.name}: ${t.photo ? "✅ foto gemaakt" : t.skipped ? "zonder foto" : t.connected ? "⏳ nog bezig" : "○ offline"}`);
+          box.append(line);
+        });
+      }
+
       if (p.type === "joker") {
         box.append(el("h3", "", "Jokers"));
         p.teams.forEach((t) => box.append(Object.assign(el("div", "line"), { textContent: `${t.name}: ${t.round || "nog niet gekozen"}` })));
@@ -904,9 +914,11 @@
 
       // Spring-naar-ronde lijst
       const sel = $("goto-round");
-      if (sel.options.length !== state.rounds.length + 1) {
+      const gotoKey = state.rounds.map((r) => r.introId + r.title).join("|");
+      if (sel.dataset.key !== gotoKey) { // alleen opnieuw opbouwen als de rondes veranderen (anders springt je keuze terug)
+        sel.dataset.key = gotoKey;
         sel.replaceChildren(new Option("Kies een ronde…", ""));
-        sel.append(new Option("Testvragen (begin)", "test_intro"));
+        sel.append(new Option("Teamfoto (begin)", "teamphoto"), new Option("Testvragen", "test_intro"));
         state.rounds.forEach((r) => sel.append(new Option(`Ronde ${r.no}: ${r.title}`, r.introId)));
         sel.append(new Option("Joker", "joker"), new Option("Slotvraag", "final"));
       }

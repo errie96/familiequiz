@@ -317,6 +317,7 @@ function ss(step) {
       draw: { status: 'ready', turn: 0, turns: [], plan: null, used: [] },
       thirty: { status: 'ready', turn: 0, turns: [], order: null, cardOrder: [] },
       joker: { choices: {} },
+      teamphoto: { skipped: {} },
       logo: { status: 'open', answers: {}, judged: {}, blurStep: 0 },
       demo_draw: { status: 'ready', strokes: [] },
       demo_thirty: { status: 'ready', ok: [false, false, false, false, false] },
@@ -559,6 +560,7 @@ function hasAnswered(team, step) {
     case 'logo': return !!s.answers[id];
     case 'song': return s.placements[id] !== undefined;
     case 'joker': return s.choices[id] !== undefined;
+    case 'teamphoto': return !!teamPhotos[id] || !!s.skipped[id];
     case 'final': return s.status === 'wager' ? s.wagers[id] !== undefined : s.answers[id] !== undefined;
     case 'tiebreak': return s.answers[id] !== undefined;
     default: return false;
@@ -1203,6 +1205,8 @@ function publicStep(step) {
       const round = roundById[step.round];
       return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
     }
+    case 'teamphoto':
+      return { ...base, teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), skipped: !!s.skipped[t.teamId], connected: teamConnected(t) })) };
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined, round: t.jokerRound && roundById[t.jokerRound] ? `Ronde ${roundById[t.jokerRound].no}: ${roundById[t.jokerRound].title}` : null })) };
     case 'final': {
@@ -1286,6 +1290,8 @@ function hostPanel(step) {
         })
       };
     }
+    case 'teamphoto':
+      return { type: 'teamphoto', teams: Object.values(teams).sort(byName).map((t) => ({ teamId: t.teamId, name: t.name, photo: photoUrl(t.teamId), skipped: !!s.skipped[t.teamId], connected: teamConnected(t) })) };
     case 'joker':
       return { type: 'joker', teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, round: t.jokerRound ? roundById[t.jokerRound].title : null })) };
     case 'final':
@@ -1371,6 +1377,10 @@ function mainAction() {
       if (s.status === 'ready') return go('▶️ Start oefenbeurt (jij legt uit, 30 s)', () => { s.status = 'running'; timerStart((step.seconds || settings.thirtySeconds) * 1000, 'demo'); }, 'Leg de vijf woorden uit; tik goede antwoorden meteen aan.');
       if (s.status === 'running') return go('⏹️ Stop', () => { timerClear(); s.status = 'result'; });
       return go('Volgende ▶️', next);
+    case 'teamphoto': {
+      const w = activeTeams().filter((t) => !hasAnswered(t, step)).map((t) => t.name);
+      return w.length ? none('📸 Teams maken hun teamfoto…', `Wacht nog op: ${w.join(', ')}`) : go('Volgende ▶️', next);
+    }
     case 'joker': {
       const w = activeTeams().filter((t) => !hasAnswered(t, step)).map((t) => t.name);
       return w.length ? none('⏳ Teams kiezen hun joker…', `Wacht nog op: ${w.join(', ')}`) : go('Volgende ▶️', next);
@@ -1398,7 +1408,7 @@ function forceAction() {
   const s = ss(step);
   if (step.kind === 'song' && s.status === 'loading') return { label: '⏭️ Dit liedje overslaan', run: next };
   if (['mc', 'price', 'song', 'logo'].includes(step.kind) && s.status === 'open') return { label: '⏭️ Toch afsluiten zonder te wachten', run: () => closeStep(step) };
-  if (step.kind === 'joker') return { label: '⏭️ Toch doorgaan', run: next };
+  if (step.kind === 'joker' || step.kind === 'teamphoto') return { label: '⏭️ Toch doorgaan', run: next };
   if (step.kind === 'draw' && s.status === 'drawing') return { label: '⏭️ Beurt toch stoppen (niet iedereen heeft ingediend)', run: () => endDrawTurn(step) };
   if (step.kind === 'final' && s.status === 'wager') return { label: '⏭️ Toch de vraag tonen', run: () => { s.status = 'question'; } };
   if (step.kind === 'final' && s.status === 'question') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
@@ -1416,7 +1426,7 @@ function broadcastState() {
   const common = {
     phase, paused, showStandings, review: reviewPayload,
     header: {
-      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
+      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'teamphoto' ? 'Teamfoto' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
       progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
     },
     standings: phase === 'END' ? ranking() : null,
@@ -1539,6 +1549,8 @@ function phoneView(step, team, device, isBase) {
       const photos = roundPhotos[step.round] || {};
       return { ...base, photoUploaded: !!photos[id] };
     }
+    case 'teamphoto':
+      return { ...base, photo: photoUrl(id), skipped: !!s.skipped[id] };
     case 'joker':
       return { ...base, rounds: rounds.map((r) => ({ id: r.id, title: `Ronde ${r.no}: ${r.title}` })), chosen: team.jokerRound, submitted: s.choices[id] !== undefined };
     case 'final': {
@@ -2121,6 +2133,14 @@ io.on('connection', (socket) => {
     if (team.baseDeviceId !== device.deviceId) return reply({ ok: false, message: 'Alleen de basistelefoon kan de teamfoto aanpassen.' });
     if (dataUrl !== null && !validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
     setTeamPhoto(team.teamId, dataUrl);
+    reply({ ok: true });
+    sync();
+  });
+  socket.on('teamphoto_skip', (_, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'teamphoto');
+    if (!c || !c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan dit.' });
+    c.s.skipped[c.team.teamId] = true;
     reply({ ok: true });
     sync();
   });

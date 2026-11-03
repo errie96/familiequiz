@@ -4,7 +4,7 @@ Bijgewerkt: 2 november 2026
 
 ## In het kort
 
-De familiequiz bestaat uit drie testvragen, een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand een tussenstand; de uitslag komt pas aan het einde.
+De familiequiz begint met een teamfoto en bestaat verder uit drie testvragen, een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand een tussenstand; de uitslag komt pas aan het einde.
 
 Er zijn drie schermen, alle drie in de browser:
 
@@ -42,14 +42,16 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 De volgorde ligt vast. Elk scherm hieronder komt na een druk op de grote knop van de bediening.
 
 1. **Welkomstpagina en lobby.** Eerst de welkomstpagina; na een druk op de knop het aanmeldscherm met de QR-code en de aangemelde teams. De quizmaster start met "Start de quiz" zodra alle teams binnen zijn.
-2. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
-3. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
-4. **Infoscherm: Hier begint de echte quiz.** Vanaf nu telt alles mee.
-5. **Joker.** Elk team kiest op de basistelefoon de ronde waarin het verwacht het best te scoren. Die ronde telt aan het eind dubbel. De tv laat zien op welke ronde elk team de joker zet. Je kunt pas verder als iedereen gekozen heeft.
-6. **Ronde 1 tot en met 8.** Elke ronde begint met een tussenpagina: "Nu gaan we door naar…", tromgeroffel, en dan springt de rondenaam in beeld met uitleg en "Hier kun je 100 punten verdienen". Daarna volgt een oefenronde die niet meetelt, het scherm "Nu begint het echt!" en dan de echte vragen. Bij ronde 1 komt er ook een tussenpagina voor elke nieuwe categorie. Volgorde en aantal rondes stel je vooraf in de bediening in.
-7. **Slotvraag** met inzet.
-8. **Beslissingsvraag**, alleen bij een gelijke stand op de eerste plaats. Anders verschijnt het scherm "Geen gelijke stand".
-9. **Einde:** ontknoping, overzicht per ronde en nakijken.
+2. **Teamfoto.** Elk team gaat bij elkaar staan; de basistelefoon maakt de foto (of kiest er een uit de galerij). De tv toont alle teams en zet een groen vinkje bij elk team waarvan de foto binnen is. Een team kan ook *Overslaan* kiezen. De grote knop wordt pas "Volgende" als alle teams klaar zijn; met "Toch doorgaan" ga je eerder verder. Een foto vervangen kan later nog in het teamblok op de telefoon, en in de bediening kun je een foto verwijderen.
+3. **Rondeoverzicht en uitleg per ronde.** Eerst alle rondes op een rij, daarna per ronde een uitlegscherm.
+4. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
+5. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
+6. **Joker.** Elk team kiest op de basistelefoon de ronde waarin het verwacht het best te scoren. Die ronde telt aan het eind dubbel. De tv laat zien op welke ronde elk team de joker zet. Je kunt pas verder als iedereen gekozen heeft.
+7. **Infoscherm: Hier begint de echte quiz.** Vanaf nu telt alles mee.
+8. **Ronde 1 tot en met 8.** Elke ronde begint met een tussenpagina: "Nu gaan we door naar…", tromgeroffel, en dan springt de rondenaam in beeld met uitleg en "Hier kun je 100 punten verdienen". Daarna volgt een oefenronde die niet meetelt, het scherm "Nu begint het echt!" en dan de echte vragen. Bij ronde 1 komt er ook een tussenpagina voor elke nieuwe categorie. Volgorde en aantal rondes stel je vooraf in de bediening in.
+9. **Slotvraag** met inzet.
+10. **Beslissingsvraag**, alleen bij een gelijke stand op de eerste plaats. Anders verschijnt het scherm "Geen gelijke stand".
+11. **Einde:** ontknoping, overzicht per ronde en nakijken.
 
 Bovenaan de tv staan steeds de rondenaam, "Vraag x van y" en de punten van de ronde. Bij test- en oefenvragen staat "Testvraag" of "Oefenvraag". Loopt er een timer, dan staat die erbij en loopt er een balk bovenaan het scherm.
 
