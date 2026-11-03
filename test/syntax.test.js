@@ -14,7 +14,7 @@ test('server and browser inline scripts have valid JavaScript syntax', () => {
 
   for (const file of ['public/index.html', 'public/host.html', 'public/bediening.html']) {
     const html = fs.readFileSync(path.join(root, file), 'utf8');
-    const scripts = [...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)]
+    const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
       .map((match) => match[1])
       .filter((source) => source.trim());
 
