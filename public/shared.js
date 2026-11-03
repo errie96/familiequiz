@@ -430,5 +430,73 @@ window.QuizSpotify = (function () {
   const activate = () => { try { if (player && player.activateElement) player.activateElement(); } catch (e) { /* oudere SDK */ } };
   const resume = () => { if (player) player.resume().catch(() => {}); };
 
-  return { connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect };
+  // ---- Willekeurig nummer per categorie, zoals in de Hitster-app ----
+  const SP_CATEGORIES = {
+    original: { years: [1960, 2024], genres: null },
+    guilty:   { years: [1985, 2015], genres: ["eurodance", "europop", "boy band", "dance pop", "schlager"] },
+    rock:     { years: [1965, 2020], genres: ["rock", "classic rock", "hard rock", "alternative rock", "grunge", "punk"] },
+    nederpop: { years: [1965, 2024], genres: ["dutch pop", "nederpop", "dutch rock", "nederlandstalig"] },
+    summer:   { years: [1980, 2024], genres: ["latin pop", "reggaeton", "tropical house", "dance pop"] },
+    "80s90s": { years: [1980, 1999], genres: null },
+    "00s10s": { years: [2000, 2019], genres: null }
+  };
+  const CATEGORY_SEARCH = {
+    original: ["top hits", "billboard classics", "pop classics", "world hits"],
+    guilty: ["guilty pleasures", "meezingers", "90s party hits", "eurodance", "boybands hits"],
+    rock: ["rock classics", "hard rock hits", "alternative rock classics", "guitar anthems"],
+    nederpop: ["nederpop hits", "nederlandstalig", "top 40 nederland", "dutch hits"],
+    summer: ["summer hits", "zomerhits", "latin pop hits", "beach party"],
+    "80s90s": ["80s pop hits", "90s smash hits", "80s greatest", "90s dance"],
+    "00s10s": ["2000s radio hits", "2010s pop anthems", "top hits 2010"]
+  };
+  // Heruitgaven, live, covers enz. geven vaak een verkeerd jaartal
+  const SP_SKIP = /(karaoke|tribute|instrumental|remaster|\blive\b|remix|version|sped up|slowed|cover)/i;
+  const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const keyOf = (t) => `${t.title}|${t.artist}`.toLowerCase();
+
+  async function spotifyTrack(cat, exclude) {
+    const cfg = SP_CATEGORIES[cat] || SP_CATEGORIES.original;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      let q = "year:" + rnd(cfg.years[0], cfg.years[1]);
+      if (cfg.genres) q += ' genre:"' + pick(cfg.genres) + '"';
+      const offset = attempt < 3 ? rnd(0, 30) : 0;
+      const r = await api("GET", `/search?type=track&limit=10&market=NL&offset=${offset}&q=${encodeURIComponent(q)}`);
+      if (r.status === 401 || r.status === 403 || r.status === 429) return null;
+      if (r.status !== 200 || !r.json) continue;
+      let items = ((r.json.tracks && r.json.tracks.items) || []).filter((i) =>
+        i && i.uri && i.name && i.artists && i.artists.length && i.album && i.album.release_date &&
+        i.album.album_type !== "compilation" && i.is_playable !== false && !SP_SKIP.test(i.name + " " + i.album.name));
+      const popular = items.filter((i) => typeof i.popularity === "number" && i.popularity >= 35);
+      if (popular.length) items = popular;
+      items = items.map((t) => ({ title: t.name, artist: t.artists.slice(0, 2).map((a) => a.name).join(", "), year: parseInt(t.album.release_date.slice(0, 4), 10), uri: t.uri }))
+        .filter((t) => !exclude.has(keyOf(t)));
+      if (items.length) return pick(items);
+    }
+    return null;
+  }
+  async function itunesTrack(cat, exclude) {
+    const terms = CATEGORY_SEARCH[cat] || CATEGORY_SEARCH.original;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(pick(terms))}&entity=song&limit=50&country=NL`);
+        const data = await res.json();
+        const valid = (data.results || []).filter((i) => i.previewUrl && i.trackName && i.releaseDate)
+          .map((i) => ({ title: i.trackName, artist: i.artistName, year: new Date(i.releaseDate).getFullYear(), previewUrl: i.previewUrl }))
+          .filter((t) => !exclude.has(keyOf(t)) && !SP_SKIP.test(t.title));
+        if (valid.length) return pick(valid);
+      } catch (e) { /* geen internet of iTunes onbereikbaar */ }
+    }
+    return null;
+  }
+  // Eerst Spotify (volledig nummer), anders een iTunes-fragment van 30 seconden
+  async function randomTrack(cat, excludeKeys) {
+    const exclude = new Set(excludeKeys || []);
+    let t = null;
+    if (connected()) t = await spotifyTrack(cat, exclude);
+    if (!t) t = await itunesTrack(cat, exclude);
+    return t;
+  }
+
+  return { connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf };
 })();

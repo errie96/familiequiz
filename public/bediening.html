@@ -168,6 +168,10 @@
 
     <details id="teams-panel" open>
       <summary>👥 Teams (<span id="team-count">0</span>)</summary>
+      <div class="setting" style="border:none;">
+        <label for="max-teams"><b>Maximaal aantal teams</b><br><span class="muted">Vul dit in vóór het aanmeldscherm; daarna kan niemand meer een extra team maken.</span></label>
+        <span style="display:flex; gap:6px;"><input type="number" id="max-teams" min="1" max="50" style="width:70px;"><button id="max-teams-save" class="btn-option btn-small">Opslaan</button></span>
+      </div>
       <div id="team-list"></div>
     </details>
 
@@ -337,7 +341,16 @@
         });
       }
 
-      if (p.type === "song") {
+      if (p.type === "song" && p.status === "loading") {
+        box.append(el("h3", "", `🔎 ${p.categoryName}: liedje zoeken…`));
+        box.append(el("p", "muted", QuizSpotify.connected() ? "Zoekt automatisch een nummer op Spotify in deze categorie." : "Spotify is niet verbonden: er wordt een iTunes-fragment van 30 seconden gezocht (speelt op de tv)."));
+        box.append(el("p", "muted", trackStatus || ""));
+        const again = el("button", "btn-option", "🔁 Opnieuw zoeken");
+        again.style.textAlign = "center";
+        again.onclick = () => { trackBusy = {}; fetchForPanel(p); };
+        box.append(again);
+      }
+      if (p.type === "song" && p.status !== "loading") {
         box.append(el("h3", "", `${p.song.title} · ${p.song.artist}`));
         box.append(el("p", "", `Jaar: ${p.song.year}`));
         box.append(el("p", "muted", `Kaarten per team: ${p.cards.map((c) => c.name + " " + c.n).join(" · ")} (doel ${p.target})`));
@@ -504,8 +517,11 @@
     }
     $("move-cancel").onclick = () => $("move-dialog").classList.add("hidden");
 
+    $("max-teams-save").onclick = () => socket.emit("set_max_teams", { n: Number($("max-teams").value) });
     function renderTeams(state) {
-      $("team-count").textContent = state.teams.length;
+      $("team-count").textContent = state.settings.maxTeams ? `${state.teams.length} van ${state.settings.maxTeams}` : state.teams.length;
+      if (document.activeElement !== $("max-teams")) $("max-teams").value = state.settings.maxTeams || "";
+      $("max-teams").style.outline = state.settings.maxTeams ? "" : "2px solid #fbbf24";
       const box = $("team-list");
       box.replaceChildren();
       state.teams.forEach((t) => {
@@ -563,11 +579,35 @@
       else if (r.status !== 200) spStatus("Apparaten ophalen mislukte (status " + r.status + ").", true);
       else spStatus(spTarget() ? "Klaar. Tik op Test om te controleren." : "Verbonden, maar er is nog geen apparaat. Open Spotify op het apparaat bij de speakers en tik op ↻.", !spTarget());
     }
+    // Extra muziekronde: de bediening zoekt startkaarten en liedjes op (Spotify, anders iTunes) en geeft ze aan de server
+    let trackBusy = {}, trackStatus = "";
+    async function fetchForPanel(p) {
+      if (p.needStart && !trackBusy["start" + p.roundId]) {
+        trackBusy["start" + p.roundId] = true;
+        trackStatus = "Startkaarten zoeken…";
+        const exclude = [...p.exclude];
+        const tracks = [];
+        for (let i = 0; i < p.needStart; i++) {
+          const t = await QuizSpotify.randomTrack(p.category, exclude);
+          if (t) { tracks.push(t); exclude.push(QuizSpotify.keyOf(t)); }
+        }
+        if (tracks.length) socket.emit("provide_start", { roundId: p.roundId, tracks });
+        else { trackStatus = "Geen startkaarten gevonden (internet?). Tik op Opnieuw zoeken."; delete trackBusy["start" + p.roundId]; renderPanel(S); }
+      }
+      if (p.needSong && !trackBusy[p.stepId]) {
+        trackBusy[p.stepId] = true;
+        trackStatus = "Liedje zoeken…";
+        const t = await QuizSpotify.randomTrack(p.category, p.exclude);
+        if (t) socket.emit("provide_track", { stepId: p.stepId, track: t });
+        else { trackStatus = "Geen liedje gevonden (internet?). Tik op Opnieuw zoeken, of sla dit liedje over."; delete trackBusy[p.stepId]; renderPanel(S); }
+      }
+    }
+
     async function spPlay(song) {
       if (!QuizSpotify.connected()) return;
       const dev = spTarget();
       if (!dev) return spStatus("Geen afspeelapparaat gekozen: open Spotify op een apparaat en tik op ↻.", true);
-      const item = await QuizSpotify.find(song.title, song.artist);
+      const item = song.uri ? { uri: song.uri, name: song.title } : await QuizSpotify.find(song.title, song.artist);
       if (!item) return spStatus(`"${song.title}" niet gevonden in Spotify: speel het zelf af.`, true);
       const r = await QuizSpotify.play(item.uri, dev);
       if ([200, 202, 204].includes(r.status)) { spPlaying = true; spStatus(`▶️ Speelt: ${item.name}`); }
@@ -604,7 +644,7 @@
     // Bij elke muziekvraag het liedje starten; stoppen bij pauze of een ander scherm
     function spOnState(st) {
       if (!QuizSpotify.connected()) return;
-      const song = st.step && st.step.kind === "song" && st.panel && st.panel.type === "song" && !st.panel.song.hasAudio ? st.panel.song : null;
+      const song = st.step && st.step.kind === "song" && st.panel && st.panel.type === "song" && st.panel.song && !st.panel.song.hasAudio ? st.panel.song : null;
       if (!song || st.paused) {
         if (spPlaying) spStop();
         if (!song) spLast = null;
@@ -681,19 +721,19 @@
         sel.replaceChildren(...opt.rounds.map((r) => new Option(r.title, r.id)));
         if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
         const cat = $("extra-cat");
-        cat.replaceChildren(new Option("Alles (alle liedjes)", "Alles"), ...opt.categories.map((c) => new Option(`${c.name} (${c.count} liedjes)`, c.name)));
+        cat.replaceChildren(...opt.categories.map((c) => new Option(c.name, c.id)));
       }
       const r = opt.rounds.find((x) => x.id === $("extra-base").value);
       $("extra-cat-row").classList.toggle("hidden", !(r && r.type === "hitster"));
       $("extra-add").disabled = st.phase === "END" || !opt.rounds.length;
-      $("extra-note").textContent = "Speel 30 Seconds, tekenen of de muziek nog een keer. Een extra ronde is evenveel punten waard als elke andere ronde; er is geen oefenronde. Bij muziek kies je een categorie, en de tijdlijnen beginnen opnieuw.";
+      $("extra-note").textContent = "Speel 30 Seconds, tekenen of de muziek nog een keer. Een extra ronde is evenveel punten waard als elke andere ronde; er is geen oefenronde. Bij muziek kies je een categorie zoals in Hitster: de liedjes worden dan automatisch op Spotify gezocht (zonder Spotify: iTunes-fragmenten) en de tijdlijnen beginnen opnieuw.";
     }
     $("extra-base").onchange = () => { const r = S && S.extraOptions.rounds.find((x) => x.id === $("extra-base").value); $("extra-cat-row").classList.toggle("hidden", !(r && r.type === "hitster")); };
     $("extra-add").onclick = () => {
       const base = $("extra-base").value;
       const r = S.extraOptions.rounds.find((x) => x.id === base);
       const category = r && r.type === "hitster" ? $("extra-cat").value : null;
-      if (confirm(`Extra ronde toevoegen: ${r ? r.title : base}${category && category !== "Alles" ? " (" + category + ")" : ""}?`)) socket.emit("add_extra", { base, category });
+      if (confirm(`Extra ronde toevoegen: ${r ? r.title : base}${category ? " (" + $("extra-cat").selectedOptions[0].textContent + ")" : ""}?`)) socket.emit("add_extra", { base, category });
     };
     $("plan-save").onclick = () => socket.emit("set_plan", { plan: planDraft.map((r) => ({ id: r.id, on: r.on, base: r.base || undefined, category: r.category || undefined })) });
 
@@ -739,6 +779,7 @@
       }
 
       renderPanel(state);
+      if (state.panel && state.panel.type === "song" && state.panel.status === "loading") fetchForPanel(state.panel);
       QuizFX.applyTheme(state.theme);
       $("btn-welcome").classList.toggle("hidden", !(state.phase === "LOBBY" && state.lobbyStage === "join"));
       renderScores(state);

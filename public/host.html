@@ -421,6 +421,13 @@
     let songKey = null;
     function renderSong(s) {
       showView("v-song");
+      if (s.status === "loading") {
+        $("song-emoji").textContent = "🔎";
+        $("song-title").textContent = "Het volgende liedje wordt gezocht…";
+        $("song-sub").textContent = "";
+        $("song-teams").replaceChildren();
+        return;
+      }
       const key = s.id;
       if (songKey !== key) {
         songKey = key;
@@ -775,6 +782,7 @@
       if (state.phase === "LOBBY") {
         showView("v-lobby");
         chips($("lobby-teams"), state.teamList, false, (t) => ` (${t.members})`);
+        $("lobby-teams").previousElementSibling.textContent = state.maxTeams ? `Teams (${state.teamList.length} van ${state.maxTeams})` : "Teams";
         $("lobby-empty").classList.toggle("hidden", state.teamList.length > 0);
         resetReveal();
         return;

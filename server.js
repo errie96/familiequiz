@@ -68,6 +68,7 @@ const DEFAULT_SETTINGS = {
   pricePoints: [5, 3, 2, 1], // punten voor dichtstbij, tweede, derde, ...
   logoPoints: [10, 8, 6, 4, 2], // logo's: punten voor het eerste, tweede, ... goede antwoord
   hitsterTarget: 10,         // muziekronde stopt zodra een team zoveel kaarten in de tijdlijn heeft
+  maxTeams: 0,               // maximaal aantal teams (0 = nog niet ingesteld); de host vult dit vooraf in
   finalMaxWager: 100,        // slotvraag: maximale inzet (teams kennen hun stand niet)
   theme: 'standaard',        // uiterlijk: standaard, winter, kerst, oudennieuw, zomer, halloween
   roundPlan: null,           // volgorde, aan/uit en "in 2 delen" per ronde (wordt in de bediening ingesteld)
@@ -90,6 +91,7 @@ function sanitizeSettings(input, base) {
   int('drawSeconds', 15, 300);
   int('thirtySeconds', 10, 120);
   int('hitsterTarget', 3, 50);
+  int('maxTeams', 0, 50);
   int('finalMaxWager', 0, 100000);
   if (THEMES.includes(src.theme)) out.theme = src.theme;
   if (Array.isArray(src.roundPlan)) out.roundPlan = src.roundPlan.filter((x) => x && typeof x.id === 'string').map((x) => ({ id: x.id, on: x.on !== false, base: typeof x.base === 'string' ? x.base : undefined, category: typeof x.category === 'string' && x.category ? x.category.slice(0, 40) : undefined })).slice(0, 40);
@@ -126,14 +128,19 @@ function planOrder() {
   const missing = list.filter((r) => !valid.some((p) => p.id === r.id)).map((r) => ({ id: r.id, on: true }));
   return [...valid, ...missing];
 }
-const extraTitle = (p, b) => (b.type === "hitster" && p.category ? `${b.title} (${p.category})` : `${b.title} (extra ronde)`);
+// Categorieën voor een extra muziekronde (zoals in de Hitster-app); de liedjes zoekt de bediening op Spotify
+const HITSTER_CATS = {
+  original: 'Original (klassiekers & wereldhits)', guilty: 'Guilty Pleasures (fout & meezingers)', rock: 'Rock Classics',
+  nederpop: 'Nederpop (100% Nederlands)', summer: 'Summer Party', '80s90s': '80s & 90s', '00s10s': '00s & 10s'
+};
+const extraTitle = (p, b) => (b.type === 'hitster' ? `Muziek: ${HITSTER_CATS[p.category] || HITSTER_CATS.original}` : `${b.title} (extra ronde)`);
 function extraRaw(p, b) {
   const r = JSON.parse(JSON.stringify(b));
   r.id = p.id; r.extra = true; r.title = extraTitle(p, b);
   // Geen oefenronde meer bij een extra ronde
   if (r.type === 'draw') r.words = (r.words || []).filter(notPractice);
   if (r.type === 'thirty') r.cards = (r.cards || []).filter(notPractice);
-  if (r.type === 'hitster') { r.songs = (r.songs || []).filter(notPractice); r.category = p.category || null; }
+  if (r.type === 'hitster') { r.songs = []; r.dynamic = true; r.category = HITSTER_CATS[p.category] ? p.category : 'original'; }
   return r;
 }
 function applyPlan(raw) {
@@ -153,15 +160,9 @@ function planView() {
 // Welke rondes kun je extra spelen, en welke muziekcategorieën zijn er (met aantal liedjes)?
 function extraOptions() {
   const list = (baseRaw && baseRaw.rounds) || [];
-  const hit = list.find((r) => r.type === 'hitster');
-  const cats = {};
-  if (hit) (hit.songs || []).filter(notPractice).forEach((s) => {
-    if (!Number.isInteger(s.year)) return;
-    [s.category, decadeOf(s.year)].filter(Boolean).forEach((c) => { cats[c] = (cats[c] || 0) + 1; });
-  });
   return {
     rounds: list.filter((r) => EXTRA_TYPES.includes(r.type)).map((r) => ({ id: r.id, title: r.title, type: r.type })),
-    categories: Object.entries(cats).sort((a, b) => a[0].localeCompare(b[0], 'nl')).map(([name, count]) => ({ name, count }))
+    categories: Object.entries(HITSTER_CATS).map(([id, name]) => ({ id, name }))
   };
 }
 function replan(order) {
@@ -171,11 +172,41 @@ function replan(order) {
   if (curId) { const i = steps.findIndex((x) => x.id === curId); if (i >= 0) stepIndex = i; }
   if (phase === 'LOBBY') { ssAll = {}; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
 }
+let dynSongs = {};  // liedjes die de bediening voor een extra muziekronde heeft gevonden (id -> liedje)
+let dynStart = {};  // rondeId -> ids van de startkaarten van die extra muziekronde
+function addDynSong(id, t) {
+  const song = {
+    id, key: `${t.title}|${t.artist}`.toLowerCase(), title: t.title, artist: t.artist, year: t.year, dynamic: true,
+    uri: t.uri || null, audio: t.previewUrl ? { kind: 'audio', src: t.previewUrl } : null
+  };
+  dynSongs[id] = song;
+  songs[id] = song;
+  return song;
+}
+function cleanTrack(t) {
+  if (!t || typeof t !== 'object') return null;
+  const title = cleanText(t.title, 150), artist = cleanText(t.artist, 150);
+  const year = Number(t.year);
+  if (!title || !Number.isInteger(year) || year < 1900 || year > 2100) return null;
+  return {
+    title, artist, year,
+    uri: typeof t.uri === 'string' && /^spotify:track:[A-Za-z0-9]{10,40}$/.test(t.uri) ? t.uri : null,
+    previewUrl: typeof t.previewUrl === 'string' && /^https:\/\/[^\s"'<>]{8,500}$/.test(t.previewUrl) ? t.previewUrl : null
+  };
+}
+// Alle liedjes die al gebruikt zijn (gespeeld of als startkaart), zodat er niets dubbel komt
+function usedSongKeys() {
+  const keys = new Set();
+  steps.forEach((x) => { const id = x.kind === 'song' && ssAll[x.id] && ssAll[x.id].songId; if (id && songs[id]) keys.add(songs[id].key); });
+  Object.values(dynStart).flat().forEach((id) => { if (songs[id]) keys.add(songs[id].key); });
+  return [...keys];
+}
 function compileQuiz(extraWarnings) {
   const result = loadContent(null, applyPlan(baseRaw));
   result.warnings = [...(extraWarnings || []), ...result.warnings];
   content = result;
   ({ rounds, steps, songs } = result);
+  Object.assign(songs, dynSongs);
   roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
 }
 function loadQuiz() {
@@ -512,6 +543,7 @@ function closeStep(step) {
 // Het liedje van een muziekvraag: bij de eerste keer willekeurig gekozen uit de nog niet gespeelde liedjes
 function songOf(step) {
   const s = ss(step);
+  if (step.dynamic) return (s.songId && songs[s.songId]) || null;
   if (!s.songId || !songs[s.songId]) {
     const round = roundById[step.round];
     const pool = (round && (step.test ? round.practicePool : round.pool)) || [];
@@ -549,7 +581,9 @@ function ensureTimeline(team, roundId) {
   team.timelines = team.timelines || {};
   if (!team.timelines[roundId]) {
     const round = roundById[roundId];
-    team.timelines[roundId] = round && round.startIds ? [...round.startIds].sort((a, b) => songs[a].year - songs[b].year) : [];
+    const start = round && round.dynamic ? dynStart[roundId] : round && round.startIds;
+    if (round && round.dynamic && !(start && start.length)) return []; // startkaarten nog niet binnen
+    team.timelines[roundId] = start ? [...start].filter((id) => songs[id]).sort((a, b) => songs[a].year - songs[b].year) : [];
   }
   return team.timelines[roundId];
 }
@@ -601,7 +635,10 @@ function enterStep() {
   }
   if (step.kind === 'draw' && !s.plan) planDraw(step);
   if (step.kind === 'thirty' && !s.order) planThirty(step);
-  if (step.kind === 'song') Object.values(teams).forEach((t) => ensureTimeline(t, step.round));
+  if (step.kind === 'song') {
+    if (step.dynamic && (!s.songId || !dynStart[step.round])) s.status = 'loading'; // de bediening zoekt het liedje op
+    Object.values(teams).forEach((t) => ensureTimeline(t, step.round));
+  }
   if (step.kind === 'tiebreak' && !s.teams) s.teams = tiedLeaders();
   // Spiekmeldingen horen bij vragen; bij andere schermen weer opruimen
   if (!cheatSensitive(step)) alerts = {};
@@ -923,7 +960,7 @@ function saveNow() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll,
+      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
       devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
@@ -956,6 +993,8 @@ function loadSaved() {
   }
   seq = Math.max(seq, data.seq || 0, ...Object.values(teams).map((t) => t.seq), ...Object.values(devices).map((d) => d.seq));
   settings = sanitizeSettings(data.settings, settings);
+  dynSongs = data.dynSongs && typeof data.dynSongs === 'object' ? data.dynSongs : {};
+  dynStart = data.dynStart && typeof data.dynStart === 'object' ? data.dynStart : {};
   compileQuiz(content.warnings);
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
   phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
@@ -1014,6 +1053,7 @@ function publicStep(step) {
     }
     case 'song': {
       const song = songOf(step);
+      if (!song || s.status === 'loading') return { ...base, status: 'loading', target: settings.hitsterTarget, teams: [] };
       const out = { ...base, status: s.status, audio: song.audio, target: settings.hitsterTarget, done: s.status === 'revealed' && hitsterDone(step.round), placed: Object.keys(s.placements).filter((id) => teams[id]).length, active: activeTeams().length,
         teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, cards: ensureTimeline(t, step.round).length, answered: hasAnswered(t, step), connected: teamConnected(t) })) };
       return out; // het antwoord staat alleen op de telefoons, niet op de tv
@@ -1100,7 +1140,12 @@ function hostPanel(step) {
       };
     case 'song': {
       const song = songOf(step);
-      return { type: 'song', target: settings.hitsterTarget, cards: Object.values(teams).sort(byName).map((t) => ({ name: t.name, n: ensureTimeline(t, step.round).length })), status: s.status, song: { id: step.id, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
+      if (!song || s.status === 'loading') {
+        const round = roundById[step.round];
+        return { type: 'song', status: 'loading', dynamic: true, stepId: step.id, roundId: step.round, category: round.category, categoryName: HITSTER_CATS[round.category],
+          needSong: !s.songId, needStart: dynStart[step.round] ? 0 : (round.startCards || 2), exclude: usedSongKeys() };
+      }
+      return { type: 'song', uri: song.uri || null, target: settings.hitsterTarget, cards: Object.values(teams).sort(byName).map((t) => ({ name: t.name, n: ensureTimeline(t, step.round).length })), status: s.status, song: { id: step.id, uri: song.uri || null, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
     }
     case 'price':
       return { type: 'price', status: s.status, name: step.name, unit: step.unit, now: step.now, ago: step.ago, agoYears: step.agoYears };
@@ -1165,6 +1210,7 @@ function mainAction() {
   const go = (label, run, hint) => ({ label, enabled: true, hint: hint || '', run });
   if (phase === 'LOBBY') {
     if (!steps.length) return none('Geen quiz geladen', 'Controleer questions.json');
+    if (!settings.maxTeams) return none('📱 Toon het aanmeldscherm (QR-code)', 'Vul eerst bij Teams in hoeveel teams er maximaal mee mogen doen.');
     if (lobbyStage === 'welcome') return go('📱 Toon het aanmeldscherm (QR-code)', () => { lobbyStage = 'join'; });
     if (!Object.keys(teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
     return go('▶️ Start de quiz', () => { phase = 'PLAY'; stepIndex = 0; enterStep(); });
@@ -1188,10 +1234,11 @@ function mainAction() {
     case 'roundresult':
       return go('Volgende ▶️', next);
     case 'song':
+      if (s.status === 'loading') return none('🔎 Liedje zoeken op Spotify…', 'De bediening zoekt automatisch een nummer in deze categorie (Spotify moet verbonden zijn; anders een iTunes-fragment).');
       if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
       if (step.test) return go('Volgende ▶️', next);
       if (hitsterDone(step.round)) return go(`🏁 Muziekronde klaar (${settings.hitsterTarget} kaarten) ▶️`, next, 'Een team heeft de tijdlijn vol; de overige liedjes worden overgeslagen.');
-      if (!steps.slice(stepIndex + 1).some((x) => x.kind === 'song' && x.round === step.round)) return go('Volgende ▶️', next, `De liedjes zijn op voordat een team ${settings.hitsterTarget} kaarten had. Zet meer liedjes in de Excel.`);
+      if (!steps.slice(stepIndex + 1).some((x) => x.kind === 'song' && x.round === step.round)) return go('Volgende ▶️', next, `De liedjes zijn op voordat een team ${settings.hitsterTarget} kaarten had.`);
       return go('Volgend liedje ▶️', next);
     case 'mc':
     case 'price':
@@ -1250,6 +1297,7 @@ function forceAction() {
   const step = cur();
   if (!step) return null;
   const s = ss(step);
+  if (step.kind === 'song' && s.status === 'loading') return { label: '⏭️ Dit liedje overslaan', run: next };
   if (['mc', 'price', 'song', 'logo'].includes(step.kind) && s.status === 'open') return { label: '⏭️ Toch afsluiten zonder te wachten', run: () => closeStep(step) };
   if (step.kind === 'joker') return { label: '⏭️ Toch doorgaan', run: next };
   if (step.kind === 'draw' && s.status === 'drawing') return { label: '⏭️ Beurt toch stoppen (niet iedereen heeft ingediend)', run: () => endDrawTurn(step) };
@@ -1281,7 +1329,8 @@ function broadcastState() {
   io.to('tv_room').emit('state_update', {
     ...common,
     step: step ? publicStep(step) : null,
-    teamList: Object.values(teams).map((t) => ({ name: t.name, connected: teamConnected(t), members: teamDevices(t).length })).sort(byName)
+    teamList: Object.values(teams).map((t) => ({ name: t.name, connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
+    maxTeams: settings.maxTeams
   });
 
   const main = mainAction();
@@ -1343,6 +1392,7 @@ function phoneView(step, team, device, isBase) {
     case 'memory':
       return { ...base, status: s.status, test: !!step.test, prompt: step.prompt, entries: (s.entries[id] || []).map((e) => ({ id: e.id, text: e.text, by: e.by })) };
     case 'song': {
+      if (s.status === 'loading') return { ...base, status: 'loading', timeline: [], placed: null, target: settings.hitsterTarget };
       const tl = ensureTimeline(team, step.round).map((sid) => ({ id: sid, year: songs[sid].year, title: songs[sid].title, artist: songs[sid].artist }));
       const r = s.results && s.results[id];
       return { ...base, test: !!step.test, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, yearGuess: s.years[id] ?? null, result: r ? { ok: r.ok, exact: r.exact, yearGuess: r.yearGuess } : null,
@@ -1524,7 +1574,8 @@ io.on('connection', (socket) => {
   });
   socket.on('list_teams', (_, cb) => {
     if (typeof cb !== 'function') return;
-    cb({ teams: Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, members: teamDevices(t).length })).sort(byName) });
+    const n = Object.keys(teams).length;
+    cb({ teams: Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, members: teamDevices(t).length })).sort(byName), maxTeams: settings.maxTeams, full: !!settings.maxTeams && n >= settings.maxTeams });
   });
   socket.on('create_team', ({ teamName, label } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
@@ -1534,6 +1585,8 @@ io.on('connection', (socket) => {
     const name = cleanText(teamName, MAX_TEAM_NAME);
     if (!name) return reply({ ok: false, message: 'Vul een teamnaam in.' });
     if (findTeamByName(name)) return reply({ ok: false, message: `De teamnaam "${name}" is al in gebruik.` });
+    if (!settings.maxTeams) return reply({ ok: false, message: 'De quizmaster heeft het aantal teams nog niet ingesteld. Even geduld!' });
+    if (Object.keys(teams).length >= settings.maxTeams) return reply({ ok: false, message: `Er doen al ${settings.maxTeams} teams mee (het maximum). Sluit aan bij een bestaand team.` });
     const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: null, label: myName, seq: ++seq, socketId: null, connected: false };
     const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: device.deviceId, jokerRound: null, timelines: {}, proposal: null };
     device.teamId = team.teamId;
@@ -1904,6 +1957,32 @@ io.on('connection', (socket) => {
     io.to('tv_room').emit('demo_ops', { ops: clean });
     scheduleSave();
   });
+  socket.on('provide_track', ({ stepId, track } = {}) => {
+    if (!isRemote(socket)) return;
+    const step = steps.find((x) => x.id === stepId);
+    if (!step || !step.dynamic) return;
+    const s = ss(step);
+    const t = cleanTrack(track);
+    if (!t || s.songId) return;
+    if (usedSongKeys().includes(`${t.title}|${t.artist}`.toLowerCase())) return;
+    s.songId = `${step.id}_t`;
+    addDynSong(s.songId, t);
+    if (s.status === 'loading' && dynStart[step.round]) { s.status = 'open'; Object.values(teams).forEach((tm) => ensureTimeline(tm, step.round)); }
+    sync();
+  });
+  socket.on('provide_start', ({ roundId, tracks } = {}) => {
+    if (!isRemote(socket) || !roundById[roundId] || !roundById[roundId].dynamic || dynStart[roundId] || !Array.isArray(tracks)) return;
+    const ids = tracks.map(cleanTrack).filter(Boolean).slice(0, 4).map((t, i) => { const id = `${roundId}_start${i + 1}`; addDynSong(id, t); return id; });
+    if (!ids.length) return;
+    dynStart[roundId] = ids;
+    const step = cur();
+    if (step && step.kind === 'song' && step.round === roundId) {
+      const s = ss(step);
+      Object.values(teams).forEach((tm) => ensureTimeline(tm, roundId));
+      if (s.status === 'loading' && s.songId) s.status = 'open';
+    }
+    sync();
+  });
   socket.on('song_replay', () => {
     if (!isRemote(socket)) return;
     io.to('tv_room').emit('play_audio');
@@ -1966,6 +2045,12 @@ io.on('connection', (socket) => {
   });
 
   // ---------- Bediening: noodknoppen ----------
+  socket.on('set_max_teams', ({ n } = {}) => {
+    if (!isRemote(socket) || phase === 'END') return;
+    if (!Number.isInteger(n) || n < 1 || n > 50) return socket.emit('host_error', { message: 'Kies een aantal tussen 1 en 50.' });
+    settings.maxTeams = n;
+    sync();
+  });
   socket.on('set_theme', ({ theme } = {}) => {
     if (!isRemote(socket) || !THEMES.includes(theme)) return;
     settings.theme = theme;
@@ -1986,7 +2071,7 @@ io.on('connection', (socket) => {
     const order = planOrder();
     let n = 1;
     while (order.some((p) => p.id === `${base}x${n}`)) n++;
-    const entry = { id: `${base}x${n}`, base, on: true, category: b.type === 'hitster' && typeof category === 'string' && category && category !== 'Alles' ? category.slice(0, 40) : undefined };
+    const entry = { id: `${base}x${n}`, base, on: true, category: b.type === 'hitster' ? (HITSTER_CATS[category] ? category : 'original') : undefined };
     // Tijdens de quiz komt de extra ronde direct na de huidige ronde; anders achteraan
     let pos = order.length;
     if (phase === 'PLAY' && cur()) { const k = order.findIndex((p) => p.id === cur().round); if (k >= 0) pos = k + 1; }
@@ -2134,7 +2219,7 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {};
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {};
     timerClear();
     io.emit('quiz_reset');
     broadcastState();

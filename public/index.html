@@ -173,6 +173,7 @@
 
     // ---------------- Team maken / aansluiten ----------------
     let pollHandle = null;
+    let teamsFull = false;
     function showJoinError(message) {
       $("join-error").textContent = message || "";
       $("join-error").classList.toggle("hidden", !message);
@@ -188,6 +189,7 @@
     $("my-name").addEventListener("input", () => {
       updateSteps();
       showJoinError("");
+      if (myName()) refreshTeamsAlways();
       if (myName() && !$("join-existing").classList.contains("hidden")) {
         refreshTeams();
         if (!pollHandle) pollHandle = setInterval(refreshTeams, 3000);
@@ -207,12 +209,25 @@
     }
     $("tab-new").addEventListener("click", () => selectTab("new"));
     $("tab-join").addEventListener("click", () => selectTab("join"));
+    // Ook vanuit het tabblad "Nieuw team" kijken of het maximum aantal teams al bereikt is
+    function refreshTeamsAlways() {
+      socket.emit("list_teams", null, (res) => {
+        teamsFull = !!(res && res.full);
+        $("tab-new").disabled = teamsFull;
+        $("tab-new").textContent = teamsFull ? "Nieuw team (vol)" : "Nieuw team";
+        if (teamsFull) { selectTab("join"); showJoinError(`Er doen al ${res.maxTeams} teams mee: sluit aan bij een bestaand team.`); }
+      });
+    }
     function refreshTeams() {
       if ($("join-screen").classList.contains("hidden") || !myName()) return;
       socket.emit("list_teams", null, (res) => {
         const list = $("team-list");
         list.replaceChildren();
         const teams = (res && res.teams) || [];
+        teamsFull = !!(res && res.full);
+        $("tab-new").disabled = teamsFull;
+        $("tab-new").textContent = teamsFull ? "Nieuw team (vol)" : "Nieuw team";
+        if (teamsFull && !$("join-new").classList.contains("hidden")) selectTab("join");
         $("team-list-empty").classList.toggle("hidden", teams.length > 0);
         teams.forEach((t) => {
           const btn = el("button", "btn-option", `${t.name}  (${t.members} ${t.members === 1 ? "telefoon" : "telefoons"})`);
@@ -434,6 +449,7 @@
 
       // ----- Muziek: tijdlijn -----
       song(box, v) {
+        if (v.status === "loading") { box.append(bigEl("🔎"), el("p", "note", "Het volgende liedje wordt gezocht… even geduld.")); return noop; }
         box.append(el("h3", "", v.status === "revealed" ? `${v.song.title} · ${v.song.artist}` : "🎵 Luister naar het liedje"));
         if (v.status === "revealed") {
           box.append(bigEl(`${v.song.year}`));
