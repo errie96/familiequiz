@@ -11,6 +11,7 @@ const { fromExcel } = require('./lib/fromExcel');
 const { newId, cleanText, norm, fuzzyEq, shuffle } = require('./lib/util');
 const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles } = require('./lib/state-store');
 const { pushUndo, applyUndoEntry } = require('./lib/undo');
+const { HISTORY_VERSION, DEFAULT_LIMIT: HISTORY_LIMIT, createHistoryEntry, appendHistory, isHistorySnapshot } = require('./lib/quiz-history');
 
 const PORT = process.env.PORT || 3000;
 const ON_RENDER = !!process.env.RENDER;
@@ -24,6 +25,7 @@ if (!HOST_PIN) {
 }
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const FRESH = process.argv.includes('--fresh') || process.env.FRESH === '1';
 
 const MAX_TEAM_NAME = 24;
@@ -256,6 +258,8 @@ let alerts = {};     // deviceId -> spiekmelding (blijft staan tot de speler ter
 let seq = 0;
 let undoHistory = [];
 const UNDO_LIMIT = 30;
+let gameId = null;
+let historyEntries = [];
 
 const timer = { tag: null, totalMs: 0, remainingMs: 0, startedAt: 0, handle: null };
 
@@ -650,7 +654,11 @@ function enterStep() {
 const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tiebreak', 'logo'].includes(step.kind);
 
 const tiebreakPlayed = () => steps.some((x) => x.kind === 'tiebreak' && ssAll[x.id] && (ssAll[x.id].teams || []).length);
-function finishQuiz() { phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear(); }
+function finishQuiz() {
+  if (phase === 'END') return;
+  phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear();
+  archiveFinishedQuiz();
+}
 function next() {
   if (stepIndex + 1 >= steps.length) return finishQuiz();
   stepIndex++;
@@ -955,6 +963,29 @@ function reviewPages(scope) {
 // Opslaan en hervatten
 // ---------------------------------------------------------------
 let saveTimer = null;
+function loadHistory() {
+  const saved = readJsonWithBackup(HISTORY_FILE, isHistorySnapshot);
+  historyEntries = saved ? saved.data.entries.slice(0, HISTORY_LIMIT) : [];
+  if (saved && saved.source === 'backup') console.warn('De quizgeschiedenis is hersteld uit de reservekopie.');
+}
+function saveHistory() {
+  writeJsonWithBackup(HISTORY_FILE, { version: HISTORY_VERSION, entries: historyEntries });
+}
+function archiveFinishedQuiz() {
+  if (!gameId || historyEntries.some((entry) => entry.gameId === gameId)) return;
+  const entry = createHistoryEntry({
+    gameId,
+    completedAt: new Date().toISOString(),
+    quiz: quizSource,
+    theme: settings.theme,
+    ranking: ranking(),
+    breakdown: breakdown()
+  });
+  historyEntries = appendHistory(historyEntries, entry, HISTORY_LIMIT);
+  try { saveHistory(); }
+  catch (error) { console.error('Quizgeschiedenis opslaan mislukt:', error.message); }
+}
+
 function scheduleSave() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => { saveTimer = null; saveNow(); }, 250);
@@ -964,7 +995,7 @@ function saveNow() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart,
+      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart, gameId,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
       undoHistory,
@@ -998,12 +1029,15 @@ function loadSaved() {
   }
   seq = Math.max(seq, data.seq || 0, ...Object.values(teams).map((t) => t.seq), ...Object.values(devices).map((d) => d.seq));
   settings = sanitizeSettings(data.settings, settings);
+  gameId = typeof data.gameId === 'string' ? data.gameId : null;
   dynSongs = data.dynSongs && typeof data.dynSongs === 'object' ? data.dynSongs : {};
   dynStart = data.dynStart && typeof data.dynStart === 'object' ? data.dynStart : {};
   compileQuiz(content.warnings);
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
   undoHistory = Array.isArray(data.undoHistory) ? data.undoHistory.slice(-UNDO_LIMIT) : [];
   phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
+  // Oude opgeslagen quizzen van vóór de geschiedenisfunctie krijgen alsnog een sessie-ID.
+  if (phase !== 'LOBBY' && !gameId) gameId = crypto.randomUUID();
   stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), steps.length - 1);
   reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
   revealN = Number.isInteger(data.revealN) ? data.revealN : 0;
@@ -1219,7 +1253,7 @@ function mainAction() {
     if (!settings.maxTeams) return none('📱 Toon het aanmeldscherm (QR-code)', 'Vul eerst bij Teams in hoeveel teams er maximaal mee mogen doen.');
     if (lobbyStage === 'welcome') return go('📱 Toon het aanmeldscherm (QR-code)', () => { lobbyStage = 'join'; });
     if (!Object.keys(teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
-    return go('▶️ Start de quiz', () => { phase = 'PLAY'; stepIndex = 0; enterStep(); });
+    return go('▶️ Start de quiz', () => { gameId = crypto.randomUUID(); phase = 'PLAY'; stepIndex = 0; enterStep(); });
   }
   if (phase === 'END') {
     const list = ranking();
@@ -1356,7 +1390,8 @@ function broadcastState() {
     warnings: content.warnings,
     quiz: { ...quizSource, steps: steps.length, rounds: rounds.length },
     plan: planView(), extraOptions: extraOptions(), themes: THEMES,
-    hostScores: phase !== 'LOBBY' ? breakdown() : null // alleen voor de quizmasters
+    hostScores: phase !== 'LOBBY' ? breakdown() : null, // alleen voor de quizmasters
+    history: historyEntries // alleen in de beveiligde bediening; nooit naar tv of spelers
   });
 
   Object.values(devices).forEach((d) => {
@@ -2254,7 +2289,7 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; undoHistory = [];
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; undoHistory = []; gameId = null;
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
@@ -2274,6 +2309,7 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------
 // Opstarten
 // ---------------------------------------------------------------
+loadHistory();
 const restored = loadSaved();
 function shutdown() { saveNow(); process.exit(0); }
 process.on('SIGINT', shutdown);

@@ -95,6 +95,12 @@
       <div id="scores-table" style="overflow:auto; font-size:13px;"></div>
     </details>
 
+    <details id="history-panel">
+      <summary>🗂️ Quizgeschiedenis <span id="history-count" class="muted"></span></summary>
+      <p class="muted" style="margin:4px 0 8px;">Afgeronde quizzen met eindstand en punten per ronde. De laatste 50 quizzen worden bewaard, ook als je een nieuwe quiz start.</p>
+      <div id="history-list"></div>
+    </details>
+
     <details id="theme-panel">
       <summary>🎨 Thema <span id="theme-badge" class="muted"></span></summary>
       <p class="muted" style="margin:4px 0 8px;">Verandert de kleuren en decoratie op de tv en alle telefoons. Kan altijd, ook tijdens de quiz.</p>
@@ -667,6 +673,61 @@
         rows: b.rows.map((r) => [r.name, ...r.rounds.map((x) => `${x.pts}${x.joker ? "🃏" : ""}`), r.final === null ? "–" : String(r.final), String(r.total)])
       });
     }
+    let renderedHistoryKey = null;
+    function renderHistory(entries) {
+      const list = Array.isArray(entries) ? entries : [];
+      $("history-count").textContent = `(${list.length})`;
+      const key = list.map((entry) => entry.gameId).join("|");
+      if (key === renderedHistoryKey) return;
+      renderedHistoryKey = key;
+
+      const box = $("history-list");
+      box.replaceChildren();
+      if (!list.length) {
+        box.append(el("p", "muted", "Er is nog geen afgeronde quiz opgeslagen. De eerste verschijnt hier na de ontknoping."));
+        return;
+      }
+
+      list.forEach((entry) => {
+        const details = el("details", "qbox");
+        const summary = el("summary");
+        const date = new Date(entry.completedAt);
+        const dateText = Number.isNaN(date.getTime()) ? String(entry.completedAt || "Onbekende datum") : date.toLocaleString("nl-NL");
+        const winners = Array.isArray(entry.winners) ? entry.winners : [];
+        const winnerText = winners.length > 1 ? `Gedeelde winst: ${winners.join(", ")}` : winners[0] || "Geen winnaar";
+        summary.textContent = `${dateText} · ${winnerText} · ${entry.teamCount || 0} teams`;
+        details.append(summary);
+
+        const meta = el("p", "muted", `${entry.quiz && entry.quiz.file || "Vragenlijst onbekend"} · ${entry.quiz && entry.quiz.rounds || 0} rondes · Thema: ${entry.theme || "standaard"}`);
+        details.append(meta);
+
+        const table = el("div");
+        table.style.overflow = "auto";
+        table.style.fontSize = "13px";
+        const rounds = entry.breakdown && Array.isArray(entry.breakdown.rounds) ? entry.breakdown.rounds : [];
+        const rows = entry.breakdown && Array.isArray(entry.breakdown.rows) ? entry.breakdown.rows : [];
+        const ranking = Array.isArray(entry.ranking) ? entry.ranking : [];
+        QuizFX.renderTable(table, {
+          columns: ["Plek", "Team", ...rounds.map((round) => round.title || round.full || "Ronde"), "Slot", "Totaal"],
+          rows: ranking.map((team) => {
+            const detail = rows.find((row) => row.name === team.name);
+            const scores = detail && Array.isArray(detail.rounds) ? detail.rounds : [];
+            return [
+              team.rank ? `${team.rank}.` : "–",
+              team.name,
+              ...rounds.map((round, index) => {
+                const score = scores[index];
+                return score ? `${score.pts}${score.joker ? " 🃏" : ""}` : "–";
+              }),
+              detail && detail.final !== null ? String(detail.final) : "–",
+              String(team.score)
+            ];
+          })
+        });
+        details.append(table);
+        box.append(details);
+      });
+    }
     const THEME_NAMES = { standaard: "Standaard", winter: "❄️ Winter", kerst: "🎄 Kerst", oudennieuw: "🥂 Oud & nieuw", zomer: "☀️ Zomer", halloween: "🎃 Halloween" };
     function renderThemes(st) {
       $("theme-badge").textContent = THEME_NAMES[st.theme] || st.theme;
@@ -746,6 +807,7 @@
     socket.on("state_update", (state) => {
       S = state;
       renderAlerts(state.alerts);
+      renderHistory(state.history);
       const w = $("warnings");
       w.classList.toggle("hidden", !state.warnings.length);
       w.textContent = state.warnings.length ? "⚠️ " + state.warnings.join(" · ") : "";

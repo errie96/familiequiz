@@ -9,6 +9,7 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Welkomstpagina** op de tv vóór het aanmeldscherm (tekst in de Excel, tabblad *Teksten*). In de bediening: "Toon het aanmeldscherm".
 - **Alle vaste teksten in de Excel** (tabblad *Teksten*): welkomstpagina, tussenpagina's, joker, foto blur, muziek, tekenen, 30 Seconds, slotvraag, einde, pauze enz. Pas de kolom *Tekst* aan; {punten}, {team} e.d. vult de quiz zelf in. De uitleg per ronde staat in het tabblad *Rondes*. Daarna in de bediening *Excel uploaden* of *Opnieuw inlezen*: de nieuwe teksten staan meteen op tv en telefoons. Dat kan tot de start van de quiz.
 - **Thema's** (Standaard, Winter, Kerst, Oud & nieuw, Zomer, Halloween): bediening → *Thema*, op elk moment.
+- **Quizgeschiedenis**: afgeronde quizzen worden automatisch bewaard met datum, winnaar, eindstand en punten per ronde. De quizmaster vindt de laatste 50 quizzen terug in bediening → *Quizgeschiedenis*. De geschiedenis blijft bestaan als je een nieuwe quiz start en heeft een eigen reservekopie.
 - **Rondevolgorde**: bediening → *Rondes*: volgorde en aan/uit (vóór de start).
 - **Extra rondes**: 30 Seconds, tekenen of muziek nog een keer, ook tijdens de quiz (komt direct na de huidige ronde). Geen herhaling van liedjes, woorden of kaarten.
 - **Extra muziekronde**: kies een categorie zoals in de Hitster-app (Original, Guilty Pleasures, Rock Classics, Nederpop, Summer Party, 80s & 90s, 00s & 10s). De bediening zoekt de liedjes en startkaarten automatisch op Spotify (jaartal + genre); zonder Spotify een iTunes-fragment van 30 seconden op de tv. De eerste muziekronde komt altijd uit de Excel.
@@ -91,7 +92,7 @@ Afspelen in de browser zelf werkt op een computer (Chrome, Edge, Firefox), niet 
 De Client ID staat in `public/shared.js` (`QuizSpotify`).
 
 ## Opslaan en Render
-De stand staat in `data/state.json`; de vorige geldige stand blijft als `data/state.json.bak` beschikbaar als reservekopie. Als het hoofd-bestand ontbreekt of beschadigd is, probeert de server die reservekopie te herstellen. Een bewuste reset wist ook de reservekopie. Na een herstart staat een lopende quiz op pauze. Online draaien via Render: zie `render.yaml`
+De lopende stand staat in `data/state.json`; de vorige geldige stand blijft als `data/state.json.bak` beschikbaar als reservekopie. Als het hoofd-bestand ontbreekt of beschadigd is, probeert de server die reservekopie te herstellen. Een bewuste reset wist ook deze reservekopie. Afgeronde quizzen staan apart in `data/history.json` (met `data/history.json.bak` als reservekopie); een nieuwe quiz of reset wist de geschiedenis niet. Na een herstart staat een lopende quiz op pauze. Online draaien via Render: zie `render.yaml`
 (zet `HOST_PIN`, en voor een echte avond plan `starter` met schijf). Niet pushen tijdens de quiz.
 
 ## Noodknoppen (bediening)
