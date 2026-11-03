@@ -2075,7 +2075,7 @@ io.on('connection', (socket) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const c = baseContext(socket, 'roundresult');
     if (!c || !c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan een teamfoto indienen.' });
-    if (typeof dataUrl !== 'string' || dataUrl.length > 200000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
+    if (typeof dataUrl !== 'string' || dataUrl.length > 200000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$.test(dataUrl)) {
       return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
     }
     roundPhotos[c.step.round] = roundPhotos[c.step.round] || {};
