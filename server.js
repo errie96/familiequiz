@@ -172,7 +172,7 @@ function replan(order) {
   settings.roundPlan = order.map((p) => ({ id: p.id, on: p.on !== false, base: p.base || undefined, category: p.category || undefined }));
   compileQuiz(content.warnings.filter((w) => !/Ronde/.test(w)));
   if (curId) { const i = steps.findIndex((x) => x.id === curId); if (i >= 0) stepIndex = i; }
-  if (phase === 'LOBBY') { ssAll = {}; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
+  if (phase === 'LOBBY') { ssAll = {}; undoHistory = []; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
 }
 let dynSongs = {};  // liedjes die de bediening voor een extra muziekronde heeft gevonden (id -> liedje)
 let dynStart = {};  // rondeId -> ids van de startkaarten van die extra muziekronde
@@ -2123,6 +2123,7 @@ io.on('connection', (socket) => {
     if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'De vragen kunnen alleen vóór de start opnieuw worden ingelezen.' });
     loadQuiz();
     ssAll = {};
+    undoHistory = [];
     Object.values(teams).forEach((t) => { t.timelines = {}; });
     sync();
   });
