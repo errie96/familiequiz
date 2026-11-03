@@ -12,6 +12,8 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Rondevolgorde**: bediening → *Rondes*: volgorde en aan/uit (vóór de start).
 - **Extra rondes**: 30 Seconds, tekenen of muziek nog een keer, ook tijdens de quiz (komt direct na de huidige ronde). Geen herhaling van liedjes, woorden of kaarten.
 - **Extra muziekronde**: kies een categorie zoals in de Hitster-app (Original, Guilty Pleasures, Rock Classics, Nederpop, Summer Party, 80s & 90s, 00s & 10s). De bediening zoekt de liedjes en startkaarten automatisch op Spotify (jaartal + genre); zonder Spotify een iTunes-fragment van 30 seconden op de tv. De eerste muziekronde komt altijd uit de Excel.
+- **Elk schermformaat**: het tv-scherm schaalt zichzelf kleiner als een tekst of tabel niet past (tv, beamer, laptop). Telefoons en bediening breken lange woorden af en scrollen.
+- **Juiste muziekcategorie**: bij een extra muziekronde telt een gevonden nummer alleen als het jaartal in de categorie valt én de artiest bij Spotify het juiste genre heeft (rock, nederpop, guilty pleasures, summer). Met Spotify gekoppeld wordt alleen Spotify gebruikt; iTunes alleen zonder koppeling (ook gecontroleerd op jaartal en genre).
 - **Maximaal aantal teams**: bediening → *Teams*. Verplicht vóór het aanmeldscherm; daarna kan niemand meer een extra team maken (wel aansluiten).
 - **Scores voor de quizmasters**: alleen in bediening → *Scores*. Spelers en tv zien de stand pas aan het einde.
 - **Oefenronde bij elk spel** (kolom *Oefen?* in de Excel; bij meerkeuze categorie "Oefenvraag"). Bij tekenen en 30 Seconds doet de quizmaster de oefenbeurt zelf (tekenen in de bediening, live op de tv).

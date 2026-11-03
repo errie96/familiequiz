@@ -460,35 +460,69 @@ window.QuizSpotify = (function () {
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const keyOf = (t) => `${t.title}|${t.artist}`.toLowerCase();
 
+  // Controle achteraf: past het nummer echt in de categorie? (jaartal én genre van de artiest)
+  const GENRE_OK = {
+    guilty: /(euro|dance pop|boy band|girl group|schlager|bubblegum|italo|eurodance|party|teen pop|europop)/i,
+    rock: /(rock|metal|grunge|punk|britpop|new wave|hard rock|glam)/i,
+    nederpop: /(dutch|nederpop|nederlands|levenslied|flemish|carnaval|volendam)/i,
+    summer: /(latin|reggaeton|tropical|dancehall|moombahton|soca|calypso|bachata|salsa|samba|zomer|beach)/i
+  };
+  const MIN_POP = { original: 55, "80s90s": 45, "00s10s": 45 };
+  const inYears = (cfg, y) => Number.isInteger(y) && y >= cfg.years[0] && y <= cfg.years[1];
+
+  async function artistGenres(ids) {
+    const out = {};
+    const uniq = [...new Set(ids)].slice(0, 50);
+    if (!uniq.length) return out;
+    const r = await api("GET", `/artists?ids=${uniq.join(",")}`);
+    ((r.json && r.json.artists) || []).forEach((a) => { if (a) out[a.id] = (a.genres || []).join(" | "); });
+    return out;
+  }
+  async function spotifyCandidates(cat, cfg, q, offset) {
+    const r = await api("GET", `/search?type=track&limit=20&market=NL&offset=${offset}&q=${encodeURIComponent(q)}`);
+    if (r.status === 401 || r.status === 403 || r.status === 429) return { stop: true, items: [] };
+    if (r.status !== 200 || !r.json) return { items: [] };
+    const items = ((r.json.tracks && r.json.tracks.items) || []).filter((i) =>
+      i && i.uri && i.name && i.artists && i.artists.length && i.album && i.album.release_date &&
+      i.album.album_type !== "compilation" && i.is_playable !== false && !SP_SKIP.test(i.name + " " + i.album.name) &&
+      inYears(cfg, parseInt(i.album.release_date.slice(0, 4), 10)) &&
+      (typeof i.popularity !== "number" || i.popularity >= (MIN_POP[cat] || 30)));
+    return { items };
+  }
   async function spotifyTrack(cat, exclude) {
     const cfg = SP_CATEGORIES[cat] || SP_CATEGORIES.original;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      let q = "year:" + rnd(cfg.years[0], cfg.years[1]);
-      if (cfg.genres) q += ' genre:"' + pick(cfg.genres) + '"';
-      const offset = attempt < 3 ? rnd(0, 30) : 0;
-      const r = await api("GET", `/search?type=track&limit=10&market=NL&offset=${offset}&q=${encodeURIComponent(q)}`);
-      if (r.status === 401 || r.status === 403 || r.status === 429) return null;
-      if (r.status !== 200 || !r.json) continue;
-      let items = ((r.json.tracks && r.json.tracks.items) || []).filter((i) =>
-        i && i.uri && i.name && i.artists && i.artists.length && i.album && i.album.release_date &&
-        i.album.album_type !== "compilation" && i.is_playable !== false && !SP_SKIP.test(i.name + " " + i.album.name));
-      const popular = items.filter((i) => typeof i.popularity === "number" && i.popularity >= 35);
-      if (popular.length) items = popular;
-      items = items.map((t) => ({ title: t.name, artist: t.artists.slice(0, 2).map((a) => a.name).join(", "), year: parseInt(t.album.release_date.slice(0, 4), 10), uri: t.uri }))
-        .filter((t) => !exclude.has(keyOf(t)));
-      if (items.length) return pick(items);
+    const rule = GENRE_OK[cat];
+    for (let attempt = 0; attempt < 10; attempt++) {
+      // Eerst: willekeurig jaar + genre (zoals in Hitster); daarna alleen genre, met een willekeurige plek in de resultaten
+      let q;
+      if (attempt < 6 || !cfg.genres) { q = "year:" + rnd(cfg.years[0], cfg.years[1]); if (cfg.genres) q += ' genre:"' + pick(cfg.genres) + '"'; }
+      else q = 'genre:"' + pick(cfg.genres) + '"';
+      const res = await spotifyCandidates(cat, cfg, q, attempt < 3 ? rnd(0, 40) : rnd(0, 100));
+      if (res.stop) return null;
+      let items = res.items.filter((t) => !exclude.has(keyOf({ title: t.name, artist: t.artists.slice(0, 2).map((a) => a.name).join(", ") })));
+      if (rule && items.length) {
+        // Spotify's genre-filter in de zoekopdracht is niet streng: controleer het genre van de (eerste) artiest
+        const genres = await artistGenres(items.map((t) => t.artists[0].id));
+        items = items.filter((t) => rule.test(genres[t.artists[0].id] || ""));
+      }
+      if (!items.length) continue;
+      const t = pick(items);
+      return { title: t.name, artist: t.artists.slice(0, 2).map((a) => a.name).join(", "), year: parseInt(t.album.release_date.slice(0, 4), 10), uri: t.uri, source: "spotify" };
     }
     return null;
   }
+  const ITUNES_GENRE = { rock: /(rock|metal|alternative|punk)/i, summer: /(latin|reggae|dance|pop|electronic)/i, guilty: /(pop|dance|electronic|schlager)/i };
   async function itunesTrack(cat, exclude) {
+    const cfg = SP_CATEGORIES[cat] || SP_CATEGORIES.original;
     const terms = CATEGORY_SEARCH[cat] || CATEGORY_SEARCH.original;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(pick(terms))}&entity=song&limit=50&country=NL`);
         const data = await res.json();
-        const valid = (data.results || []).filter((i) => i.previewUrl && i.trackName && i.releaseDate)
-          .map((i) => ({ title: i.trackName, artist: i.artistName, year: new Date(i.releaseDate).getFullYear(), previewUrl: i.previewUrl }))
-          .filter((t) => !exclude.has(keyOf(t)) && !SP_SKIP.test(t.title));
+        const valid = (data.results || []).filter((i) => i.previewUrl && i.trackName && i.releaseDate && i.collectionType !== "Compilation" &&
+            (!ITUNES_GENRE[cat] || ITUNES_GENRE[cat].test(i.primaryGenreName || "")))
+          .map((i) => ({ title: i.trackName, artist: i.artistName, year: new Date(i.releaseDate).getFullYear(), previewUrl: i.previewUrl, source: "itunes" }))
+          .filter((t) => inYears(cfg, t.year) && !exclude.has(keyOf(t)) && !SP_SKIP.test(t.title));
         if (valid.length) return pick(valid);
       } catch (e) { /* geen internet of iTunes onbereikbaar */ }
     }
@@ -497,10 +531,9 @@ window.QuizSpotify = (function () {
   // Eerst Spotify (volledig nummer), anders een iTunes-fragment van 30 seconden
   async function randomTrack(cat, excludeKeys) {
     const exclude = new Set(excludeKeys || []);
-    let t = null;
-    if (connected()) t = await spotifyTrack(cat, exclude);
-    if (!t) t = await itunesTrack(cat, exclude);
-    return t;
+    // Met Spotify gekoppeld alleen Spotify (dan klopt de categorie); iTunes is de terugval zonder koppeling
+    if (connected()) return await spotifyTrack(cat, exclude);
+    return await itunesTrack(cat, exclude);
   }
 
   return { connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf };

@@ -66,3 +66,11 @@ li { padding: 10px; border-bottom: 1px solid #334155; display: flex; justify-con
 .tchip { background: #334155; border-radius: 999px; padding: 0.3em 1.1em; }
 .tchip.done { background: #15803d; }
 .tchip.off { opacity: 0.4; }
+
+/* Past op elk scherm: lange woorden afbreken, niets buiten de rand */
+html, body { max-width: 100%; overflow-x: hidden; }
+.card, .card * { overflow-wrap: anywhere; }
+.card { max-width: min(600px, 100%); }
+img, canvas, video { max-width: 100%; }
+@media (max-width: 380px) { body { padding: 8px; } .card { padding: 16px; } button { padding: 12px; font-size: 15px; } }
+@media (min-width: 900px) and (orientation: landscape) { .card { max-width: 720px; } }

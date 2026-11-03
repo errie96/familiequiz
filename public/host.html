@@ -22,16 +22,19 @@
   <style>
     /* Gemaakt voor een tv: alles schaalt mee met de breedte van het scherm */
     html, body { height: 100%; }
-    body.tv { display: block; padding: 0; overflow: hidden; cursor: none; }
+    body.tv { display: flex; flex-direction: column; justify-content: flex-start; height: 100vh; padding: 0; overflow: hidden; cursor: none; }
     #audio-banner { margin-left: auto; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(11px, 1.2vw, 22px); padding: 0.3em 1em; border-radius: 999px; }
     #tv-alerts { position: fixed; left: 1.5vw; bottom: 1vw; display: flex; flex-wrap: wrap; gap: 0.5vw; z-index: 45; max-width: 70vw; }
     .tv-alert { background: #dc2626; color: #fff; font-weight: bold; font-size: clamp(11px, 1.15vw, 22px); padding: 0.3em 0.9em; border-radius: 999px; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
     #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 1.1vh; background: #1e293b; z-index: 40; }
     #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.3s; }
-    #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; flex-wrap: wrap; }
+    #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; flex-wrap: wrap; flex: 0 0 auto; }
     .pill { background: #334155; border-radius: 999px; padding: 0.3em 1.2em; font-size: clamp(14px, 1.9vw, 36px); font-weight: bold; }
     .pill.points { background: #b45309; }
-    main { padding: 0.5vh 4vw 4vh; height: calc(100% - 9vh); overflow: hidden; }
+    main { padding: 0.5vh 4vw 4vh; flex: 1 1 auto; min-height: 0; overflow: hidden; position: relative; }
+    /* Automatisch passend maken: een te groot scherm wordt in zijn geheel kleiner geschaald */
+    main > .view { transform-origin: top center; }
+    .tv-title, .tv-q, .tv-sub, .qo, .word, .slot, .tchip, .rtable td { overflow-wrap: anywhere; }
     .tv-title { font-size: clamp(36px, 6vw, 110px); margin-bottom: 2vh; }
     .tv-q { font-size: clamp(24px, 3.6vw, 70px); line-height: 1.15; margin: 0.5vh 0 1.5vh; }
     .tv-sub { color: #94a3b8; font-size: clamp(16px, 2.2vw, 40px); text-align: center; margin: 1vh 0; }
@@ -245,7 +248,7 @@
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
     const VIEWS = ["v-welcome", "v-demodraw", "v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
-    function showView(id) { VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id)); }
+    function showView(id) { VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id)); if (typeof scheduleFit === "function") scheduleFit(); }
 
     // ---------- Geluid: de browser wil eerst één klik of toetsdruk ----------
     let audioUnlocked = false;
@@ -698,6 +701,29 @@
       }
     }
 
+    // ---------- Automatisch passend maken op elk schermformaat ----------
+    // Past de inhoud niet in het beschikbare vlak, dan wordt het hele scherm (de actieve view) kleiner geschaald.
+    let fitTimer = null;
+    function fitView() {
+      const main = document.querySelector("main");
+      const v = VIEWS.map((id) => $(id)).find((x) => x && !x.classList.contains("hidden"));
+      if (!main || !v) return;
+      v.style.transform = "";
+      const cs = getComputedStyle(main);
+      const availH = main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const availW = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const h = v.scrollHeight, w = v.scrollWidth;
+      const s = Math.min(1, availH / Math.max(1, h), availW / Math.max(1, w));
+      if (s < 0.995) v.style.transform = `scale(${Math.max(0.3, s)})`;
+    }
+    function scheduleFit() {
+      requestAnimationFrame(fitView);
+      clearTimeout(fitTimer);
+      fitTimer = setTimeout(fitView, 350); // na laden van plaatjes en animaties nog een keer
+    }
+    window.addEventListener("resize", scheduleFit);
+    document.addEventListener("load", (e) => { if (e.target && e.target.tagName === "IMG") scheduleFit(); }, true);
+
     // ---------- Hoofdlus ----------
     let wasPaused = false;
     let lastStepId = null;
@@ -813,6 +839,7 @@
       }
       bigTimer(curTimer, $("draw-bigtimer"));
       bigTimer(curTimer, $("th-bigtimer"));
+      scheduleFit();
     });
 
     // ---------- QR-code ----------
