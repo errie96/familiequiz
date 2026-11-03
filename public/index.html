@@ -373,15 +373,15 @@
           status.textContent = "Foto voorbereiden…";
           try {
             const image = await createImageBitmap(file);
-            const scale = Math.min(1, 1000 / Math.max(image.width, image.height));
+            const scale = Math.min(1, 800 / Math.max(image.width, image.height));
             const canvas = document.createElement("canvas");
             canvas.width = Math.max(1, Math.round(image.width * scale));
             canvas.height = Math.max(1, Math.round(image.height * scale));
             canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
             image.close && image.close();
-            let dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-            if (dataUrl.length > 400000) dataUrl = canvas.toDataURL("image/jpeg", 0.48);
-            if (dataUrl.length > 420000) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
+            let dataUrl = canvas.toDataURL("image/jpeg", 0.58);
+            if (dataUrl.length > 180000) dataUrl = canvas.toDataURL("image/jpeg", 0.38);
+            if (dataUrl.length > 200000) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
             socket.emit("team_photo", { dataUrl }, (result) => {
               if (result && result.ok) { status.textContent = "✅ Teamfoto ingediend!"; send.textContent = "✅ Teamfoto ingediend"; }
               else { status.textContent = (result && result.message) || "Foto indienen is niet gelukt."; send.disabled = false; }
