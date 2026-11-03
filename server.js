@@ -144,7 +144,15 @@ function extraRaw(p, b) {
   // Geen oefenronde meer bij een extra ronde
   if (r.type === 'draw') r.words = (r.words || []).filter(notPractice);
   if (r.type === 'thirty') r.cards = (r.cards || []).filter(notPractice);
-  if (r.type === 'hitster') { r.songs = []; r.dynamic = true; r.category = HITSTER_CATS[p.category] ? p.category : 'original'; }
+  if (r.type === 'hitster') {
+    const category = HITSTER_CATS[p.category] ? p.category : 'original';
+    const fallback = (baseRaw.hitsterLibrary || (baseRaw.rounds.find((round) => round.type === 'hitster') || {}).songs || []).map((song) => ({ ...song, category: song.category || 'original' }));
+    const specific = fallback.filter((song) => song.category === category);
+    const standard = fallback.filter((song) => song.category === 'original' && category !== 'original');
+    r.songs = [...specific, ...standard];
+    r.dynamic = true;
+    r.category = category;
+  }
   return r;
 }
 function applyPlan(raw) {
@@ -176,8 +184,9 @@ function replan(order) {
   if (curId) { const i = steps.findIndex((x) => x.id === curId); if (i >= 0) stepIndex = i; }
   if (phase === 'LOBBY') { ssAll = {}; undoHistory = []; Object.values(teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
 }
-let dynSongs = {};  // liedjes die de bediening voor een extra muziekronde heeft gevonden (id -> liedje)
-let dynStart = {};  // rondeId -> ids van de startkaarten van die extra muziekronde
+let dynSongs = {};  // liedjes die de bediening online vindt (id -> liedje)
+let dynStart = {};  // rondeId -> online startkaarten
+let roundPhotos = {}; // rondeId -> teamId -> gecomprimeerde teamfoto (alleen tijdelijk in geheugen)
 function addDynSong(id, t) {
   const song = {
     id, key: `${t.title}|${t.artist}`.toLowerCase(), title: t.title, artist: t.artist, year: t.year, dynamic: true,
@@ -202,6 +211,7 @@ function cleanTrack(t) {
 function usedSongKeys() {
   const keys = new Set();
   steps.forEach((x) => { const id = x.kind === 'song' && ssAll[x.id] && ssAll[x.id].songId; if (id && songs[id]) keys.add(songs[id].key); });
+  Object.values(roundById).forEach((round) => (round.startIds || []).forEach((id) => { if (songs[id]) keys.add(songs[id].key); }));
   Object.values(dynStart).flat().forEach((id) => { if (songs[id]) keys.add(songs[id].key); });
   return [...keys];
 }
@@ -551,7 +561,16 @@ function closeStep(step) {
 // Het liedje van een muziekvraag: bij de eerste keer willekeurig gekozen uit de nog niet gespeelde liedjes
 function songOf(step) {
   const s = ss(step);
-  if (step.dynamic) return (s.songId && songs[s.songId]) || null;
+  if (step.dynamic) {
+    if (s.songId && songs[s.songId]) return songs[s.songId];
+    const round = roundById[step.round];
+    const used = new Set(usedSongKeys());
+    const primary = (round && round.pool || []).filter((id) => songs[id] && !used.has(songs[id].key));
+    const fallback = (round && round.fallbackPool || []).filter((id) => songs[id] && !used.has(songs[id].key));
+    const pool = primary.length ? primary : fallback;
+    if (pool.length) { s.songId = pool[Math.floor(Math.random() * pool.length)]; return songs[s.songId]; }
+    return null;
+  }
   if (!s.songId || !songs[s.songId]) {
     const round = roundById[step.round];
     const pool = (round && (step.test ? round.practicePool : round.pool)) || [];
@@ -585,12 +604,20 @@ function revealSong(step) {
 }
 
 // Elke muziekronde heeft een eigen tijdlijn per team (een extra ronde begint opnieuw met startkaarten)
+function dynamicStartIds(roundId) {
+  const round = roundById[roundId];
+  return [...(round && round.startIds || []), ...(dynStart[roundId] || [])];
+}
+function dynamicStartReady(roundId) {
+  const round = roundById[roundId];
+  return !round || dynamicStartIds(roundId).length >= (round.startCards || 2);
+}
 function ensureTimeline(team, roundId) {
   team.timelines = team.timelines || {};
   if (!team.timelines[roundId]) {
     const round = roundById[roundId];
-    const start = round && round.dynamic ? dynStart[roundId] : round && round.startIds;
-    if (round && round.dynamic && !(start && start.length)) return []; // startkaarten nog niet binnen
+    const start = round && round.dynamic ? dynamicStartIds(roundId) : round && round.startIds;
+    if (round && round.dynamic && !dynamicStartReady(roundId)) return [];
     team.timelines[roundId] = start ? [...start].filter((id) => songs[id]).sort((a, b) => songs[a].year - songs[b].year) : [];
   }
   return team.timelines[roundId];
@@ -644,7 +671,10 @@ function enterStep() {
   if (step.kind === 'draw' && !s.plan) planDraw(step);
   if (step.kind === 'thirty' && !s.order) planThirty(step);
   if (step.kind === 'song') {
-    if (step.dynamic && (!s.songId || !dynStart[step.round])) s.status = 'loading'; // de bediening zoekt het liedje op
+    if (step.dynamic) {
+      const song = songOf(step); // probeer eerst de Excel-bibliotheek
+      s.status = song && dynamicStartReady(step.round) ? 'open' : 'loading';
+    }
     Object.values(teams).forEach((t) => ensureTimeline(t, step.round));
   }
   if (step.kind === 'tiebreak' && !s.teams) s.teams = tiedLeaders();
@@ -1142,7 +1172,8 @@ function publicStep(step) {
     }
     case 'roundresult': {
       const round = roundById[step.round];
-      return { ...base, title: `Ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
+      const photos = Object.entries(roundPhotos[step.round] || {}).map(([teamId, photo]) => ({ team: teams[teamId] ? teams[teamId].name : 'Team', dataUrl: photo.dataUrl }));
+      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round), photos };
     }
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined, round: t.jokerRound && roundById[t.jokerRound] ? `Ronde ${roundById[t.jokerRound].no}: ${roundById[t.jokerRound].title}` : null })) };
@@ -1183,7 +1214,7 @@ function hostPanel(step) {
       if (!song || s.status === 'loading') {
         const round = roundById[step.round];
         return { type: 'song', status: 'loading', dynamic: true, stepId: step.id, roundId: step.round, category: round.category, categoryName: HITSTER_CATS[round.category],
-          needSong: !s.songId, needStart: dynStart[step.round] ? 0 : (round.startCards || 2), exclude: usedSongKeys() };
+          needSong: !s.songId, needStart: Math.max(0, (round.startCards || 2) - dynamicStartIds(step.round).length), exclude: usedSongKeys() };
       }
       return { type: 'song', uri: song.uri || null, target: settings.hitsterTarget, cards: Object.values(teams).sort(byName).map((t) => ({ name: t.name, n: ensureTimeline(t, step.round).length })), status: s.status, song: { id: step.id, uri: song.uri || null, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length };
     }
@@ -1476,10 +1507,12 @@ function phoneView(step, team, device, isBase) {
         words: role === 'explainer' && turn && (s.status === 'running' || s.status === 'judging') ? turn.words : null
       };
     }
-    case 'roundresult':
-      return { ...base };
+    case 'roundresult': {
+      const photos = roundPhotos[step.round] || {};
+      return { ...base, photoUploaded: !!photos[id] };
+    }
     case 'joker':
-      return { ...base, rounds: rounds.map((r) => ({ id: r.id, title: `Ronde ${r.no}: ${r.title}` })), chosen: team.jokerRound };
+      return { ...base, rounds: rounds.map((r) => ({ id: r.id, title: `Ronde ${r.no}: ${r.title}` })), chosen: team.jokerRound, submitted: s.choices[id] !== undefined };
     case 'final': {
       const a = s.answers[id];
       return {
@@ -1998,30 +2031,57 @@ io.on('connection', (socket) => {
     io.to('tv_room').emit('demo_ops', { ops: clean });
     scheduleSave();
   });
-  socket.on('provide_track', ({ stepId, track } = {}) => {
-    if (!isRemote(socket)) return;
+  socket.on('provide_track', ({ stepId, track } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!isRemote(socket)) return reply({ ok: false, reason: 'not_host' });
     const step = steps.find((x) => x.id === stepId);
-    if (!step || !step.dynamic) return;
+    if (!step || !step.dynamic) return reply({ ok: false, reason: 'invalid_step' });
     const s = ss(step);
+    if (s.songId) return reply({ ok: true, already: true });
     const t = cleanTrack(track);
-    if (!t || s.songId) return;
-    if (usedSongKeys().includes(`${t.title}|${t.artist}`.toLowerCase())) return;
+    if (!t) return reply({ ok: false, reason: 'invalid_track' });
+    if (usedSongKeys().includes(`${t.title}|${t.artist}`.toLowerCase())) return reply({ ok: false, reason: 'duplicate' });
     s.songId = `${step.id}_t`;
     addDynSong(s.songId, t);
-    if (s.status === 'loading' && dynStart[step.round]) { s.status = 'open'; Object.values(teams).forEach((tm) => ensureTimeline(tm, step.round)); }
+    if (s.status === 'loading' && dynamicStartReady(step.round)) { s.status = 'open'; Object.values(teams).forEach((tm) => ensureTimeline(tm, step.round)); }
+    reply({ ok: true });
     sync();
   });
-  socket.on('provide_start', ({ roundId, tracks } = {}) => {
-    if (!isRemote(socket) || !roundById[roundId] || !roundById[roundId].dynamic || dynStart[roundId] || !Array.isArray(tracks)) return;
-    const ids = tracks.map(cleanTrack).filter(Boolean).slice(0, 4).map((t, i) => { const id = `${roundId}_start${i + 1}`; addDynSong(id, t); return id; });
-    if (!ids.length) return;
-    dynStart[roundId] = ids;
+  socket.on('provide_start', ({ roundId, tracks } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!isRemote(socket) || !roundById[roundId] || !roundById[roundId].dynamic || !Array.isArray(tracks)) return reply({ ok: false, reason: 'invalid_round' });
+    const round = roundById[roundId];
+    const need = Math.max(0, (round.startCards || 2) - dynamicStartIds(roundId).length);
+    if (!need) return reply({ ok: true, already: true, accepted: 0 });
+    const used = new Set(usedSongKeys());
+    const clean = tracks.map(cleanTrack).filter(Boolean).filter((track) => {
+      const key = `${track.title}|${track.artist}`.toLowerCase();
+      if (used.has(key)) return false;
+      used.add(key);
+      return true;
+    }).slice(0, need);
+    const current = dynStart[roundId] || [];
+    const ids = clean.map((track, i) => { const id = `${roundId}_online_start${current.length + i + 1}`; addDynSong(id, track); return id; });
+    dynStart[roundId] = [...current, ...ids];
     const step = cur();
     if (step && step.kind === 'song' && step.round === roundId) {
-      const s = ss(step);
-      Object.values(teams).forEach((tm) => ensureTimeline(tm, roundId));
-      if (s.status === 'loading' && s.songId) s.status = 'open';
+      const state = ss(step);
+      Object.values(teams).forEach((team) => ensureTimeline(team, roundId));
+      if (state.status === 'loading' && state.songId && dynamicStartReady(roundId)) state.status = 'open';
     }
+    reply({ ok: ids.length > 0, accepted: ids.length, remaining: Math.max(0, need - ids.length), reason: ids.length ? null : 'no_unique_tracks' });
+    sync();
+  });
+  socket.on('team_photo', ({ dataUrl } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const c = baseContext(socket, 'roundresult');
+    if (!c || !c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan een teamfoto indienen.' });
+    if (typeof dataUrl !== 'string' || dataUrl.length > 420000 || !/^data:image\\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
+      return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
+    }
+    roundPhotos[c.step.round] = roundPhotos[c.step.round] || {};
+    roundPhotos[c.step.round][c.team.teamId] = { dataUrl, uploadedAt: Date.now() };
+    reply({ ok: true });
     sync();
   });
   socket.on('song_replay', () => {
@@ -2289,7 +2349,7 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; undoHistory = []; gameId = null;
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; roundPhotos = {}; undoHistory = []; gameId = null;
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
