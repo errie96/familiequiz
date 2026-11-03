@@ -1107,7 +1107,7 @@ function publicStep(step) {
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined, round: t.jokerRound && roundById[t.jokerRound] ? `Ronde ${roundById[t.jokerRound].no}: ${roundById[t.jokerRound].title}` : null })) };
     case 'final': {
-      const out = { ...base, status: s.status, category: step.category, teams: teamChips(step) };
+      const out = { ...base, status: s.status, category: step.category, maxWager: settings.finalMaxWager, teams: teamChips(step) };
       if (s.status !== 'wager') { out.question = step.question; out.options = step.options; out.media = step.media; }
       if (s.status === 'revealed') { out.answer = step.answer; out.explanation = step.explanation; }
       return out;
@@ -1322,7 +1322,7 @@ function broadcastState() {
     },
     standings: phase === 'END' ? ranking() : null,
     alerts: Object.values(alerts),
-    theme: settings.theme, lobbyStage, welcome: content.welcome,
+    theme: settings.theme, lobbyStage, welcome: content.welcome, texts: content.texts,
     end: phase === 'END' ? { reveal, revealN, endView, scores: reveal !== 'idle' ? ranking() : null, breakdown: reveal === 'done' ? breakdown() : null } : null
   };
 
@@ -1359,7 +1359,7 @@ function broadcastState() {
     if (!t) return;
     const isBase = t.baseDeviceId === d.deviceId;
     io.to(d.socketId).emit('state_update', {
-      phase, paused, showStandings: false, reviewing: !!review, theme: settings.theme,
+      phase, paused, showStandings: false, reviewing: !!review, theme: settings.theme, texts: content.texts,
       standings: null,
       roundName: common.header.round,
       timer: null,

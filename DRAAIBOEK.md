@@ -24,7 +24,7 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 
 **Vooraf, in de dagen ervoor**
 
-1. Vul de Excel in. Gele cellen zijn invullen of aanpassen, oranje cellen zijn nog voorbeelden of schattingen. De indeling van de tabbladen blijft hetzelfde.
+1. Vul de Excel in. Gele cellen zijn invullen of aanpassen, oranje cellen zijn nog voorbeelden of schattingen. De indeling van de tabbladen blijft hetzelfde. Alle vaste teksten op tv en telefoons (welkomstpagina, tussenpagina's, joker, slotvraag, einde, pauze…) staan in het tabblad Teksten; de uitleg per ronde in het tabblad Rondes.
 2. Zet de foto's (ronde 2), logo's (ronde 8) en eventuele geluidsbestanden in de map public/media/, met de bestandsnamen uit de Excel.
 3. Koppel Spotify voor de muziekronde in de bediening. Nodig: Spotify Premium, http://127.0.0.1:3000/bediening.html als Redirect-URI in de Spotify-app en het account onder User Management. Open de bediening via http://127.0.0.1:3000/bediening.html (of https op Render, niet via het netwerkadres) en tik bij Spotify op "Verbind met Spotify". Kies daarna waar de muziek klinkt: "Deze browser" (de bediening op een laptop aan de speakers) of een ander Spotify-apparaat, zoals je telefoon met de Spotify-app open. Probeer "Test".
 

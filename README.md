@@ -7,6 +7,7 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 
 ## Nieuw in deze versie
 - **Welkomstpagina** op de tv vóór het aanmeldscherm (tekst in de Excel, tabblad *Teksten*). In de bediening: "Toon het aanmeldscherm".
+- **Alle vaste teksten in de Excel** (tabblad *Teksten*): welkomstpagina, tussenpagina's, joker, foto blur, muziek, tekenen, 30 Seconds, slotvraag, einde, pauze enz. Pas de kolom *Tekst* aan; {punten}, {team} e.d. vult de quiz zelf in. De uitleg per ronde staat in het tabblad *Rondes*. Daarna in de bediening *Excel uploaden* of *Opnieuw inlezen*: de nieuwe teksten staan meteen op tv en telefoons. Dat kan tot de start van de quiz.
 - **Thema's** (Standaard, Winter, Kerst, Oud & nieuw, Zomer, Halloween): bediening → *Thema*, op elk moment.
 - **Rondevolgorde**: bediening → *Rondes*: volgorde en aan/uit (vóór de start).
 - **Extra rondes**: 30 Seconds, tekenen of muziek nog een keer, ook tijdens de quiz (komt direct na de huidige ronde). Geen herhaling van liedjes, woorden of kaarten.

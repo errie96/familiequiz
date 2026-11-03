@@ -270,7 +270,7 @@ window.QuizFX = (function () {
   function showWinners(scores, banner, winnerText) {
     const winners = scores.filter((s) => s.rank === 1).map((s) => s.name);
     if (!winners.length) return;
-    winnerText.textContent = `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
+    winnerText.textContent = TEXTS[winners.length > 1 ? "einde.winnaars" : "einde.winnaar"] ? t(winners.length > 1 ? "einde.winnaars" : "einde.winnaar", { winnaar: winners.join(" & ") }) : `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
     banner.classList.remove("hidden");
   }
   // Onthult de ranglijst van laatste naar eerste plaats (of meteen, met instant)
@@ -331,7 +331,12 @@ window.QuizFX = (function () {
     document.body.prepend(layer);
   }
 
-  return { unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  // Teksten uit de Excel (tabblad Teksten); {naam} wordt ingevuld
+  let TEXTS = {};
+  const setTexts = (t) => { if (t) TEXTS = t; };
+  const t = (key, vars) => String(TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] !== undefined ? vars[k] : m));
+
+  return { setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
