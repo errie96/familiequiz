@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "fresh": "node server.js --fresh",
-    "vendor": "node scripts/download-vendor.js"
+    "vendor": "node scripts/download-vendor.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.19.2",
