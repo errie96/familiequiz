@@ -54,8 +54,8 @@ test('extra Hitster rounds expose category songs before the standard fallback po
       songs: [
         { title: 'Rock start', artist: 'Band A', year: 1980, category: 'rock', start: true },
         { title: 'Rock track', artist: 'Band B', year: 1990, category: 'rock' },
-        { title: 'Standard start', artist: 'Artist C', year: 1970, category: 'original', start: true },
-        { title: 'Standard fallback', artist: 'Artist D', year: 2000, category: 'original' }
+        { title: 'Rock track 2', artist: 'Band C', year: 2001, category: 'rock' },
+        { title: 'Standard fallback', artist: 'Artist D', year: 2000, category: 'original', start: true }
       ]
     }]
   });
