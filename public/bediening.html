@@ -605,9 +605,13 @@
         }
         if (tracks.length) {
           socket.emit("provide_start", { roundId: p.roundId, tracks }, (res) => {
-            delete trackBusy["start" + p.roundId];
-            if (!res || !res.ok || res.remaining) trackStatus = `Niet alle startkaarten konden worden gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
-            else trackStatus = "Startkaarten uit de online muziekbibliotheek zijn klaar.";
+            if (!res || !res.ok) {
+              trackBusy["start" + p.roundId] = true; // voorkom een automatische retry-lus; handmatig opnieuw zoeken blijft mogelijk
+              trackStatus = `Geen unieke startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
+            } else {
+              delete trackBusy["start" + p.roundId];
+              trackStatus = res.remaining ? "Nog niet alle startkaarten gevonden; de resterende worden gezocht…" : "Startkaarten uit de online muziekbibliotheek zijn klaar.";
+            }
             renderPanel(S);
           });
         } else {
@@ -628,9 +632,13 @@
           if (result && result.ok) accepted = true;
           else exclude.push(QuizSpotify.keyOf(track));
         }
-        delete trackBusy[p.stepId];
-        if (!accepted) trackStatus = `Geen nieuw passend liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`;
-        else trackStatus = "Nieuw liedje gevonden.";
+        if (!accepted) {
+          trackBusy[p.stepId] = true; // handmatige herhaalactie voorkomt dat dezelfde mislukte zoekopdracht blijft lopen
+          trackStatus = `Geen nieuw passend liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`;
+        } else {
+          delete trackBusy[p.stepId];
+          trackStatus = "Nieuw liedje gevonden.";
+        }
         renderPanel(S);
       }
     }
