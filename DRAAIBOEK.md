@@ -31,8 +31,8 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 **Op de avond zelf**
 
 1. Start de server. Lokaal met npm start; op Render ruim van tevoren de tv-pagina openen, want het gratis plan heeft een minuut nodig om wakker te worden.
-2. Open op de tv /host.html en druk één keer op OK of klik op het scherm. Anders blokkeert de browser het geluid. Het tv-scherm past zich aan het formaat van de tv of beamer aan: past iets niet, dan wordt het scherm automatisch kleiner gemaakt.
-3. Open op je telefoon /bediening.html en vul de pincode in. Controleer in het blokje Vragenlijst (Excel) dat de juiste versie is ingelezen. Nieuwe Excel? Upload hem daar, of vervang het bestand en tik op "Opnieuw inlezen".
+2. Open op de tv /host.html en druk één keer op OK of klik op het scherm. Anders blokkeert de browser het geluid. Het tv-scherm past zich aan het formaat van de tv of beamer aan: past iets niet, dan wordt het scherm automatisch kleiner gemaakt. De tv vraagt zelf om niet in slaap te vallen; zet op een laptop voor de zekerheid ook de slaapstand en schermbeveiliging uit. Valt de verbinding weg, dan staat rechtsboven op de tv een rode melding tot hij terug is.
+3. Open op je telefoon /bediening.html en vul de pincode in. Rechtsboven in de bediening staat "📺 Tv verbonden" (groen) of "Tv niet verbonden!" (rood): zo zie je meteen of de tv nog meedoet. Controleer in het blokje Vragenlijst (Excel) dat de juiste versie is ingelezen. Nieuwe Excel? Upload hem daar, of vervang het bestand en tik op "Opnieuw inlezen".
 4. Kijk bovenin de bediening naar waarschuwingen, bijvoorbeeld een vraag zonder foute antwoorden of een liedje zonder jaar (die vragen worden overgeslagen), of een foto, logo of geluidsbestand dat ontbreekt in public/media/ (📁, per ronde).
 5. Op de tv staat eerst de welkomstpagina (tekst uit de Excel, tabblad Teksten). Vul in de bediening bij Teams eerst het maximale aantal teams in (verplicht), tik dan op "Toon het aanmeldscherm" en laat de spelers de QR-code scannen. Is het maximum bereikt, of is de quiz eenmaal begonnen, dan kan niemand meer een nieuw team maken, alleen nog aansluiten bij een bestaand team. Eenmaal begonnen is begonnen. Iedereen vult eerst de eigen naam in en maakt dan een team, of sluit aan bij een bestaand team. Wie het team aanmaakt, is eerst de basistelefoon; het team kan samen een andere telefoon kiezen.
 6. Kies in de bediening het thema (bijvoorbeeld Kerst of Winter) en zet de rondes in de gewenste volgorde (blokje Rondes). Instellingen en de rondevolgorde kun je alleen vóór de start aanpassen; het thema altijd.
@@ -158,7 +158,7 @@ Staan na de slotvraag twee of meer teams gelijk op de eerste plaats, dan volgt a
 
 ### Het einde
 
-1. **Ontknoping.** De quizmaster tikt op "Start de ontknoping" en daarna per plek op "Onthul plek …". De tv onthult de ranglijst van de laatste naar de eerste plaats, één plek per druk, zodat er tussendoor prijzen uitgereikt kunnen worden. De winnaar krijgt tromgeroffel, fanfare en confetti.
+1. **Ontknoping.** De quizmaster tikt op "Start de ontknoping" en daarna per plek op "Onthul plek …". De tv onthult de ranglijst van de laatste naar de eerste plaats, één plek per druk, zodat er tussendoor prijzen uitgereikt kunnen worden. Elke plek komt eerst een paar seconden groot in beeld met tromgeroffel, de teamfoto, de naam en de punten; daarna schuift het team in de ranglijst. De winnaar staat langer in beeld en krijgt daarna de banner met foto, fanfare en confetti.
 2. **Punten per ronde.** Met "Punten per ronde op tv" ziet iedereen per team de score per ronde, waar de joker zat, de slotvraag en het totaal.
 3. **Nakijken.** Met "Nakijken (alles)" ga je pagina voor pagina door alle rondes. Per vraag staat per team het antwoord, met een groen vinkje of een rood kruis.
 
@@ -189,10 +189,14 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm, dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
 
+**Telefoon zonder verbinding.** Valt de wifi van een speler weg, dan krijgt die telefoon een rode balk "Verbinding kwijt" en zijn de knoppen uitgeschakeld tot hij terug is. Een team ziet na indienen een balk "✅ Ingediend!" in de eigen teamkleur (Android-telefoons trillen ook kort bij een nieuwe vraag en bij indienen).
+
 **Pauze.** De pauzeknop zet de quiz stil: timers stoppen, de tv en telefoons tonen een pauzescherm. Valt de server uit, dan blijft alles bewaard en staat de quiz na het herstarten op pauze. Telefoons sluiten vanzelf weer aan.
 
 **Noodknoppen** in de bediening:
 
+- **Dubbel tikken is veilig:** de grote knop is na een tik even geblokkeerd en een tik die bij een vorig scherm hoort wordt genegeerd. Ook als beide quizmasters tegelijk drukken, wordt er dus nooit een scherm overgeslagen.
+- **Foutje in de quiz:** gaat er in de software iets mis, dan verschijnt bovenin de bediening "Foutje opgevangen …" en loopt de quiz gewoon door. Probeer de actie zo nodig opnieuw.
 - **Toch afsluiten zonder te wachten:** als een telefoon hangt en je niet op alle teams wilt wachten.
 - **Vorige stap, of springen naar een ronde.**
 - **Deze stap overslaan.**
@@ -205,6 +209,8 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 - **Quiz helemaal opnieuw:** wist alle teams en scores.
 
 ## Thema, rondevolgorde en scores
+
+**Teamkleuren.** Elk team krijgt bij het aanmelden automatisch een eigen kleur. Die kleur komt overal terug: rond de teamfoto, in de bolletjes "wie heeft geantwoord" (die oplichten zodra een team indient), in de balken na elke ronde, in de ranglijst en bovenin op de telefoons.
 
 **Thema.** In de bediening (blokje Thema) kies je Standaard, Winter, Kerst, Oud & nieuw, Zomer of Halloween. Het thema verandert de kleuren en decoratie op de tv en alle telefoons, met bijvoorbeeld vallende sneeuw bij Winter en Kerst. Dat kan altijd, ook tijdens de quiz.
 

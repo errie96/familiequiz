@@ -1,3 +1,6 @@
+/* Feestelijk lettertype voor titels; meegeleverd in public/fonts/ zodat het ook zonder internet werkt */
+@font-face { font-family: "Quizfont"; src: url("/fonts/Poppins-Bold.ttf") format("truetype"); font-weight: 700 900; font-display: swap; }
+@font-face { font-family: "Quizfont"; src: url("/fonts/Poppins-Medium.ttf") format("truetype"); font-weight: 400 600; font-display: swap; }
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 body { background: #0f172a; color: #f8fafc; display: flex; justify-content: center; min-height: 100vh; padding: 16px; }
 .card { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
@@ -74,3 +77,5 @@ html, body { max-width: 100%; overflow-x: hidden; }
 img, canvas, video { max-width: 100%; }
 @media (max-width: 380px) { body { padding: 8px; } .card { padding: 16px; } button { padding: 12px; font-size: 15px; } }
 @media (min-width: 900px) and (orientation: landscape) { .card { max-width: 720px; } }
+
+h1, h2, h3, .tv-title, .huge, .pill, .tchip, .bigtxt, .spot-team, .spot-rank, .rank-card, #winner-banner, .btn-primary { font-family: "Quizfont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }

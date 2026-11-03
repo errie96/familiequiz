@@ -261,7 +261,8 @@ window.QuizFX = (function () {
     b.textContent = badge;
     label.style.cssText = "display:inline-flex; align-items:center; gap:0.5em;";
     label.append(b);
-    if (player.photo) label.append(avatar(player.name, player.photo, isWinner ? "2.4em" : "1.8em"));
+    label.append(avatar(player.name, player.photo, isWinner ? "2.4em" : "1.8em", player.color));
+    if (player.color) li.style.borderLeft = `0.45em solid ${player.color}`;
     label.append(document.createTextNode(player.name));
     const pts = document.createElement("b");
     pts.textContent = `${player.score} pt`;
@@ -339,6 +340,39 @@ window.QuizFX = (function () {
   const setTexts = (t) => { if (t) TEXTS = t; };
   const t = (key, vars) => String(TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] !== undefined ? vars[k] : m));
 
+  // Scherm wakker houden (tv en bediening). Wake Lock werkt via https of localhost; anders als reserve een
+  // onzichtbaar, stil "filmpje" dat de browser wakker houdt. Opnieuw aanvragen zodra het scherm weer zichtbaar is.
+  let wakeLock = null, wakeVideo = null;
+  async function keepAwake() {
+    try {
+      if ("wakeLock" in navigator) {
+        if (!wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); }
+        return;
+      }
+    } catch (e) { /* niet toegestaan: reserve hieronder */ }
+    try {
+      if (!wakeVideo) {
+        const c = document.createElement("canvas"); c.width = c.height = 2;
+        const g = c.getContext("2d");
+        setInterval(() => { g.fillStyle = Date.now() % 2000 < 1000 ? "#000" : "#010101"; g.fillRect(0, 0, 2, 2); }, 1000);
+        wakeVideo = document.createElement("video");
+        wakeVideo.muted = true; wakeVideo.playsInline = true; wakeVideo.setAttribute("playsinline", "");
+        wakeVideo.style.cssText = "position:fixed; width:1px; height:1px; opacity:0.01; pointer-events:none; bottom:0; right:0;";
+        if (c.captureStream) wakeVideo.srcObject = c.captureStream(1);
+        document.body.appendChild(wakeVideo);
+      }
+      await wakeVideo.play();
+    } catch (e) { /* lukt niet zonder klik: bij de volgende klik opnieuw */ }
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && (wakeLock === null && (keepAwake.wanted))) keepAwake(); });
+  function wantAwake() {
+    keepAwake.wanted = true;
+    keepAwake();
+    const again = () => keepAwake();
+    document.addEventListener("click", again, { passive: true });
+    document.addEventListener("keydown", again);
+  }
+
   // Foto van de telefoon verkleinen tot een lichte JPEG (data-URL) voor de server
   async function compressPhoto(file, maxSide = 800, square = false) {
     if (!file) throw new Error("Kies eerst een foto.");
@@ -357,15 +391,15 @@ window.QuizFX = (function () {
     return dataUrl;
   }
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
-  function avatar(name, photo, size) {
+  function avatar(name, photo, size, color) {
     const a = document.createElement(photo ? "img" : "span");
     a.className = "team-avatar";
-    a.style.cssText = `width:${size};height:${size};border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#475569;color:#fff;font-weight:bold;font-size:calc(${size} * 0.45);vertical-align:middle;`;
+    a.style.cssText = `width:${size};height:${size};border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:${color || "#475569"};color:#fff;font-weight:bold;font-size:calc(${size} * 0.45);vertical-align:middle;box-sizing:border-box;${color ? `border:max(2px, calc(${size} * 0.06)) solid ${color};` : ""}`;
     if (photo) { a.src = photo; a.alt = ""; }
     else a.textContent = (Array.from(String(name || "?").trim())[0] || "?").toUpperCase(); // Array.from: ook emoji als eerste teken
     return a;
   }
-  return { compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { wantAwake, compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

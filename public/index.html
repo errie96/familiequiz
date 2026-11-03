@@ -17,12 +17,17 @@
     .entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #334155; padding: 8px 4px; }
     .entry button { width: auto; margin: 0; padding: 4px 10px; background: #475569; color: #fff; }
     .row2 { display: flex; gap: 8px; }
+    #offline-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; background: #dc2626; color: #fff; font-weight: bold; text-align: center; padding: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+    body.offline #view button, body.offline #view input, body.offline #team-panel button { pointer-events: none; opacity: 0.45; }
+    #submitted-flag { border-radius: 12px; padding: 14px; margin-bottom: 12px; text-align: center; font-weight: bold; font-size: 20px; color: #fff; animation: sub-in 0.4s ease-out; }
+    @keyframes sub-in { from { transform: scale(0.85); opacity: 0; } to { transform: none; opacity: 1; } }
     .row2 > * { flex: 1; }
     label.lbl { display: block; font-size: 13px; color: #94a3b8; margin: 6px 0 4px; }
     @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
   </style>
 </head>
 <body>
+  <div id="offline-bar" class="hidden">📡 Verbinding kwijt, even geduld… (antwoorden kan pas als hij terug is)</div>
   <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
 
   <div class="card">
@@ -71,6 +76,7 @@
         <span class="badge" id="team-badge" style="background:#2563eb;"></span>
         <span class="badge hidden" id="timer-badge">⏱</span>
       </div>
+      <div id="submitted-flag" class="hidden">✅ Ingediend!<div style="font-size:14px; font-weight:normal; margin-top:4px;">Wachten op de andere teams…</div></div>
       <div id="view"></div>
 
       <div id="team-panel" class="hidden" style="margin-top:18px; border-top:1px solid #334155; padding-top:12px;">
@@ -170,7 +176,12 @@
       deviceId = null; me = null; currentView = null; mounted = { key: null, update: null };
       QuizFX.countdown("phone", null, () => {});
     }
+    // Verbinding kwijt? Rode balk en knoppen uit, zodat niemand denkt dat een antwoord is ingediend terwijl het niet aankomt
+    function setOffline(off) { $("offline-bar").classList.toggle("hidden", !off); document.body.classList.toggle("offline", off); }
+    socket.on("disconnect", () => setOffline(true));
+    socket.on("connect_error", () => setOffline(true));
     socket.on("connect", () => {
+      setOffline(false);
       if (deviceId) { socket.emit("hello", { deviceId }); requestWakeLock(); }
       else showJoin();
     });
@@ -882,6 +893,32 @@
     // Tekenen: live streken van de tekenaar doorgeven aan de raders
     socket.on("draw_ops", (data) => { if (window.__drawHandler && data && data.ops) window.__drawHandler(data.ops); });
 
+    // Trillen bij een nieuwe vraag en bij indienen (werkt op Android; iPhone ondersteunt geen trillen vanuit de browser),
+    // en een duidelijke "Ingediend!"-balk in de teamkleur zolang de vraag nog open staat.
+    const buzz = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* niets */ } };
+    function submittedNow(v) {
+      switch (v.type) {
+        case "mc": case "price": case "logo": return v.status === "open" && !!v.answered;
+        case "tiebreak": return v.status === "open" && !!v.answered;
+        case "song": return v.status === "open" && v.placed !== null && v.placed !== undefined;
+        case "joker": return !!v.submitted;
+        case "final": return (v.status === "wager" && v.wager !== null) || (v.status === "question" && v.answered);
+        case "draw": return v.status === "drawing" && v.role === "guesser" && !!v.answered;
+        default: return false;
+      }
+    }
+    let lastQuestionId = null, lastSubmitted = false;
+    function feedback(v) {
+      if (!v) return;
+      if (v.cheat && v.id !== lastQuestionId && !v.answered) buzz(70);
+      if (v.cheat) lastQuestionId = v.id;
+      const sub = submittedNow(v);
+      const flag = $("submitted-flag");
+      flag.classList.toggle("hidden", !sub);
+      flag.style.background = (me && me.color) || "#16a34a";
+      if (sub && !lastSubmitted) buzz([40, 50, 40]);
+      lastSubmitted = sub;
+    }
     let mounted = { key: null, update: null };
     function viewKey(v) {
       switch (v.type) {
@@ -964,6 +1001,8 @@
       showScreen("game-screen");
       $("round-badge").textContent = state.roundName || "Familiequiz";
       $("team-badge").textContent = me.teamName;
+      $("team-badge").style.background = me.color || "#2563eb";
+      feedback(v);
       $("team-panel").classList.toggle("hidden", !["lobby", "info", "roundresult"].includes(v.type));
       mount(v);
     });

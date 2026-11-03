@@ -40,7 +40,10 @@
 
     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
       <h1 style="text-align:left; margin:0; font-size:22px;">🎛️ Quizmaster</h1>
-      <small id="connection-status" style="color:#94a3b8;">○ Verbinden...</small>
+      <span style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
+        <small id="connection-status" style="color:#94a3b8;">○ Verbinden...</small>
+        <small id="tv-status" style="color:#94a3b8;">📺 …</small>
+      </span>
     </div>
 
     <div id="cheat-alerts" style="margin-top:10px;"></div>
@@ -229,6 +232,7 @@
       else setStatus("● Geen pincode. Ververs de pagina.", "#ef4444");
     }
     socket.on("connect", registerRemote);
+    QuizFX.wantAwake(); // bediening-telefoon mag niet in slaap vallen
     socket.on("remote_confirmed", () => setStatus("● Verbonden", "#4ade80"));
     socket.on("auth_denied", (data) => {
       if (data && data.locked) { setStatus("● Te veel foute pogingen", "#ef4444"); alert("Te veel foute pincodes. Probeer het over 10 minuten opnieuw."); return; }
@@ -259,8 +263,18 @@
 
     // ---------------- Knoppen ----------------
     let S = null;
-    $("btn-main").onclick = () => socket.emit("host_main");
-    $("btn-force").onclick = () => socket.emit("host_force");
+    // Elke klik stuurt mee bij welke toestand hij hoort; de knop is daarna even geblokkeerd tot de nieuwe stand binnen is.
+    // Zo slaat een dubbele tik (of twee quizmasters tegelijk) nooit een scherm over.
+    let clickLock = null;
+    function lockedEmit(event, btn) {
+      if (!S || btn.disabled) return;
+      btn.disabled = true;
+      clearTimeout(clickLock);
+      clickLock = setTimeout(() => { if (S) btn.disabled = false; }, 2500); // vangnet als er geen update komt
+      socket.emit(event, { key: S.controls.key });
+    }
+    $("btn-main").onclick = () => lockedEmit("host_main", $("btn-main"));
+    $("btn-force").onclick = () => lockedEmit("host_force", $("btn-force"));
     $("btn-undo").onclick = () => {
       if (S && S.controls && S.controls.undo && S.controls.undo.enabled && confirm("Laatste correctie ongedaan maken?")) socket.emit("undo_last");
     };
@@ -556,7 +570,7 @@
         const d = el("div", "team");
         const head = el("div", "head");
         const title = el("b", "", `${t.connected ? "●" : "○"} ${t.name}${t.joker ? " · 🃏 " + t.joker : ""}`);
-        if (t.photo) { title.prepend(QuizFX.avatar(t.name, t.photo, "28px"), " "); }
+        title.prepend(QuizFX.avatar(t.name, t.photo, "28px", t.color), " ");
         head.append(title);
         const acts = el("span");
         const rn = el("button", "btn-option btn-small", "✏️"); rn.onclick = () => { const n = prompt("Nieuwe teamnaam:", t.name); if (n) socket.emit("rename_team", { teamId: t.teamId, name: n }); };
@@ -874,6 +888,12 @@
       w.classList.toggle("hidden", !state.warnings.length);
       w.textContent = state.warnings.length ? "⚠️ " + state.warnings.join(" · ") : "";
 
+      clearTimeout(clickLock);
+      $("btn-force").disabled = false;
+      const tvOk = state.tvCount > 0;
+      $("tv-status").textContent = tvOk ? `📺 Tv verbonden${state.tvCount > 1 ? " (" + state.tvCount + "×)" : ""}` : "📺 Tv niet verbonden!";
+      $("tv-status").style.color = tvOk ? "#4ade80" : "#ef4444";
+      $("tv-status").style.fontWeight = tvOk ? "normal" : "bold";
       const m = state.controls.main;
       $("btn-main").textContent = m.label;
       $("btn-main").disabled = !m.enabled || !!state.review;

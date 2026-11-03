@@ -26,8 +26,26 @@
     #audio-banner { margin-left: auto; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(11px, 1.2vw, 22px); padding: 0.3em 1em; border-radius: 999px; }
     #tv-alerts { position: fixed; left: 1.5vw; bottom: 1vw; display: flex; flex-wrap: wrap; gap: 0.5vw; z-index: 45; max-width: 70vw; }
     .tv-alert { background: #dc2626; color: #fff; font-weight: bold; font-size: clamp(11px, 1.15vw, 22px); padding: 0.3em 0.9em; border-radius: 999px; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
-    #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 1.1vh; background: #1e293b; z-index: 40; }
-    #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.3s; }
+    #tv-timerbar { position: fixed; top: 0; left: 0; right: 0; height: 2.2vh; background: #1e293b; z-index: 40; }
+    #tv-timerfill { height: 100%; width: 100%; background: #22c55e; transition: width 0.25s linear, background 0.4s; border-radius: 0 999px 999px 0; }
+    #tv-timerbar.half #tv-timerfill { background: #f59e0b; }
+    #tv-timerbar.low #tv-timerfill { background: #ef4444; animation: timer-pulse 0.5s ease-in-out infinite alternate; }
+    #tv-timerbar.low { height: 3.2vh; }
+    #tv-timer.low { background: #dc2626; animation: timer-pulse 0.5s ease-in-out infinite alternate; }
+    @keyframes timer-pulse { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.4); transform: scale(1.04); } }
+    #tv-offline { position: fixed; top: 3vh; right: 2vw; z-index: 60; background: #dc2626; color: #fff; font-weight: bold; padding: 0.4em 1em; border-radius: 999px; font-size: clamp(12px, 1.4vw, 26px); }
+    .tchip.pop { animation: chip-pop 0.6s ease-out; }
+    @keyframes chip-pop { 0% { transform: scale(0.6); } 55% { transform: scale(1.25); box-shadow: 0 0 2vw rgba(74, 222, 128, 0.8); } 100% { transform: scale(1); } }
+    #reveal-spot { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; background: radial-gradient(circle at center, rgba(30, 41, 59, 0.92), rgba(2, 6, 23, 0.97)); text-align: center; }
+    #reveal-spot.go > * { animation: trans-pop 0.8s ease-out both; }
+    #reveal-spot.go > *:nth-child(2) { animation-delay: 0.25s; }
+    #reveal-spot.go > *:nth-child(3) { animation-delay: 0.5s; }
+    #reveal-spot.go > *:nth-child(4) { animation-delay: 0.75s; }
+    #reveal-spot .spot-rank { font-size: clamp(30px, 5vw, 100px); font-weight: bold; color: #fbbf24; }
+    #reveal-spot .spot-team { font-size: clamp(34px, 6vw, 120px); font-weight: bold; }
+    #reveal-spot .spot-pts { font-size: clamp(24px, 3.5vw, 70px); color: #38bdf8; font-weight: bold; }
+    #reveal-spot.winner .spot-rank { font-size: clamp(40px, 7vw, 140px); }
+    #reveal-spot.winner .team-avatar { box-shadow: 0 0 6vw rgba(251, 191, 36, 0.8); }
     #tv-top { display: flex; gap: 1vw; align-items: center; padding: 2vh 3vw 0; min-height: 9vh; flex-wrap: wrap; flex: 0 0 auto; }
     .pill { background: #334155; border-radius: 999px; padding: 0.3em 1.2em; font-size: clamp(14px, 1.9vw, 36px); font-weight: bold; }
     .pill.points { background: #b45309; }
@@ -103,6 +121,8 @@
 
   <div id="tv-alerts"></div>
   <div id="tv-timerbar" class="hidden"><div id="tv-timerfill"></div></div>
+  <div id="tv-offline" class="hidden">⚠️ Verbinding met de quiz kwijt, opnieuw verbinden…</div>
+  <div id="reveal-spot" class="hidden"></div>
 
   <header id="tv-top">
     <span class="pill" id="tv-round">Familiequiz</span>
@@ -281,7 +301,9 @@
     ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, unlock));
     const allAudio = () => Array.from(document.querySelectorAll("audio"));
 
-    socket.on("connect", () => socket.emit("register_tv"));
+    socket.on("connect", () => { socket.emit("register_tv"); $("tv-offline").classList.add("hidden"); });
+    socket.on("disconnect", () => $("tv-offline").classList.remove("hidden"));
+    QuizFX.wantAwake(); // tv mag niet in slaap vallen
     socket.on("play_audio", () => allAudio().forEach((a) => { a.currentTime = 0; a.play().catch(() => {}); }));
     socket.on("pause_audio", () => allAudio().forEach((a) => a.pause()));
 
@@ -302,14 +324,23 @@
     }
 
     // ---------- Hulpjes ----------
+    // Teambolletje met foto (of letter) in de teamkleur; licht op ("pop") op het moment dat het team indient
+    let TEAMSTYLE = {};
+    let chipStep = "";
+    const popped = new Set();
+    function teamChip(name, opts) {
+      const o = opts || {};
+      const st = TEAMSTYLE[name] || {};
+      const c = el("span", "tchip" + (o.done ? " done" : "") + (o.off ? " off" : ""));
+      c.style.cssText = `display:inline-flex; align-items:center; gap:0.45em; padding-left:0.25em; border:0.18em solid ${st.color || "transparent"};` + (o.bg ? `background:${o.bg};` : "");
+      c.append(QuizFX.avatar(name, st.photo, "1.7em", st.color), document.createTextNode(o.text !== undefined ? o.text : (o.done ? "✓ " : "") + name));
+      const key = chipStep + "|" + name;
+      if (o.done && !popped.has(key)) { popped.add(key); c.classList.add("pop"); }
+      return c;
+    }
     function chips(box, list, showStatus, label) {
       box.replaceChildren();
-      list.forEach((t) => {
-        const c = el("span", "tchip" + (showStatus && t.answered ? " done" : "") + (t.connected === false ? " off" : ""));
-        c.textContent = (showStatus && t.answered ? "✓ " : "") + t.name + (label ? label(t) : "");
-        if (t.photo) { c.style.cssText = "display:inline-flex; align-items:center; gap:0.5em; padding-left:0.3em;"; c.prepend(QuizFX.avatar(t.name, t.photo, "1.8em")); }
-        box.appendChild(c);
-      });
+      list.forEach((t) => box.appendChild(teamChip(t.name, { done: showStatus && t.answered, off: t.connected === false, text: (showStatus && t.answered ? "✓ " : "") + t.name + (label ? label(t) : "") })));
     }
     function lettersGrid(box, options, correct, extraFn) {
       box.replaceChildren();
@@ -408,10 +439,7 @@
         const box = $("mc-teams");
         box.replaceChildren();
         s.results.forEach((r) => {
-          const c = el("span", "tchip " + (r.ok ? "done" : ""));
-          c.style.background = r.ok ? "#15803d" : "#7f1d1d";
-          c.textContent = `${r.ok ? "✔" : "✘"} ${r.name}${r.ok && r.pts > 1 ? " +" + r.pts : ""}`;
-          box.appendChild(c);
+          box.appendChild(teamChip(r.name, { bg: r.ok ? "#15803d" : "#7f1d1d", text: `${r.ok ? "✔" : "✘"} ${r.name}${r.ok && r.pts > 1 ? " +" + r.pts : ""}` }));
         });
       } else {
         chips($("mc-teams"), s.teams, true);
@@ -466,13 +494,7 @@
         : QuizFX.t("muziek.uitleg", { doel: s.target });
       const box = $("song-teams");
       box.replaceChildren();
-      s.teams.forEach((t) => {
-        const c = el("span", "tchip");
-        if (t.answered) c.classList.add("done");
-        if (!t.connected) c.classList.add("off");
-        c.textContent = `${t.answered ? "✓ " : ""}${t.name}`;
-        box.appendChild(c);
-      });
+      s.teams.forEach((t) => box.appendChild(teamChip(t.name, { done: t.answered, off: !t.connected })));
     }
 
     function renderPrice(s) {
@@ -502,11 +524,7 @@
       } else if (s.status === "drawing") {
         $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}`;
         const row = el("div", "chips-row");
-        s.teams.forEach((t) => {
-          const c = el("span", "tchip" + (t.answered ? " done" : ""));
-          c.textContent = `${t.answered ? "✓ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}`;
-          row.append(c);
-        });
+        s.teams.forEach((t) => row.append(teamChip(t.name, { done: t.answered, text: `${t.answered ? "✓ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}` })));
         body.append(row, el("div", "bigtimer", ""));
         body.lastChild.id = "draw-bigtimer";
         body.append(el("p", "tv-sub", QuizFX.t("teken.bezig")));
@@ -591,7 +609,7 @@
       box.replaceChildren();
       list.forEach((t) => {
         const card = el("div", "team-card" + (t.connected === false ? " off" : ""));
-        card.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)"), el("div", "", t.name), el("div", "tv-sub", `${t.members} ${t.members === 1 ? "speler" : "spelers"}`));
+        card.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", (TEAMSTYLE[t.name] || {}).color), el("div", "", t.name), el("div", "tv-sub", `${t.members} ${t.members === 1 ? "speler" : "spelers"}`));
         box.append(card);
       });
       const newest = list.filter((t) => t.photo).sort((a, b) => photoTime(b.photo) - photoTime(a.photo))[0];
@@ -602,6 +620,8 @@
       if (key === spotKey) return;
       spotKey = key;
       spot.replaceChildren(QuizFX.avatar(newest.name, newest.photo, "24vw"), el("div", "spot-name", newest.name));
+      const col = (TEAMSTYLE[newest.name] || {}).color;
+      if (col) spot.firstChild.style.borderColor = col;
       spot.classList.remove("pop"); void spot.offsetWidth; spot.classList.add("pop");
     }
 
@@ -614,11 +634,12 @@
       s.rows.forEach((r, i) => {
         const row = el("div", "rrow");
         const who = el("span"); who.style.cssText = "display:inline-flex; align-items:center;";
-        who.append(QuizFX.avatar(r.name, r.photo, "1.7em"), r.name);
+        who.append(QuizFX.avatar(r.name, r.photo, "1.7em", r.color), r.name);
         row.append(el("span", "", medal(i + 1)), who);
         const barWrap = el("div");
         const bar = el("div", "bar");
         bar.style.width = `${Math.max(1, (r.round / max) * 100)}%`;
+        if (r.color) bar.style.background = r.color;
         barWrap.append(bar);
         const a = el("b", "", `+${r.round}`);
         a.style.color = "#fbbf24";
@@ -667,7 +688,7 @@
       $("final-result").replaceChildren();
       const teamsBox = $("final-teams");
       teamsBox.replaceChildren();
-      s.teams.forEach((t) => teamsBox.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
+      s.teams.forEach((t) => teamsBox.append(teamChip(t.name, { done: t.answered })));
       if (s.status === "wager") {
         $("final-sub").textContent = QuizFX.t("slot.inzet", { max: s.maxWager || 100 });
         return;
@@ -701,7 +722,7 @@
       } else if (s.unit) q.append(el("p", "tv-sub", `Antwoord in: ${s.unit}`));
       const box = $("final-teams");
       box.replaceChildren();
-      s.teams.forEach((t) => box.append(el("span", "tchip" + (t.answered ? " done" : ""), (t.answered ? "✓ " : "") + t.name)));
+      s.teams.forEach((t) => box.append(teamChip(t.name, { done: t.answered })));
     }
 
     // ---------- Einduitslag: plek voor plek, de quizmaster bepaalt het tempo ----------
@@ -710,6 +731,9 @@
       revealedN = 0;
       $("tv-scoreboard").replaceChildren();
       $("winner-banner").classList.add("hidden");
+      $("reveal-spot").classList.add("hidden");
+      clearTimeout(spotTimer);
+      spotDone = null;
     }
     function renderEnd(end) {
       showView("v-end");
@@ -731,17 +755,39 @@
       const target = Math.min(end.revealN, list.length);
       if (target < revealedN) resetReveal();
       const fresh = target - revealedN > 0 && target - revealedN <= 1;
+      let spotMs = 0;
       while (revealedN < target) {
         const player = list[list.length - 1 - revealedN];
         const li = QuizFX.rankRow(player);
         $("tv-scoreboard").prepend(li);
-        if (fresh) { setTimeout(() => li.classList.add("show"), 50); QuizFX.drumHit(); } else li.classList.add("show");
+        if (fresh) { spotMs = player.rank === 1 ? 5000 : 3400; spotlight(player, spotMs, () => li.classList.add("show")); QuizFX.drumHit(); } else li.classList.add("show");
         revealedN++;
       }
       const all = revealedN >= list.length;
-      if (all && $("winner-banner").classList.contains("hidden")) {
+      if (all && $("winner-banner").classList.contains("hidden") && !winnerPending) {
+        winnerPending = true;
+        setTimeout(() => { winnerPending = false; if (revealedN >= list.length) showWinnerBanner(list, fresh); }, spotMs);
+      }
+    }
+    // Ontknoping: elke plek eerst groot in beeld (foto, naam, punten), daarna schuift het team in de ranglijst
+    let spotTimer = null, spotDone = null, winnerPending = false;
+    function spotlight(player, ms, done) {
+      const sp = $("reveal-spot");
+      const st = TEAMSTYLE[player.name] || {};
+      const rankTxt = player.rank === 1 ? "🏆 Winnaar!" : player.rank === 2 ? "🥈 Tweede plaats" : player.rank === 3 ? "🥉 Derde plaats" : `Plek ${player.rank}`;
+      sp.replaceChildren(el("div", "spot-rank", rankTxt), QuizFX.avatar(player.name, player.photo || st.photo, "clamp(180px, 34vh, 560px)", player.color || st.color), el("div", "spot-team", player.name), el("div", "spot-pts", `${player.score} punten`));
+      sp.classList.toggle("winner", player.rank === 1);
+      sp.classList.remove("hidden", "go"); void sp.offsetWidth; sp.classList.add("go");
+      clearTimeout(spotTimer);
+      if (spotDone) spotDone(); // vorige plek nog in beeld? die eerst in de lijst zetten
+      spotDone = done || null;
+      spotTimer = setTimeout(() => { sp.classList.add("hidden"); const d = spotDone; spotDone = null; if (d) d(); }, ms);
+    }
+    function showWinnerBanner(list, fresh) {
+      if (!$("winner-banner").classList.contains("hidden")) return;
+      {
         QuizFX.showWinners(list, $("winner-banner"), $("winner-name-text"));
-        $("winner-photos").replaceChildren(...list.filter((p) => p.rank === 1).map((p) => QuizFX.avatar(p.name, p.photo, "clamp(140px, 16vw, 340px)")));
+        $("winner-photos").replaceChildren(...list.filter((p) => p.rank === 1).map((p) => QuizFX.avatar(p.name, p.photo, "clamp(140px, 16vw, 340px)", p.color)));
         if (fresh) { QuizFX.fanfare(); QuizFX.launchConfetti(); }
       }
     }
@@ -776,6 +822,8 @@
     socket.on("state_update", (state) => {
       const step = state.step;
       const inQuiz = state.phase === "PLAY";
+      TEAMSTYLE = state.teamStyle || {};
+      chipStep = step ? step.id : state.phase;
       QuizFX.applyTheme(state.theme);
       QuizFX.setTexts(state.texts);
       document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = QuizFX.t(e.dataset.t); });
@@ -797,7 +845,9 @@
         $("tv-timer").textContent = `⏱ ${info.secs}s`;
         $("tv-timerfill").style.width = `${Math.round(info.fraction * 100)}%`;
         const low = info.secs <= 5 && info.running;
-        $("tv-timerfill").style.background = low ? "#ef4444" : "#22c55e";
+        $("tv-timerbar").classList.toggle("low", low);
+        $("tv-timerbar").classList.toggle("half", !low && info.fraction <= 0.5);
+        $("tv-timer").classList.toggle("low", low);
         bigTimer(info, $("draw-bigtimer"));
         bigTimer(info, $("th-bigtimer"));
         if (low && lastSecs !== info.secs) QuizFX.tick();

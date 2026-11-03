@@ -206,6 +206,14 @@ let dynSongs = {};  // liedjes die de bediening online vindt (id -> liedje)
 let dynStart = {};  // rondeId -> online startkaarten
 let teamPhotos = {};  // teamId -> { dataUrl, v }: vaste teamfoto, bewaard in data/teamphotos.json
 const validPhoto = (d) => typeof d === 'string' && d.length <= MAX_PHOTO_CHARS && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d);
+// Vaste teamkleur: elk team krijgt bij het aanmelden de eerste vrije kleur uit dit palet
+const TEAM_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#84cc16', '#06b6d4', '#eab308', '#8b5cf6'];
+function pickColor() {
+  const used = new Set(Object.values(teams).map((t) => t.color));
+  return TEAM_COLORS.find((c) => !used.has(c)) || TEAM_COLORS[Object.keys(teams).length % TEAM_COLORS.length];
+}
+// Kleur en foto per teamnaam: tv en telefoons zoeken daarmee overal de juiste kleur en foto op
+const teamStyle = () => Object.fromEntries(Object.values(teams).map((t) => [t.name, { color: t.color || '#64748b', photo: photoUrl(t.teamId) }]));
 const photoUrl = (teamId) => (teamPhotos[teamId] ? `/teamfoto/${encodeURIComponent(teamId)}?v=${teamPhotos[teamId].v}` : null);
 function savePhotos() {
   try { writeJsonWithBackup(PHOTOS_FILE, { version: 1, photos: teamPhotos }); }
@@ -552,7 +560,7 @@ function tiebreakWinners(step) {
 }
 
 function ranking() {
-  const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, photo: photoUrl(t.teamId), score: scoreOf(t) })).sort((a, b) => b.score - a.score || byName(a, b));
+  const list = Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, photo: photoUrl(t.teamId), color: t.color || null, score: scoreOf(t) })).sort((a, b) => b.score - a.score || byName(a, b));
   list.forEach((item) => { item.rank = 1 + list.filter((o) => o.score > item.score).length; });
   return list;
 }
@@ -573,6 +581,7 @@ function roundStandings(round) {
     name: t.name,
     teamId: t.teamId,
     photo: photoUrl(t.teamId),
+    color: t.color || null,
     round: roundScore(t, round),
     total: scoreOf(t)
   })).sort((a, b) => b.round - a.round || byName(a, b));
@@ -1109,13 +1118,14 @@ function loadSaved() {
   teams = {};
   for (const t of Object.values(data.teams)) {
     if (!t || !t.teamId || !t.name) continue;
-    teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null, ...(t.bot ? { bot: true } : {}) };
+    teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null, color: TEAM_COLORS.includes(t.color) ? t.color : null, ...(t.bot ? { bot: true } : {}) };
   }
   devices = {};
   for (const d of Object.values(data.devices || {})) {
     if (!d || !teams[d.teamId]) continue;
     devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', seq: d.seq || ++seq, socketId: d.bot ? `bot_${d.deviceId}` : null, connected: !!d.bot, ...(d.bot ? { bot: true } : {}) };
   }
+  for (const t of Object.values(teams)) if (!t.color) t.color = pickColor();
   for (const t of Object.values(teams)) {
     if (!devices[t.baseDeviceId]) { const first = teamDevices(t)[0]; if (first) t.baseDeviceId = first.deviceId; }
   }
@@ -1341,6 +1351,23 @@ function hostPanel(step) {
   }
 }
 
+// Sleutel van "waar staan we nu": een klik die bij een eerdere toestand hoort (dubbele tik, of de
+// andere quizmaster was net eerder) wordt genegeerd, zodat er nooit per ongeluk een scherm wordt overgeslagen.
+function actionKey() {
+  const step = cur();
+  const s = step ? ss(step) : {};
+  return [phase, stepIndex, lobbyStage, reveal, revealN, endView, step ? step.id : '', s.status || '', s.turn ?? '', mainAction().label].join('|');
+}
+// Vangnet: een fout in één actie mag nooit de hele quiz platleggen
+const serverErrors = [];
+function reportError(where, error) {
+  console.error(`Fout in ${where}:`, error && error.stack ? error.stack : error);
+  serverErrors.push({ where, message: String((error && error.message) || error).slice(0, 160).replace(/\.+$/, ''), at: new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' }) });
+  if (serverErrors.length > 5) serverErrors.shift();
+  try { io.to('remote_room').emit('host_error', { message: `Er ging iets mis bij "${where}". De quiz loopt door; probeer het zo nodig opnieuw.` }); } catch (e) { /* niets */ }
+}
+const tvCount = () => { const room = io.sockets && io.sockets.adapter && io.sockets.adapter.rooms && io.sockets.adapter.rooms.get('tv_room'); return room ? room.size : 0; };
+
 // De hoofdknop van de quizmaster: label, of hij werkt, en wat hij doet
 function mainAction() {
   const none = (label, hint) => ({ label, enabled: false, hint: hint || '', run: null });
@@ -1456,7 +1483,7 @@ function broadcastState() {
   const round = step && roundById[step.round];
 
   const common = {
-    phase, paused, showStandings, review: reviewPayload,
+    phase, paused, showStandings, review: reviewPayload, teamStyle: teamStyle(),
     header: {
       round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'teamphoto' ? 'Teamfoto' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
       progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
@@ -1480,15 +1507,16 @@ function broadcastState() {
     ...common,
     step: step ? publicStep(step) : null,
     panel: step ? hostPanel(step) : null,
-    controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null, undo: { enabled: undoHistory.length > 0, label: undoHistory.length ? `↶ Ongedaan maken: ${undoHistory[undoHistory.length - 1].label}` : '↶ Niets om ongedaan te maken' } },
+    controls: { key: actionKey(), main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null, undo: { enabled: undoHistory.length > 0, label: undoHistory.length ? `↶ Ongedaan maken: ${undoHistory[undoHistory.length - 1].label}` : '↶ Niets om ongedaan te maken' } },
     teams: Object.values(teams).map((t) => ({
-      teamId: t.teamId, name: t.name, bot: !!t.bot, photo: photoUrl(t.teamId), connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
+      teamId: t.teamId, name: t.name, bot: !!t.bot, color: t.color || null, photo: photoUrl(t.teamId), connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
       members: teamDevices(t).map((d) => ({ deviceId: d.deviceId, label: d.label, role: d.deviceId === t.baseDeviceId ? 'base' : 'member', connected: d.connected }))
     })).sort(byName),
     rounds: rounds.map((r) => ({ id: r.id, no: r.no, title: r.title, introId: `${r.id}_intro` })),
     settings, settingsLocked: phase !== 'LOBBY',
     stepNo: stepIndex + 1, stepTotal: steps.length,
-    warnings: content.warnings,
+    warnings: [...content.warnings, ...serverErrors.map((e) => `⚠️ Foutje opgevangen (${e.at}, ${e.where}): ${e.message}. De quiz loopt door.`)],
+    tvCount: tvCount(),
     quiz: { ...quizSource, steps: steps.length, rounds: rounds.length },
     plan: planView(), extraOptions: extraOptions(), themes: THEMES,
     hostScores: phase !== 'LOBBY' ? breakdown() : null, // alleen voor de quizmasters
@@ -1507,7 +1535,7 @@ function broadcastState() {
       timer: null,
       view: phase === 'PLAY' ? phoneView(step, t, d, isBase) : phase === 'END' ? { type: 'end' } : { type: 'lobby' },
       me: {
-        memberId: d.memberId, teamId: t.teamId, teamName: t.name, photo: photoUrl(t.teamId), label: d.label, role: isBase ? 'base' : 'member',
+        memberId: d.memberId, teamId: t.teamId, teamName: t.name, color: t.color || '#64748b', photo: photoUrl(t.teamId), label: d.label, role: isBase ? 'base' : 'member',
         baseLabel: devices[t.baseDeviceId] ? devices[t.baseDeviceId].label : '', proposal: proposalFor(t, d),
         members: teamDevices(t).map((m) => ({ memberId: m.memberId, label: m.label, role: m.deviceId === t.baseDeviceId ? 'base' : 'member', connected: m.connected }))
       }
@@ -1693,6 +1721,17 @@ const num = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
 
 io.on('connection', onConnection);
 function onConnection(socket) {
+  // Elke actie apart afvangen: een fout wordt gemeld in de bediening en de quiz gaat gewoon door
+  const rawOn = socket.on.bind(socket);
+  socket.on = (event, handler) => rawOn(event, (...args) => {
+    try { return handler(...args); }
+    catch (error) {
+      reportError(event, error);
+      const cb = args[args.length - 1];
+      if (typeof cb === 'function') { try { cb({ ok: false, message: 'Er ging iets mis. Probeer het opnieuw.' }); } catch (e) { /* niets */ } }
+      try { broadcastState(); } catch (e) { /* niets */ }
+    }
+  });
   // ---------- Schermen registreren ----------
   socket.on('register_remote', ({ pin } = {}) => {
     if (!checkPin(socket, pin)) return;
@@ -1735,7 +1774,7 @@ function onConnection(socket) {
     if (!settings.maxTeams) return reply({ ok: false, message: 'De quizmaster heeft het aantal teams nog niet ingesteld. Even geduld!' });
     if (Object.keys(teams).length >= settings.maxTeams) return reply({ ok: false, message: `Er doen al ${settings.maxTeams} teams mee (het maximum). Sluit aan bij een bestaand team.` });
     const device = { deviceId: newId('d_'), memberId: newId('m_'), teamId: null, label: myName, seq: ++seq, socketId: null, connected: false };
-    const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: device.deviceId, jokerRound: null, timelines: {}, proposal: null };
+    const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: device.deviceId, jokerRound: null, timelines: {}, proposal: null, color: pickColor() };
     device.teamId = team.teamId;
     teams[team.teamId] = team;
     devices[device.deviceId] = device;
@@ -2010,16 +2049,18 @@ function onConnection(socket) {
   });
 
   // ---------- Bediening: spelverloop ----------
-  socket.on('host_main', () => {
+  socket.on('host_main', ({ key } = {}) => {
     if (!isRemote(socket)) return;
     if (review) return;
+    if (key !== undefined && key !== actionKey()) return; // dubbele tik of iemand anders was net eerder: negeren
     const a = mainAction();
     if (!a.enabled || !a.run) return socket.emit('host_error', { message: a.hint || 'Dat kan nu nog niet.' });
     a.run();
     sync();
   });
-  socket.on('host_force', () => {
+  socket.on('host_force', ({ key } = {}) => {
     if (!isRemote(socket)) return;
+    if (key !== undefined && key !== actionKey()) return;
     const f = forceAction();
     if (!f) return;
     f.run();
@@ -2435,7 +2476,7 @@ function onConnection(socket) {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; teamPhotos = {}; Object.keys(botSockets).forEach((k) => delete botSockets[k]); undoHistory = []; gameId = null;
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; teamPhotos = {}; Object.keys(botSockets).forEach((k) => delete botSockets[k]); serverErrors.length = 0; undoHistory = []; gameId = null;
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); removeStateFiles(PHOTOS_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
@@ -2444,6 +2485,7 @@ function onConnection(socket) {
   });
 
   socket.on('disconnect', () => {
+    if (socket.data.role === 'tv') setTimeout(broadcastState, 50); // bediening ziet meteen dat de tv weg is
     const device = devices[socket.data.deviceId];
     if (device && device.socketId === socket.id) {
       device.connected = false;
@@ -2486,7 +2528,7 @@ function botSocket(deviceId) {
 function addBots(n) {
   for (let i = 0; i < n; i++) {
     const name = '🤖 ' + (BOT_NAMES.find((b) => !findTeamByName('🤖 ' + b)) || `Robot ${Object.keys(teams).length + 1}`);
-    const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: null, jokerRound: null, timelines: {}, proposal: null, bot: true };
+    const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: null, jokerRound: null, timelines: {}, proposal: null, bot: true, color: pickColor() };
     teams[team.teamId] = team;
     for (let k = 0; k < 2; k++) { // twee "spelers", zodat tekenen en 30 Seconds ook werken
       const d = { deviceId: newId('d_'), memberId: newId('m_'), teamId: team.teamId, label: `Robot ${k + 1}`, seq: ++seq, socketId: null, connected: true, bot: true };
@@ -2558,6 +2600,9 @@ loadHistory();
 const restored = loadSaved();
 loadPhotos();
 function shutdown() { saveNow(); process.exit(0); }
+// Laatste vangnet (bijv. een fout in een timer): melden, opslaan en doorgaan in plaats van crashen
+process.on('uncaughtException', (error) => { reportError('server', error); try { saveNow(); } catch (e) { /* niets */ } });
+process.on('unhandledRejection', (error) => reportError('server', error));
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 

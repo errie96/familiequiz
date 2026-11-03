@@ -1,0 +1,6 @@
+Poppins (Bold en Medium)
+Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)
+
+Dit lettertype valt onder de SIL Open Font License, versie 1.1.
+De volledige licentietekst: https://openfontlicense.org/open-font-license-official-text/
+Het lettertype mag vrij worden gebruikt, meegeleverd en gedeeld, maar niet los worden verkocht.
