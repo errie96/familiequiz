@@ -9,6 +9,7 @@ const { Server } = require('socket.io');
 const { loadContent, decadeOf } = require('./lib/content');
 const { fromExcel } = require('./lib/fromExcel');
 const { newId, cleanText, norm, fuzzyEq, shuffle } = require('./lib/util');
+const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles } = require('./lib/state-store');
 
 const PORT = process.env.PORT || 3000;
 const ON_RENDER = !!process.env.RENDER;
@@ -965,17 +966,17 @@ function saveNow() {
       teams,
       devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
     };
-    const tmp = STATE_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(snapshot));
-    fs.renameSync(tmp, STATE_FILE);
+    writeJsonWithBackup(STATE_FILE, snapshot);
   } catch (e) {
     console.error('Opslaan mislukt:', e.message);
   }
 }
 function loadSaved() {
-  if (FRESH) { try { fs.unlinkSync(STATE_FILE); } catch (e) { /* bestond niet */ } return false; }
-  let data;
-  try { data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (e) { return false; }
+  if (FRESH) { removeStateFiles(STATE_FILE); return false; }
+  const saved = readJsonWithBackup(STATE_FILE, (snapshot) => snapshot.version === 2 && snapshot.teams && typeof snapshot.teams === 'object');
+  if (!saved) return false;
+  const data = saved.data;
+  if (saved.source === 'backup') console.warn('Het hoofd-opslagbestand is ongeldig; de vorige geldige reservekopie wordt hersteld.');
   if (!data || data.version !== 2 || typeof data.teams !== 'object' || !steps.length) return false;
 
   teams = {};
@@ -2221,6 +2222,8 @@ io.on('connection', (socket) => {
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
     ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {};
     timerClear();
+    // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
+    try { removeStateFiles(STATE_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
     io.emit('quiz_reset');
     broadcastState();
   });
