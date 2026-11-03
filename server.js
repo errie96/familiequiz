@@ -1036,6 +1036,8 @@ function loadSaved() {
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
   undoHistory = Array.isArray(data.undoHistory) ? data.undoHistory.slice(-UNDO_LIMIT) : [];
   phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
+  // Oude opgeslagen quizzen van vóór de geschiedenisfunctie krijgen alsnog een sessie-ID.
+  if (phase !== 'LOBBY' && !gameId) gameId = crypto.randomUUID();
   stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), steps.length - 1);
   reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
   revealN = Number.isInteger(data.revealN) ? data.revealN : 0;
