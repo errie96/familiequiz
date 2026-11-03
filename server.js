@@ -1172,8 +1172,7 @@ function publicStep(step) {
     }
     case 'roundresult': {
       const round = roundById[step.round];
-      const photos = Object.entries(roundPhotos[step.round] || {}).map(([teamId, photo]) => ({ team: teams[teamId] ? teams[teamId].name : 'Team', dataUrl: photo.dataUrl }));
-      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round), photos };
+      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
     }
     case 'joker':
       return { ...base, chosen: Object.values(teams).sort(byName).map((t) => ({ name: t.name, done: s.choices[t.teamId] !== undefined, round: t.jokerRound && roundById[t.jokerRound] ? `Ronde ${roundById[t.jokerRound].no}: ${roundById[t.jokerRound].title}` : null })) };
@@ -1399,7 +1398,7 @@ function broadcastState() {
 
   io.to('tv_room').emit('state_update', {
     ...common,
-    step: step ? publicStep(step) : null,
+    step: step ? { ...publicStep(step), ...(step.kind === 'roundresult' ? { photos: Object.entries(roundPhotos[step.round] || {}).map(([teamId, photo]) => ({ team: teams[teamId] ? teams[teamId].name : 'Team', dataUrl: photo.dataUrl })) } : {}) } : null,
     teamList: Object.values(teams).map((t) => ({ name: t.name, connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
     maxTeams: settings.maxTeams
   });
@@ -2076,7 +2075,7 @@ io.on('connection', (socket) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     const c = baseContext(socket, 'roundresult');
     if (!c || !c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan een teamfoto indienen.' });
-    if (typeof dataUrl !== 'string' || dataUrl.length > 420000 || !/^data:image\\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
+    if (typeof dataUrl !== 'string' || dataUrl.length > 200000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
       return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
     }
     roundPhotos[c.step.round] = roundPhotos[c.step.round] || {};
