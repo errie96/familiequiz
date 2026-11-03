@@ -91,7 +91,7 @@ Afspelen in de browser zelf werkt op een computer (Chrome, Edge, Firefox), niet 
 De Client ID staat in `public/shared.js` (`QuizSpotify`).
 
 ## Opslaan en Render
-De stand staat in `data/state.json`; na een herstart staat de quiz op pauze. Online draaien via Render: zie `render.yaml`
+De stand staat in `data/state.json`; de vorige geldige stand blijft als `data/state.json.bak` beschikbaar als reservekopie. Als het hoofd-bestand ontbreekt of beschadigd is, probeert de server die reservekopie te herstellen. Een bewuste reset wist ook de reservekopie. Na een herstart staat een lopende quiz op pauze. Online draaien via Render: zie `render.yaml`
 (zet `HOST_PIN`, en voor een echte avond plan `starter` met schijf). Niet pushen tijdens de quiz.
 
 ## Noodknoppen (bediening)
