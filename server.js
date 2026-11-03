@@ -157,6 +157,12 @@ function extraRaw(p, b) {
     const category = HITSTER_CATS[p.category] ? p.category : 'original';
     const fallback = (baseRaw.hitsterLibrary || (baseRaw.rounds.find((round) => round.type === 'hitster') || {}).songs || []).map((song) => ({ ...song, category: song.category || 'original' }));
     r.songs = fallback.filter((song) => song.category === category); // alleen deze categorie; daarna Spotify
+    // De 2e, 3e … extra ronde in dezelfde categorie krijgt andere startkaarten dan de vorige
+    const byIdAll = Object.fromEntries((baseRaw.rounds || []).map((x) => [x.id, x]));
+    const same = planOrder().filter((x) => x.base && byIdAll[x.base] && byIdAll[x.base].type === 'hitster' && (HITSTER_CATS[x.category] ? x.category : 'original') === category);
+    r.startOffset = Math.max(0, same.findIndex((x) => x.id === p.id));
+    // Liedjes uit de gewone muziekronde(s) nooit als startkaart gebruiken
+    r.excludeKeys = (baseRaw.rounds || []).filter((x) => x.type === 'hitster').flatMap((x) => (x.songs || []).map((song) => `${song.title}|${song.artist || ''}`.toLowerCase()));
     r.dynamic = true;
     r.category = category;
   }
@@ -196,7 +202,6 @@ function replan(order) {
 }
 let dynSongs = {};  // liedjes die de bediening online vindt (id -> liedje)
 let dynStart = {};  // rondeId -> online startkaarten
-let roundPhotos = {}; // rondeId -> teamId -> gecomprimeerde teamfoto (alleen tijdelijk in geheugen)
 let teamPhotos = {};  // teamId -> { dataUrl, v }: vaste teamfoto, bewaard in data/teamphotos.json
 const validPhoto = (d) => typeof d === 'string' && d.length <= MAX_PHOTO_CHARS && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d);
 const photoUrl = (teamId) => (teamPhotos[teamId] ? `/teamfoto/${encodeURIComponent(teamId)}?v=${teamPhotos[teamId].v}` : null);
@@ -246,11 +251,33 @@ function usedSongKeys() {
 }
 function compileQuiz(extraWarnings) {
   const result = loadContent(null, applyPlan(baseRaw));
-  result.warnings = [...(extraWarnings || []), ...result.warnings];
+  result.warnings = [...(extraWarnings || []).filter((w) => !w.startsWith(MEDIA_WARNING)), ...result.warnings];
   content = result;
   ({ rounds, steps, songs } = result);
   Object.assign(songs, dynSongs);
   roundById = Object.fromEntries(rounds.map((r) => [r.id, r]));
+  content.warnings.push(...missingMediaWarnings());
+}
+// Controle: staan alle foto's, logo's en geluidsbestanden uit de vragenlijst echt in public/media/?
+const MEDIA_WARNING = '📁 ';
+function missingMediaWarnings() {
+  const missing = new Map(); // ronde -> Set(bestanden)
+  const check = (src, where) => {
+    if (typeof src !== 'string' || !src || /^(https?:|data:)/i.test(src)) return;
+    const file = path.join(__dirname, 'public', decodeURIComponent(src.split('?')[0]).replace(/^\/+/, ''));
+    if (!file.startsWith(path.join(__dirname, 'public')) || fs.existsSync(file)) return;
+    if (!missing.has(where)) missing.set(where, new Set());
+    missing.get(where).add(src.replace(/^\/media\//, ''));
+  };
+  const nameOf = (roundId) => (roundById[roundId] ? `Ronde ${roundById[roundId].no}: ${roundById[roundId].title}` : roundId === 'test' ? 'Testvragen' : roundId === 'final' ? 'Slotvraag' : 'Quiz');
+  for (const step of steps) {
+    const media = step.media || null;
+    if (media) check(media.src || media.image || media.file, nameOf(step.round));
+  }
+  for (const song of Object.values(songs)) {
+    if (song && song.audio && !song.dynamic) check(song.audio.src, 'Muziek');
+  }
+  return [...missing].map(([where, files]) => `${MEDIA_WARNING}${where}: ${files.size} ${files.size === 1 ? 'bestand ontbreekt' : 'bestanden ontbreken'} in public/media/: ${[...files].slice(0, 12).join(', ')}${files.size > 12 ? ', …' : ''}`);
 }
 function loadQuiz() {
   const candidates = [process.env.QUIZ_XLSX, XLSX_UPLOAD, XLSX_LOCAL].filter((f) => f && fs.existsSync(f));
@@ -543,6 +570,7 @@ function roundStandings(round) {
   return Object.values(teams).map((t) => ({
     name: t.name,
     teamId: t.teamId,
+    photo: photoUrl(t.teamId),
     round: roundScore(t, round),
     total: scoreOf(t)
   })).sort((a, b) => b.round - a.round || byName(a, b));
@@ -1437,7 +1465,7 @@ function broadcastState() {
 
   io.to('tv_room').emit('state_update', {
     ...common,
-    step: step ? { ...publicStep(step), ...(step.kind === 'roundresult' ? { photos: Object.entries(roundPhotos[step.round] || {}).map(([teamId, photo]) => ({ team: teams[teamId] ? teams[teamId].name : 'Team', dataUrl: photo.dataUrl })) } : {}) } : null,
+    step: step ? publicStep(step) : null,
     teamList: Object.values(teams).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
     maxTeams: settings.maxTeams
   });
@@ -1544,10 +1572,6 @@ function phoneView(step, team, device, isBase) {
         team: o && teams[o.teamId] ? teams[o.teamId].name : null, explainer: o && devices[o.deviceId] ? devices[o.deviceId].label : null,
         words: role === 'explainer' && turn && (s.status === 'running' || s.status === 'judging') ? turn.words : null
       };
-    }
-    case 'roundresult': {
-      const photos = roundPhotos[step.round] || {};
-      return { ...base, photoUploaded: !!photos[id] };
     }
     case 'teamphoto':
       return { ...base, photo: photoUrl(id), skipped: !!s.skipped[id] };
@@ -2113,17 +2137,6 @@ io.on('connection', (socket) => {
     reply({ ok: ids.length > 0, accepted: ids.length, remaining: Math.max(0, need - ids.length), reason: ids.length ? null : 'no_unique_tracks' });
     sync();
   });
-  socket.on('team_photo', ({ dataUrl } = {}, cb) => {
-    const reply = typeof cb === 'function' ? cb : () => {};
-    const c = baseContext(socket, 'roundresult');
-    if (!c || !c.isBase) return reply({ ok: false, message: 'Alleen de basistelefoon kan een teamfoto indienen.' });
-    if (!validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
-    roundPhotos[c.step.round] = roundPhotos[c.step.round] || {};
-    roundPhotos[c.step.round][c.team.teamId] = { dataUrl, uploadedAt: Date.now() };
-    if (!teamPhotos[c.team.teamId]) setTeamPhoto(c.team.teamId, dataUrl); // eerste foto wordt meteen de teamfoto
-    reply({ ok: true });
-    sync();
-  });
   // Vaste teamfoto: de basistelefoon kan hem op elk moment instellen, vervangen of weghalen
   socket.on('set_team_photo', ({ dataUrl } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
@@ -2414,7 +2427,7 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; roundPhotos = {}; teamPhotos = {}; undoHistory = []; gameId = null;
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; teamPhotos = {}; undoHistory = []; gameId = null;
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); removeStateFiles(PHOTOS_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }

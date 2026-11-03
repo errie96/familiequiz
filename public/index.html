@@ -79,11 +79,8 @@
           <h3 id="team-title" style="font-size:18px; margin:0;">Team</h3>
         </div>
         <div id="team-photo-actions" class="hidden" style="margin-bottom:8px;">
-          <input type="file" id="team-photo-input" accept="image/*" class="hidden">
-          <div class="row2">
-            <button id="btn-team-photo" class="btn-option" style="text-align:center; font-size:14px; margin:0;">📸 Teamfoto maken</button>
-            <button id="btn-team-photo-remove" class="btn-option hidden" style="text-align:center; font-size:14px; margin:0; flex:0 0 auto; width:auto;">🗑</button>
-          </div>
+          <div id="team-photo-picker"></div>
+          <button id="btn-team-photo-remove" class="btn-option hidden" style="text-align:center; font-size:14px; margin:0;">🗑 Teamfoto verwijderen</button>
           <p id="team-photo-status" class="note hidden" style="margin-top:6px;"></p>
         </div>
         <p id="role-text" class="note" style="margin:0 0 6px;"></p>
@@ -268,6 +265,27 @@
     $("btn-create").addEventListener("click", createTeam);
     $("team-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createTeam(); });
 
+    // ---------------- Foto kiezen: camera (direct openen) of galerij ----------------
+    // capture="user" opent op iPhone en Android meteen de (voor)camera; de tweede knop kiest uit de galerij.
+    function photoPicker(onFile, labels) {
+      const mk = (camera) => {
+        const input = el("input"); input.type = "file"; input.accept = "image/*"; input.className = "hidden";
+        if (camera) input.setAttribute("capture", "user");
+        input.onchange = () => { const f = input.files && input.files[0]; input.value = ""; if (f) onFile(f); };
+        return input;
+      };
+      const camInput = mk(true), galInput = mk(false);
+      const cam = el("button", "btn-primary", (labels && labels.camera) || "📸 Maak een foto");
+      cam.style.background = "#22c55e"; cam.style.margin = "0";
+      cam.onclick = () => camInput.click();
+      const gal = el("button", "btn-option", "🖼️ Uit galerij");
+      gal.style.cssText = "text-align:center; margin:0; flex:0 0 auto; width:auto;";
+      gal.onclick = () => galInput.click();
+      const row = el("div", "row2"); row.style.margin = "8px 0";
+      row.append(cam, gal, camInput, galInput);
+      return { row, cam, gal, setBusy(b) { cam.disabled = b; gal.disabled = b; } };
+    }
+
     // ---------------- Teamkaart ----------------
     function renderTeamCard() {
       $("team-title").textContent = me.teamName;
@@ -279,7 +297,7 @@
         slot.replaceChildren(av);
       }
       $("team-photo-actions").classList.toggle("hidden", me.role !== "base");
-      $("btn-team-photo").textContent = me.photo ? "📸 Andere teamfoto" : "📸 Teamfoto maken";
+      panelPicker.cam.textContent = me.photo ? "📸 Nieuwe teamfoto" : "📸 Teamfoto maken";
       $("btn-team-photo-remove").classList.toggle("hidden", !me.photo);
       const pending = !!me.proposal;
       $("role-text").textContent = me.role === "base"
@@ -332,21 +350,20 @@
     }
     // Teamfoto: alleen de basistelefoon; vierkant bijgesneden zodat hij mooi rond op de tv staat
     function photoStatus(text) { $("team-photo-status").textContent = text || ""; $("team-photo-status").classList.toggle("hidden", !text); }
-    $("btn-team-photo").addEventListener("click", () => $("team-photo-input").click());
-    $("team-photo-input").addEventListener("change", async () => {
-      const file = $("team-photo-input").files && $("team-photo-input").files[0];
-      $("team-photo-input").value = "";
-      if (!file) return;
-      $("btn-team-photo").disabled = true;
-      photoStatus("Foto voorbereiden…");
+    // Foto verkleinen en naar de server sturen; status() krijgt de tekst voor de gebruiker
+    async function uploadTeamPhoto(file, picker, status) {
+      picker.setBusy(true);
+      status("Foto voorbereiden…");
       try {
-        const dataUrl = await QuizFX.compressPhoto(file, 480, true);
+        const dataUrl = await QuizFX.compressPhoto(file, 640, true);
         socket.emit("set_team_photo", { dataUrl }, (res) => {
-          $("btn-team-photo").disabled = false;
-          photoStatus(res && res.ok ? "✅ Teamfoto opgeslagen, hij staat nu op het grote scherm." : (res && res.message) || "Opslaan is niet gelukt.");
+          picker.setBusy(false);
+          status(res && res.ok ? "✅ Teamfoto opgeslagen, hij staat nu op het grote scherm." : (res && res.message) || "Opslaan is niet gelukt.");
         });
-      } catch (error) { $("btn-team-photo").disabled = false; photoStatus(error.message || "Foto kon niet worden verwerkt."); }
-    });
+      } catch (error) { picker.setBusy(false); status(error.message || "Foto kon niet worden verwerkt."); }
+    }
+    const panelPicker = photoPicker((file) => uploadTeamPhoto(file, panelPicker, photoStatus));
+    $("team-photo-picker").append(panelPicker.row);
     $("btn-team-photo-remove").addEventListener("click", () => {
       if (!confirm("Teamfoto verwijderen?")) return;
       socket.emit("set_team_photo", { dataUrl: null }, (res) => photoStatus(res && res.ok ? "Teamfoto verwijderd." : (res && res.message) || "Dat lukte niet."));
@@ -397,32 +414,8 @@
         d.append(e, el("h2", "", v.title), el("p", "note", v.text || ""));
         box.append(d);
       },
-      roundresult(box, v) {
-        box.append(bigEl("📊"), el("h2", "", "Dit was de ronde!"), el("p", "note", "Bekijk de tussenstand op het grote scherm. Willen jullie een teamfoto toevoegen?"));
-        const status = el("p", "note");
-        const picker = el("input");
-        picker.type = "file"; picker.accept = "image/*";
-        picker.disabled = !v.isBase || !!v.photoUploaded;
-        const send = el("button", "btn-primary", v.photoUploaded ? "✅ Teamfoto ingediend" : "📸 Teamfoto maken en indienen");
-        send.disabled = !v.isBase || !!v.photoUploaded;
-        if (!v.isBase) status.textContent = "De basistelefoon van jullie team kan een foto indienen.";
-        else if (v.photoUploaded) status.textContent = "De teamfoto is ingediend en verschijnt op het grote scherm.";
-        else status.textContent = "Kies een foto of maak direct een foto met je camera.";
-        send.onclick = async () => {
-          const file = picker.files && picker.files[0];
-          if (!file) { status.textContent = "Kies eerst een foto."; return; }
-          send.disabled = true;
-          status.textContent = "Foto voorbereiden…";
-          try {
-            const dataUrl = await QuizFX.compressPhoto(file, 800);
-            socket.emit("team_photo", { dataUrl }, (result) => {
-              if (result && result.ok) { status.textContent = "✅ Teamfoto ingediend!"; send.textContent = "✅ Teamfoto ingediend"; }
-              else { status.textContent = (result && result.message) || "Foto indienen is niet gelukt."; send.disabled = false; }
-            });
-          } catch (error) { status.textContent = error.message || "Foto kon niet worden verwerkt."; send.disabled = false; }
-        };
-        box.append(picker, send, status);
-        if (v.photoUploaded) send.disabled = true;
+      roundresult(box) {
+        box.append(bigEl("📊"), el("h2", "", "Dit was de ronde!"), el("p", "note", "Kijk naar het grote scherm."));
       },
       end(box) {
         const d = el("div"); d.style.textAlign = "center";
@@ -766,31 +759,16 @@
           box.append(status);
           return noop;
         }
-        const input = el("input"); input.type = "file"; input.accept = "image/*"; input.className = "hidden";
-        const shoot = el("button", "btn-primary", v.photo ? "📸 Opnieuw maken" : "📸 Teamfoto maken");
-        shoot.style.background = "#22c55e";
-        shoot.onclick = () => input.click();
-        input.onchange = async () => {
-          const file = input.files && input.files[0];
-          input.value = "";
-          if (!file) return;
-          shoot.disabled = true; status.textContent = "Foto voorbereiden…";
-          try {
-            const dataUrl = await QuizFX.compressPhoto(file, 480, true);
-            socket.emit("set_team_photo", { dataUrl }, (res) => {
-              shoot.disabled = false;
-              status.textContent = res && res.ok ? "✅ Teamfoto opgeslagen!" : (res && res.message) || "Opslaan is niet gelukt.";
-            });
-          } catch (error) { shoot.disabled = false; status.textContent = error.message || "Foto kon niet worden verwerkt."; }
-        };
-        box.append(input, shoot);
+        const say = (text) => { status.textContent = text; };
+        const picker = photoPicker((file) => uploadTeamPhoto(file, picker, say), { camera: v.photo ? "📸 Opnieuw maken" : "📸 Maak de teamfoto" });
+        box.append(picker.row);
         if (!v.photo && !v.skipped) {
           const skip = el("button", "btn-option", "Overslaan (zonder foto)");
           skip.style.textAlign = "center";
           skip.onclick = () => { if (confirm("Doorgaan zonder teamfoto? Je kunt later in het teamblok alsnog een foto maken.")) socket.emit("teamphoto_skip", null, () => {}); };
           box.append(skip);
         }
-        status.textContent = v.photo ? "✅ Teamfoto staat op het grote scherm. Niet tevreden? Maak hem opnieuw." : v.skipped ? "Jullie gaan zonder foto verder." : "Kies de camera of een foto uit je galerij.";
+        status.textContent = v.photo ? "✅ Teamfoto staat op het grote scherm. Niet tevreden? Maak hem opnieuw." : v.skipped ? "Jullie gaan zonder foto verder." : "Tik op de groene knop: de camera gaat meteen open. Of kies een foto uit je galerij.";
         box.append(status);
         return noop;
       },

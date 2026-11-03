@@ -47,7 +47,17 @@
     .tchip { background: #334155; border-radius: 999px; padding: 0.3em 1.1em; font-size: clamp(14px, 2vw, 38px); }
     .tchip.done { background: #15803d; }
     .tchip.off { opacity: 0.4; }
-    .lobby-grid { display: grid; grid-template-columns: auto 1fr; gap: 5vw; align-items: start; }
+    .lobby-grid { display: grid; grid-template-columns: auto auto 1fr; gap: 4vw; align-items: start; }
+    .lobby-spot { text-align: center; }
+    .lobby-spot .team-avatar { width: clamp(180px, 24vw, 520px) !important; height: clamp(180px, 24vw, 520px) !important; border: 6px solid #fbbf24; box-shadow: 0 10px 40px rgba(251, 191, 36, 0.45); font-size: clamp(60px, 9vw, 200px) !important; }
+    .lobby-spot .spot-name { font-size: clamp(26px, 3.6vw, 72px); font-weight: bold; margin-top: 1.5vh; }
+    .lobby-spot.pop { animation: trans-pop 0.7s ease-out; }
+    .team-cards { display: flex; flex-wrap: wrap; gap: 1.8vw; margin-top: 1vh; }
+    .team-card { display: flex; flex-direction: column; align-items: center; gap: 0.6vh; width: clamp(90px, 10vw, 200px); text-align: center; font-size: clamp(14px, 1.6vw, 30px); font-weight: bold; overflow-wrap: anywhere; }
+    .team-card.off { opacity: 0.4; }
+    .rrow .team-avatar { margin-right: 0.4em; }
+    .winner-photos { display: flex; justify-content: center; gap: 3vw; margin-bottom: 2vh; }
+    .winner-photos .team-avatar { border: 6px solid #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
     #qrcode { background: #fff; padding: 1.2vw; border-radius: 12px; display: inline-block; }
     #join-url { color: #38bdf8; font-weight: bold; font-size: clamp(14px, 2vw, 36px); margin-top: 1vh; }
     .big-list { max-width: 70vw; margin: 2vh auto; font-size: clamp(22px, 3.6vw, 68px); }
@@ -117,9 +127,10 @@
           <div id="qrcode"></div>
           <div id="join-url"></div>
         </div>
+        <div id="lobby-spot" class="lobby-spot hidden"></div>
         <div>
           <h2 style="text-align:left; font-size: clamp(22px, 3vw, 56px);">Teams</h2>
-          <div id="lobby-teams" class="chips-row" style="justify-content:flex-start; margin-top:1vh;"></div>
+          <div id="lobby-teams" class="team-cards"></div>
           <p id="lobby-empty" class="tv-sub" style="text-align:left;" data-t="lobby.leeg">Nog geen teams. Kies op je telefoon een teamnaam!</p>
         </div>
       </div>
@@ -185,7 +196,6 @@
     <section id="v-roundresult" class="view hidden">
       <h1 class="tv-title" id="rr-title" style="font-size:clamp(30px,5vw,90px);"></h1>
       <div id="rr-body"></div>
-      <div id="rr-photos" class="chips-row" style="margin-top:2vh; flex-wrap:wrap;"></div>
     </section>
 
     <section id="v-teamphoto" class="view hidden tv-center">
@@ -221,6 +231,7 @@
         <h1 class="tv-title" style="color:#f59e0b; text-align:center;" data-t="einde.uitslag">🏆 De Einduitslag 🏆</h1>
         <ul id="tv-scoreboard" class="big-list"></ul>
         <div id="winner-banner" class="hidden">
+          <div id="winner-photos" class="winner-photos"></div>
           <h2 style="font-size: clamp(28px, 4.5vw, 84px); margin: 0;" data-t="einde.feest">🎉 GEFELICITEERD! 🎉</h2>
           <p id="winner-name-text" style="font-size: clamp(22px, 3.4vw, 64px); font-weight: bold; margin-top: 0.4em;"></p>
         </div>
@@ -572,26 +583,39 @@
       }
     }
 
+    // Aanmeldscherm: alle teams als kaartje met foto; de nieuwste teamfoto groot naast de QR-code
+    let spotKey = null;
+    const photoTime = (url) => Number((/[?&]v=(\d+)/.exec(url || "") || [])[1] || 0);
+    function renderLobbyTeams(list) {
+      const box = $("lobby-teams");
+      box.replaceChildren();
+      list.forEach((t) => {
+        const card = el("div", "team-card" + (t.connected === false ? " off" : ""));
+        card.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)"), el("div", "", t.name), el("div", "tv-sub", `${t.members} ${t.members === 1 ? "speler" : "spelers"}`));
+        box.append(card);
+      });
+      const newest = list.filter((t) => t.photo).sort((a, b) => photoTime(b.photo) - photoTime(a.photo))[0];
+      const spot = $("lobby-spot");
+      spot.classList.toggle("hidden", !newest);
+      if (!newest) { spotKey = null; return; }
+      const key = newest.name + "|" + newest.photo;
+      if (key === spotKey) return;
+      spotKey = key;
+      spot.replaceChildren(QuizFX.avatar(newest.name, newest.photo, "24vw"), el("div", "spot-name", newest.name));
+      spot.classList.remove("pop"); void spot.offsetWidth; spot.classList.add("pop");
+    }
+
     function renderRoundResult(s) {
       showView("v-roundresult");
       $("rr-title").textContent = s.title;
       const body = $("rr-body");
-      const photos = $("rr-photos");
-      photos.replaceChildren();
-      (s.photos || []).forEach((photo) => {
-        const card = el("div", "qbox");
-        card.style.cssText = "max-width:260px; margin:8px; padding:10px;";
-        const image = el("img");
-        image.src = photo.dataUrl; image.alt = `Teamfoto ${photo.team}`;
-        image.style.cssText = "display:block; width:100%; max-height:220px; object-fit:contain; border-radius:10px;";
-        card.append(image, el("p", "tv-sub", photo.team));
-        photos.append(card);
-      });
       body.replaceChildren();
       const max = s.max || 1;
       s.rows.forEach((r, i) => {
         const row = el("div", "rrow");
-        row.append(el("span", "", medal(i + 1)), el("span", "", r.name));
+        const who = el("span"); who.style.cssText = "display:inline-flex; align-items:center;";
+        who.append(QuizFX.avatar(r.name, r.photo, "1.7em"), r.name);
+        row.append(el("span", "", medal(i + 1)), who);
         const barWrap = el("div");
         const bar = el("div", "bar");
         bar.style.width = `${Math.max(1, (r.round / max) * 100)}%`;
@@ -717,6 +741,7 @@
       const all = revealedN >= list.length;
       if (all && $("winner-banner").classList.contains("hidden")) {
         QuizFX.showWinners(list, $("winner-banner"), $("winner-name-text"));
+        $("winner-photos").replaceChildren(...list.filter((p) => p.rank === 1).map((p) => QuizFX.avatar(p.name, p.photo, "clamp(140px, 16vw, 340px)")));
         if (fresh) { QuizFX.fanfare(); QuizFX.launchConfetti(); }
       }
     }
@@ -829,7 +854,7 @@
       }
       if (state.phase === "LOBBY") {
         showView("v-lobby");
-        chips($("lobby-teams"), state.teamList, false, (t) => ` (${t.members})`);
+        renderLobbyTeams(state.teamList);
         $("lobby-teams").previousElementSibling.textContent = QuizFX.t("lobby.teams") + (state.maxTeams ? ` (${state.teamList.length} van ${state.maxTeams})` : "");
         $("lobby-empty").classList.toggle("hidden", state.teamList.length > 0);
         resetReveal();

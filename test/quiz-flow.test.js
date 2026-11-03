@@ -92,3 +92,14 @@ test('Hitster Excel template imports the category and standard music libraries',
   assert.ok(library.some((song) => song.category === 'guilty'));
   assert.ok(library.some((song) => song.category === 'nederpop'));
 });
+
+test('a second extra music round in the same category gets different start cards', () => {
+  const songs = ['A', 'B', 'C', 'D', 'E', 'F'].map((t, i) => ({ title: t, artist: 'X', year: 1980 + i, category: 'nederpop', start: i < 2 }));
+  const make = (id, startOffset) => loadContent(null, { rounds: [{ id, type: 'hitster', dynamic: true, category: 'nederpop', startCards: 2, startOffset, songs, excludeKeys: ['f|x'] }] }).rounds[0];
+  const first = make('r4x1', 0), second = make('r4x2', 1);
+  const keys = (round) => round.startIds.map((id) => id.replace(/^.*_lib/, ''));
+  assert.equal(first.startIds.length, 2);
+  assert.equal(second.startIds.length, 2);
+  assert.deepEqual(keys(first), ['1', '2']); // eerst de nummers met Startkaart = Ja
+  assert.ok(keys(second).every((k) => !keys(first).includes(k) && k !== '6')); // andere kaarten, nooit een uitgesloten nummer
+});
