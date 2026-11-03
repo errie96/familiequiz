@@ -40,7 +40,7 @@ test('history archive keeps newest entries first and avoids duplicate games', ()
 });
 
 test('history archive is capped at the configured retention limit', () => {
-  const entries = Array.from({ length: 4 }, (_, i) => ({ gameId: String(i), ranking: [] }));
+  const entries = Array.from({ length: 4 }, (_, i) => ({ gameId: String(3 - i), ranking: [] }));
   assert.deepEqual(appendHistory(entries, { gameId: 'new', ranking: [] }, 3).map((entry) => entry.gameId), ['new', '3', '2']);
 });
 
