@@ -515,7 +515,7 @@ window.QuizSpotify = (function () {
     }
     // Liever een nummer uit het juiste jaarbereik (gevonden met het genre-filter van Spotify) dan niets
     if (unknown.length) return asTrack(pick(unknown));
-    if (mismatch.length) return asTrack(pick(mismatch));
+    // Geen nummer uit een aantoonbaar verkeerde artiestencategorie gebruiken.
     if (!lastError) lastError = "Spotify vond geen passend nummer in deze categorie.";
     return null;
   }
