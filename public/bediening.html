@@ -353,7 +353,7 @@
 
       if (p.type === "song" && p.status === "loading") {
         box.append(el("h3", "", `🔎 ${p.categoryName}: liedje zoeken…`));
-        box.append(el("p", "muted", QuizSpotify.connected() ? "Zoekt automatisch een nummer op Spotify in deze categorie." : "Spotify is niet verbonden: er wordt een iTunes-fragment van 30 seconden gezocht (speelt op de tv)."));
+        box.append(el("p", "muted", "De Excel-bibliotheek wordt eerst gebruikt. Als de gekozen categorie én de standaardbibliotheek op zijn, wordt online gezocht via Spotify (of iTunes als reserve)."));
         box.append(el("p", "muted", trackStatus || ""));
         const again = el("button", "btn-option", "🔁 Opnieuw zoeken");
         again.style.textAlign = "center";
@@ -597,19 +597,49 @@
         trackStatus = "Startkaarten zoeken…";
         const exclude = [...p.exclude];
         const tracks = [];
-        for (let i = 0; i < p.needStart; i++) {
-          const t = await QuizSpotify.randomTrack(p.category, exclude);
-          if (t) { tracks.push(t); exclude.push(QuizSpotify.keyOf(t)); }
+        for (let n = 0; n < p.needStart; n++) {
+          const track = await QuizSpotify.randomTrack(p.category, exclude);
+          if (!track) break;
+          tracks.push(track);
+          exclude.push(QuizSpotify.keyOf(track));
         }
-        if (tracks.length) socket.emit("provide_start", { roundId: p.roundId, tracks });
-        else { trackStatus = `Geen startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`; delete trackBusy["start" + p.roundId]; renderPanel(S); }
+        if (tracks.length) {
+          socket.emit("provide_start", { roundId: p.roundId, tracks }, (res) => {
+            if (!res || !res.ok) {
+              trackBusy["start" + p.roundId] = true; // voorkom een automatische retry-lus; handmatig opnieuw zoeken blijft mogelijk
+              trackStatus = `Geen unieke startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
+            } else {
+              delete trackBusy["start" + p.roundId];
+              trackStatus = res.remaining ? "Nog niet alle startkaarten gevonden; de resterende worden gezocht…" : "Startkaarten uit de online muziekbibliotheek zijn klaar.";
+            }
+            renderPanel(S);
+          });
+        } else {
+          trackStatus = `Geen startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
+          delete trackBusy["start" + p.roundId];
+          renderPanel(S);
+        }
       }
       if (p.needSong && !trackBusy[p.stepId]) {
         trackBusy[p.stepId] = true;
-        trackStatus = "Liedje zoeken…";
-        const t = await QuizSpotify.randomTrack(p.category, p.exclude);
-        if (t) socket.emit("provide_track", { stepId: p.stepId, track: t });
-        else { trackStatus = `Geen liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`; delete trackBusy[p.stepId]; renderPanel(S); }
+        trackStatus = "Lokale bibliotheek is op: online een liedje zoeken…";
+        const exclude = [...p.exclude];
+        let accepted = false;
+        for (let attempt = 0; attempt < 3 && !accepted; attempt++) {
+          const track = await QuizSpotify.randomTrack(p.category, exclude);
+          if (!track) break;
+          const result = await new Promise((resolve) => socket.emit("provide_track", { stepId: p.stepId, track }, resolve));
+          if (result && result.ok) accepted = true;
+          else exclude.push(QuizSpotify.keyOf(track));
+        }
+        if (!accepted) {
+          trackBusy[p.stepId] = true; // handmatige herhaalactie voorkomt dat dezelfde mislukte zoekopdracht blijft lopen
+          trackStatus = `Geen nieuw passend liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`;
+        } else {
+          delete trackBusy[p.stepId];
+          trackStatus = "Nieuw liedje gevonden.";
+        }
+        renderPanel(S);
       }
     }
 
