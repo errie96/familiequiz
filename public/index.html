@@ -355,8 +355,41 @@
         d.append(e, el("h2", "", v.title), el("p", "note", v.text || ""));
         box.append(d);
       },
-      roundresult(box) {
-        box.append(bigEl("📊"), el("h2", "", "Rondeuitslag"), el("p", "note", "Kijk naar het grote scherm voor de uitslag van deze ronde."));
+      roundresult(box, v) {
+        box.append(bigEl("📊"), el("h2", "", "Dit was de ronde!"), el("p", "note", "Bekijk de tussenstand op het grote scherm. Willen jullie een teamfoto toevoegen?"));
+        const status = el("p", "note");
+        const picker = el("input");
+        picker.type = "file"; picker.accept = "image/*"; picker.setAttribute("capture", "environment");
+        picker.disabled = !v.isBase || !!v.photoUploaded;
+        const send = el("button", "btn-primary", v.photoUploaded ? "✅ Teamfoto ingediend" : "📸 Teamfoto maken en indienen");
+        send.disabled = !v.isBase || !!v.photoUploaded;
+        if (!v.isBase) status.textContent = "De basistelefoon van jullie team kan een foto indienen.";
+        else if (v.photoUploaded) status.textContent = "De teamfoto is ingediend en verschijnt op het grote scherm.";
+        else status.textContent = "Kies een foto of maak direct een foto met je camera.";
+        send.onclick = async () => {
+          const file = picker.files && picker.files[0];
+          if (!file) { status.textContent = "Kies eerst een foto."; return; }
+          send.disabled = true;
+          status.textContent = "Foto voorbereiden…";
+          try {
+            const image = await createImageBitmap(file);
+            const scale = Math.min(1, 1000 / Math.max(image.width, image.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(image.width * scale));
+            canvas.height = Math.max(1, Math.round(image.height * scale));
+            canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+            image.close && image.close();
+            let dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+            if (dataUrl.length > 400000) dataUrl = canvas.toDataURL("image/jpeg", 0.48);
+            if (dataUrl.length > 420000) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
+            socket.emit("team_photo", { dataUrl }, (result) => {
+              if (result && result.ok) { status.textContent = "✅ Teamfoto ingediend!"; send.textContent = "✅ Teamfoto ingediend"; }
+              else { status.textContent = (result && result.message) || "Foto indienen is niet gelukt."; send.disabled = false; }
+            });
+          } catch (error) { status.textContent = error.message || "Foto kon niet worden verwerkt."; send.disabled = false; }
+        };
+        box.append(picker, send, status);
+        if (v.photoUploaded) send.disabled = true;
       },
       end(box) {
         const d = el("div"); d.style.textAlign = "center";
@@ -691,19 +724,33 @@
         const e = el("div", "", "🃏"); e.style.fontSize = "54px";
         d.append(e, el("h2", "", QuizFX.t("joker.titel")));
         box.append(d, el("p", "note", QuizFX.t("joker.tekst.tel")));
-        const list = el("div");
-        box.append(list);
-        return (nv) => {
+        const list = el("div"), status = el("p", "note"), send = el("button", "btn-primary", "🃏 Joker inzetten en indienen");
+        box.append(list, send, status);
+        let selected = v.chosen || null;
+        function paint(nv) {
           list.replaceChildren();
           nv.rounds.forEach((r) => {
-            const b = el("button", "btn-option", (nv.chosen === r.id ? "🃏 " : "") + r.title);
-            if (nv.chosen === r.id) b.style.background = "#7c3aed";
-            b.disabled = !nv.isBase;
-            b.onclick = () => socket.emit("joker_choose", { roundId: r.id }, () => {});
+            const b = el("button", "btn-option", (selected === r.id ? "🃏 " : "") + r.title);
+            if (selected === r.id) b.style.background = "#7c3aed";
+            b.disabled = !nv.isBase || !!nv.submitted;
+            b.onclick = () => { selected = r.id; paint(nv); };
             list.append(b);
           });
-          if (!nv.isBase && nv.chosen) list.append(el("p", "note good", "De basistelefoon heeft de joker ingezet."));
+          send.disabled = !nv.isBase || !!nv.submitted || !selected;
+          if (nv.submitted) { status.textContent = "✅ Jokerkeuze ingediend!"; send.textContent = "✅ Joker ingediend"; }
+          else if (!nv.isBase) { status.textContent = "De basistelefoon dient de jokerkeuze in."; send.classList.add("hidden"); }
+          else { status.textContent = selected ? "Je keuze staat klaar. Tik op indienen om te bevestigen." : "Kies eerst de ronde waarop jullie de joker willen inzetten."; send.classList.remove("hidden"); }
+        }
+        send.onclick = () => {
+          if (!selected || send.disabled) return;
+          send.disabled = true;
+          socket.emit("joker_choose", { roundId: selected }, (result) => {
+            if (result && result.ok) { status.textContent = "✅ Jokerkeuze ingediend!"; send.textContent = "✅ Joker ingediend"; }
+            else { status.textContent = "Indienen is niet gelukt. Kies de ronde opnieuw."; send.disabled = false; }
+          });
         };
+        paint(v);
+        return (nv) => { if (nv.chosen) selected = nv.chosen; paint(nv); };
       },
 
       // ----- Beslissingsvraag bij gelijke stand -----
