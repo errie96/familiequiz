@@ -2,7 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const { loadContent } = require('../lib/content');
+const { fromExcel } = require('../lib/fromExcel');
 
 const question = {
   question: 'Testvraag?',
@@ -74,4 +76,16 @@ test('each round receives a wrap-up step after its content', () => {
   const ids = steps.map((step) => step.id);
   assert.ok(ids.indexOf('r1_result') > ids.indexOf('r1_c1_1'));
   assert.ok(ids.indexOf('r2_result') > ids.indexOf('r2_memory'));
+});
+
+test('Hitster Excel template imports the category and standard music libraries', () => {
+  const workbook = path.join(__dirname, '..', 'Hitster-bibliotheek.xlsx');
+  const base = path.join(__dirname, '..', 'questions.json');
+  const { raw } = fromExcel(workbook, base);
+  const library = raw.hitsterLibrary;
+  assert.ok(library.length >= 50);
+  assert.ok(library.some((song) => song.category === 'original'));
+  assert.ok(library.some((song) => song.category === 'rock'));
+  assert.ok(library.some((song) => song.category === 'guilty'));
+  assert.ok(library.some((song) => song.category === 'nederpop'));
 });
