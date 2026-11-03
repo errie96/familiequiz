@@ -223,7 +223,8 @@
         teamsFull = !!(res && res.full);
         $("tab-new").disabled = teamsFull;
         $("tab-new").textContent = teamsFull ? "Nieuw team (vol)" : "Nieuw team";
-        if (teamsFull) { selectTab("join"); showJoinError(`Er doen al ${res.maxTeams} teams mee: sluit aan bij een bestaand team.`); }
+        $("tab-new").textContent = res && res.started ? "Nieuw team (quiz is begonnen)" : $("tab-new").textContent;
+        if (teamsFull) { selectTab("join"); showJoinError(res && res.started ? "De quiz is al begonnen: sluit aan bij een bestaand team." : `Er doen al ${res.maxTeams} teams mee: sluit aan bij een bestaand team.`); }
       });
     }
     function refreshTeams() {

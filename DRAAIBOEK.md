@@ -1,10 +1,10 @@
 # Familiequiz – draaiboek voor de quizmasters
 
-Bijgewerkt: 2 november 2026
+Bijgewerkt: 3 november 2026
 
 ## In het kort
 
-De familiequiz begint met een teamfoto en bestaat verder uit drie testvragen, een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand een tussenstand; de uitslag komt pas aan het einde.
+De familiequiz begint met een teamfoto en bestaat verder uit drie testvragen, een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand de totaalstand (tenzij de quizmaster de tussenstand aanzet); de uitslag komt pas aan het einde.
 
 Er zijn drie schermen, alle drie in de browser:
 
@@ -33,8 +33,8 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 1. Start de server. Lokaal met npm start; op Render ruim van tevoren de tv-pagina openen, want het gratis plan heeft een minuut nodig om wakker te worden.
 2. Open op de tv /host.html en druk één keer op OK of klik op het scherm. Anders blokkeert de browser het geluid. Het tv-scherm past zich aan het formaat van de tv of beamer aan: past iets niet, dan wordt het scherm automatisch kleiner gemaakt.
 3. Open op je telefoon /bediening.html en vul de pincode in. Controleer in het blokje Vragenlijst (Excel) dat de juiste versie is ingelezen. Nieuwe Excel? Upload hem daar, of vervang het bestand en tik op "Opnieuw inlezen".
-4. Kijk bovenin de bediening naar waarschuwingen, bijvoorbeeld een vraag zonder foute antwoorden of een liedje zonder jaar. Die vragen worden overgeslagen.
-5. Op de tv staat eerst de welkomstpagina (tekst uit de Excel, tabblad Teksten). Vul in de bediening bij Teams eerst het maximale aantal teams in (verplicht), tik dan op "Toon het aanmeldscherm" en laat de spelers de QR-code scannen. Is het maximum bereikt, dan kan niemand meer een nieuw team maken, alleen nog aansluiten. Iedereen vult eerst de eigen naam in en maakt dan een team, of sluit aan bij een bestaand team. Wie het team aanmaakt, is eerst de basistelefoon; het team kan samen een andere telefoon kiezen.
+4. Kijk bovenin de bediening naar waarschuwingen, bijvoorbeeld een vraag zonder foute antwoorden of een liedje zonder jaar (die vragen worden overgeslagen), of een foto, logo of geluidsbestand dat ontbreekt in public/media/ (📁, per ronde).
+5. Op de tv staat eerst de welkomstpagina (tekst uit de Excel, tabblad Teksten). Vul in de bediening bij Teams eerst het maximale aantal teams in (verplicht), tik dan op "Toon het aanmeldscherm" en laat de spelers de QR-code scannen. Is het maximum bereikt, of is de quiz eenmaal begonnen, dan kan niemand meer een nieuw team maken, alleen nog aansluiten bij een bestaand team. Eenmaal begonnen is begonnen. Iedereen vult eerst de eigen naam in en maakt dan een team, of sluit aan bij een bestaand team. Wie het team aanmaakt, is eerst de basistelefoon; het team kan samen een andere telefoon kiezen.
 6. Kies in de bediening het thema (bijvoorbeeld Kerst of Winter) en zet de rondes in de gewenste volgorde (blokje Rondes). Instellingen en de rondevolgorde kun je alleen vóór de start aanpassen; het thema altijd.
 
 ## Het verloop, scherm voor scherm
@@ -199,7 +199,8 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 - **Antwoord van een team wissen:** het team mag opnieuw antwoorden.
 - **Meerkeuzevraag voor iedereen goed rekenen, of laten vervallen.**
 - **+10 seconden** bij een lopende timer.
-- **Teams beheren:** team hernoemen of verwijderen, spelers hernoemen, naar een ander team verplaatsen of als basistelefoon aanwijzen.
+- **Teams beheren:** team hernoemen of verwijderen, spelers hernoemen, naar een ander team verplaatsen of als basistelefoon aanwijzen (knop ⭐ basis bij een speler).
+- **Basistelefoon offline (lege batterij, weggelopen):** in het blok Teams verschijnt bij dat team een rode melding met per verbonden teamgenoot een knop "⭐ … wordt basis". Eén tik en die telefoon dient vanaf nu de antwoorden in; het team krijgt daar een melding van. Is er geen andere telefoon verbonden, laat dan iemand opnieuw de QR-code scannen en aansluiten bij het team. Komt de oude telefoon terug, dan kun je hem op dezelfde manier weer basis maken.
 - **Alle spiekmeldingen wissen.**
 - **Quiz helemaal opnieuw:** wist alle teams en scores.
 
@@ -211,16 +212,22 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Extra rondes.** Onder het rondeplan kun je 30 Seconds, tekenen of de muziek nog een keer laten spelen, vooraf of later tijdens de quiz. Tijdens de quiz komt de extra ronde direct na de huidige ronde. Een extra ronde is net zoveel punten waard als elke andere ronde en heeft geen oefenronde. Bij een extra muziekronde kies je een categorie zoals in de Hitster-app (Original, Guilty Pleasures, Rock Classics, Nederpop, Summer Party, 80s & 90s, 00s & 10s). Eerst worden de nummers uit het tabblad *Hitster bibliotheek* van die categorie gespeeld (de keuzelijst toont hoeveel er zijn); pas als die op zijn zoekt de bediening de liedjes en startkaarten automatisch op Spotify; zonder Spotify-koppeling wordt een iTunes-fragment van 30 seconden op de tv afgespeeld. De eerste muziekronde komt altijd uit de Excel. Een gevonden nummer telt alleen als het jaartal in de categorie valt en de artiest bij Spotify het juiste genre heeft. De tijdlijnen beginnen opnieuw, en liedjes, tekenwoorden en 30 Seconds-kaarten die al gespeeld zijn komen niet nog een keer. Een extra ronde die nog niet begonnen is, kun je weer verwijderen.
 
-**Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten. De spelers en de tv zien de stand pas aan het einde.
+**Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten.
+
+**Tussenstand op tv.** Bovenin het blokje Scores staat de schakelaar "Tussenstand op tv na elke ronde". Uit (standaard): bij "Dit was ronde…" ziet iedereen alleen de punten van die ronde, de totaalstand blijft geheim tot de ontknoping. Aan: ook het totaal per team. De schakelaar werkt altijd, ook midden in de quiz.
+
+**Oefenen met testteams.** In het blok Teams voegt "+3 testteams" robots toe (🤖 Robot Appel, Peer, …). Ze maken geen foto, kiezen een joker en geven zelf antwoorden: willekeurig en ongeveer de helft goed. Zo kunnen de quizmasters samen de hele quiz doorlopen, inclusief beoordelen, de muziekronde en de ontknoping, zonder telefoons. Toevoegen kan alleen vóór de start; een oefenquiz met testteams komt niet in de quizgeschiedenis. Verwijder de testteams (of gebruik Reset) voordat de echte quiz begint.
 
 ## Nog te doen voor de avond
 
 - [ ] Geheugenronde: de voorbeeldregels vervangen door wat er vorig jaar echt op het bord stond.
 - [ ] Prijzen: de huidige prijzen en die van 15 jaar geleden controleren; het zijn nu schattingen.
 - [ ] Nieuws- en Drenthe-vragen 2026 nalopen, vooral de perroncontroles van Arriva en de BBB-coalitiebreuk.
-- [ ] Foto's voor ronde 2 en logo's voor ronde 8 verzamelen en in public/media/ zetten.
+- [ ] Foto's voor ronde 2 en logo's voor ronde 8 verzamelen en in public/media/ zetten (de bediening toont welke bestanden nog ontbreken).
 - [ ] Liedjeslijst voor ronde 4 afmaken: 2 startkaarten en minstens 25 liedjes, met het juiste jaar.
 - [ ] Genoeg tekenwoorden (ronde 6) en 30 Seconds-kaarten (ronde 7) voor het aantal spelers.
 - [ ] Spotify koppelen in de bediening, het afspeelapparaat kiezen en een muziekvraag testen.
-- [ ] Oefenvragen per ronde nalopen (kolom Oefen? in de Excel) en een generale repetitie houden met een paar telefoons, tv en bediening.
+- [ ] Oefenvragen per ronde nalopen (kolom Oefen? in de Excel).
+- [ ] Oefenquiz met testteams doorlopen met beide quizmasters (tv + bediening), daarna testteams verwijderen.
+- [ ] Generale repetitie met een paar echte telefoons (iPhone en Android), tv en bediening; ook een teamfoto maken.
 - [ ] Voor de avond op Render: betaald plan met schijf aanzetten, anders gaat de stand bij een herstart verloren.

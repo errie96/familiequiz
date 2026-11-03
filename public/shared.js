@@ -362,7 +362,7 @@ window.QuizFX = (function () {
     a.className = "team-avatar";
     a.style.cssText = `width:${size};height:${size};border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#475569;color:#fff;font-weight:bold;font-size:calc(${size} * 0.45);vertical-align:middle;`;
     if (photo) { a.src = photo; a.alt = ""; }
-    else a.textContent = (String(name || "?").trim()[0] || "?").toUpperCase();
+    else a.textContent = (Array.from(String(name || "?").trim())[0] || "?").toUpperCase(); // Array.from: ook emoji als eerste teken
     return a;
   }
   return { compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };

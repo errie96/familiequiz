@@ -83,6 +83,7 @@ const DEFAULT_SETTINGS = {
   hitsterTarget: 10,         // muziekronde stopt zodra een team zoveel kaarten in de tijdlijn heeft
   maxTeams: 0,               // maximaal aantal teams (0 = nog niet ingesteld); de host vult dit vooraf in
   finalMaxWager: 100,        // slotvraag: maximale inzet (teams kennen hun stand niet)
+  showRoundTotals: false,    // na elke ronde op de tv ook het totaal (tussenstand) tonen; altijd te wijzigen
   theme: 'standaard',        // uiterlijk: standaard, winter, kerst, oudennieuw, zomer, halloween
   roundPlan: null,           // volgorde, aan/uit en "in 2 delen" per ronde (wordt in de bediening ingesteld)
   memorySeconds: 120,
@@ -98,6 +99,7 @@ function sanitizeSettings(input, base) {
     if (Array.isArray(src[k]) && src[k].length >= 1 && src[k].length <= len && src[k].every((n) => Number.isInteger(n) && n >= 0 && n <= 100)) out[k] = src[k];
   };
   if (typeof src.timerEnabled === 'boolean') out.timerEnabled = src.timerEnabled;
+  if (typeof src.showRoundTotals === 'boolean') out.showRoundTotals = src.showRoundTotals;
   int('roundPoints', 10, 1000);
   int('defaultTime', 5, 300);
   int('memorySeconds', 20, 900);
@@ -1062,6 +1064,7 @@ function saveHistory() {
 }
 function archiveFinishedQuiz() {
   if (!gameId || historyEntries.some((entry) => entry.gameId === gameId)) return;
+  if (Object.values(teams).some((t) => t.bot)) return; // oefenquiz met testteams niet in de geschiedenis
   const entry = createHistoryEntry({
     gameId,
     completedAt: new Date().toISOString(),
@@ -1088,7 +1091,7 @@ function saveNow() {
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
       undoHistory,
-      devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq }]))
+      devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq, ...(d.bot ? { bot: true } : {}) }]))
     };
     writeJsonWithBackup(STATE_FILE, snapshot);
   } catch (e) {
@@ -1106,12 +1109,12 @@ function loadSaved() {
   teams = {};
   for (const t of Object.values(data.teams)) {
     if (!t || !t.teamId || !t.name) continue;
-    teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null };
+    teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null, ...(t.bot ? { bot: true } : {}) };
   }
   devices = {};
   for (const d of Object.values(data.devices || {})) {
     if (!d || !teams[d.teamId]) continue;
-    devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', seq: d.seq || ++seq, socketId: null, connected: false };
+    devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', seq: d.seq || ++seq, socketId: d.bot ? `bot_${d.deviceId}` : null, connected: !!d.bot, ...(d.bot ? { bot: true } : {}) };
   }
   for (const t of Object.values(teams)) {
     if (!devices[t.baseDeviceId]) { const first = teamDevices(t)[0]; if (first) t.baseDeviceId = first.deviceId; }
@@ -1231,7 +1234,8 @@ function publicStep(step) {
     }
     case 'roundresult': {
       const round = roundById[step.round];
-      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), rows: roundStandings(round) };
+      const rows = roundStandings(round).map((r) => (settings.showRoundTotals ? r : { ...r, total: null }));
+      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), showTotals: !!settings.showRoundTotals, rows };
     }
     case 'teamphoto':
       return { ...base, teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), skipped: !!s.skipped[t.teamId], connected: teamConnected(t) })) };
@@ -1478,7 +1482,7 @@ function broadcastState() {
     panel: step ? hostPanel(step) : null,
     controls: { main: { label: main.label, enabled: main.enabled, hint: main.hint }, force: force ? { label: force.label } : null, undo: { enabled: undoHistory.length > 0, label: undoHistory.length ? `↶ Ongedaan maken: ${undoHistory[undoHistory.length - 1].label}` : '↶ Niets om ongedaan te maken' } },
     teams: Object.values(teams).map((t) => ({
-      teamId: t.teamId, name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
+      teamId: t.teamId, name: t.name, bot: !!t.bot, photo: photoUrl(t.teamId), connected: teamConnected(t), joker: t.jokerRound ? roundById[t.jokerRound].title : null, score: scoreOf(t),
       members: teamDevices(t).map((d) => ({ deviceId: d.deviceId, label: d.label, role: d.deviceId === t.baseDeviceId ? 'base' : 'member', connected: d.connected }))
     })).sort(byName),
     rounds: rounds.map((r) => ({ id: r.id, no: r.no, title: r.title, introId: `${r.id}_intro` })),
@@ -1620,6 +1624,7 @@ function sync() {
   Object.values(teams).forEach(evaluateProposal);
   settle();
   broadcastState();
+  scheduleBots();
 }
 
 // ---------------------------------------------------------------
@@ -1686,7 +1691,8 @@ function baseContext(socket, kind) {
 
 const num = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
 
-io.on('connection', (socket) => {
+io.on('connection', onConnection);
+function onConnection(socket) {
   // ---------- Schermen registreren ----------
   socket.on('register_remote', ({ pin } = {}) => {
     if (!checkPin(socket, pin)) return;
@@ -1714,11 +1720,13 @@ io.on('connection', (socket) => {
   socket.on('list_teams', (_, cb) => {
     if (typeof cb !== 'function') return;
     const n = Object.keys(teams).length;
-    cb({ teams: Object.values(teams).map((t) => ({ teamId: t.teamId, name: t.name, members: teamDevices(t).length })).sort(byName), maxTeams: settings.maxTeams, full: !!settings.maxTeams && n >= settings.maxTeams });
+    const started = phase !== 'LOBBY';
+    cb({ teams: Object.values(teams).filter((t) => !t.bot).map((t) => ({ teamId: t.teamId, name: t.name, members: teamDevices(t).length })).sort(byName), maxTeams: settings.maxTeams, started, full: started || (!!settings.maxTeams && n >= settings.maxTeams) });
   });
   socket.on('create_team', ({ teamName, label } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     if (phase === 'END') return reply({ ok: false, message: 'De quiz is al afgelopen.' });
+    if (phase !== 'LOBBY') return reply({ ok: false, message: 'De quiz is al begonnen: er kunnen geen nieuwe teams meer bij. Sluit aan bij een bestaand team.' });
     const myName = cleanText(label, MAX_LABEL);
     if (!myName) return reply({ ok: false, message: 'Vul eerst je eigen naam in.' });
     const name = cleanText(teamName, MAX_TEAM_NAME);
@@ -2427,7 +2435,7 @@ io.on('connection', (socket) => {
   socket.on('reset_quiz', () => {
     if (!isRemote(socket)) return;
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; teamPhotos = {}; undoHistory = []; gameId = null;
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; teamPhotos = {}; Object.keys(botSockets).forEach((k) => delete botSockets[k]); undoHistory = []; gameId = null;
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); removeStateFiles(PHOTOS_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
@@ -2442,7 +2450,106 @@ io.on('connection', (socket) => {
       sync();
     }
   });
-});
+  // Instelling die altijd mag wijzigen: tussenstand na elke ronde op de tv
+  socket.on('set_round_totals', ({ on } = {}) => {
+    if (!isRemote(socket)) return;
+    settings.showRoundTotals = !!on;
+    sync();
+  });
+  // Testteams (robots) om de quiz te oefenen zonder echte telefoons
+  socket.on('add_bots', ({ n } = {}) => {
+    if (!isRemote(socket)) return;
+    if (phase !== 'LOBBY') return socket.emit('host_error', { message: 'Testteams kun je alleen vóór de start toevoegen.' });
+    addBots(Number.isInteger(n) ? Math.min(Math.max(n, 1), 6) : 3);
+    sync();
+  });
+  socket.on('remove_bots', () => {
+    if (!isRemote(socket)) return;
+    Object.values(teams).filter((t) => t.bot).forEach((t) => removeTeam(t.teamId));
+    sync();
+  });
+}
+
+// ---------------------------------------------------------------
+// Testteams: robots die zelf (willekeurig, soms goed) antwoorden.
+// Ze gebruiken precies dezelfde routes als echte telefoons, dus de hele quiz is zo te oefenen.
+// ---------------------------------------------------------------
+const BOT_NAMES = ['Robot Appel', 'Robot Peer', 'Robot Kiwi', 'Robot Banaan', 'Robot Mango', 'Robot Citroen'];
+const botSockets = {};
+function botSocket(deviceId) {
+  if (botSockets[deviceId]) return botSockets[deviceId];
+  const h = {};
+  const s = { id: `bot_${deviceId}`, data: { deviceId }, handshake: { address: 'bot', headers: {} }, conn: { remoteAddress: 'bot' }, on: (e, f) => { h[e] = f; }, emit() {}, join() {}, leave() {}, disconnect() {} };
+  onConnection(s);
+  return (botSockets[deviceId] = { s, h });
+}
+function addBots(n) {
+  for (let i = 0; i < n; i++) {
+    const name = '🤖 ' + (BOT_NAMES.find((b) => !findTeamByName('🤖 ' + b)) || `Robot ${Object.keys(teams).length + 1}`);
+    const team = { teamId: newId('t_'), name, seq: ++seq, baseDeviceId: null, jokerRound: null, timelines: {}, proposal: null, bot: true };
+    teams[team.teamId] = team;
+    for (let k = 0; k < 2; k++) { // twee "spelers", zodat tekenen en 30 Seconds ook werken
+      const d = { deviceId: newId('d_'), memberId: newId('m_'), teamId: team.teamId, label: `Robot ${k + 1}`, seq: ++seq, socketId: null, connected: true, bot: true };
+      d.socketId = `bot_${d.deviceId}`; // robots hebben een eigen nep-verbinding
+      devices[d.deviceId] = d;
+      if (!k) team.baseDeviceId = d.deviceId;
+    }
+  }
+  if (settings.maxTeams && Object.keys(teams).length > settings.maxTeams) settings.maxTeams = Object.keys(teams).length;
+  if (!settings.maxTeams) settings.maxTeams = Object.keys(teams).length;
+}
+const botTimers = {};
+function scheduleBots() {
+  if (phase !== 'PLAY' || paused) return;
+  for (const team of Object.values(teams)) {
+    if (!team.bot || botTimers[team.teamId]) continue;
+    botTimers[team.teamId] = setTimeout(() => { delete botTimers[team.teamId]; if (teams[team.teamId]) botAct(team); }, 1200 + Math.floor(Math.random() * 3500));
+  }
+}
+function botAct(team) {
+  const step = cur();
+  if (!step || paused) return;
+  const s = ss(step), id = team.teamId, base = devices[team.baseDeviceId];
+  if (!base) return;
+  const rnd = (n) => Math.floor(Math.random() * Math.max(1, n));
+  const lucky = Math.random() < 0.5;
+  const call = (dev, ev, payload) => { const b = botSocket(dev.deviceId); if (b.h[ev]) b.h[ev](payload, () => {}); };
+  switch (step.kind) {
+    case 'teamphoto': if (!hasAnswered(team, step)) call(base, 'teamphoto_skip', null); break;
+    case 'mc': if (s.status === 'open' && !s.answers[id]) call(base, 'submit_answer', { stepId: step.id, value: lucky ? step.answer : rnd(step.options.length) }); break;
+    case 'logo': if (s.status === 'open' && !s.answers[id]) call(base, 'submit_text', { stepId: step.id, text: lucky ? step.name : 'Geen idee' }); break;
+    case 'price':
+      if (s.status === 'open' && !s.answers[id]) {
+        const guess = (v) => Math.max(0.1, Math.round((Number(v) || 1) * (0.6 + Math.random() * 0.8) * 100) / 100);
+        call(base, 'submit_price', { stepId: step.id, now: guess(step.now), ago: guess(step.ago) });
+      }
+      break;
+    case 'song':
+      if (s.status === 'open' && s.placements[id] === undefined) call(base, 'place_card', { stepId: step.id, slot: rnd(ensureTimeline(team, step.round).length + 1) });
+      break;
+    case 'memory':
+      if (s.status === 'writing' && !(s.entries[id] || []).length) {
+        const items = step.items || [];
+        if (items.length) call(base, 'memory_add', { text: items[rnd(items.length)].text });
+        call(base, 'memory_add', { text: `Robotgok ${1 + rnd(99)}` });
+      }
+      break;
+    case 'draw': {
+      const turn = s.status === 'drawing' && s.turns[s.turn];
+      const who = turn && devices[turn.answerers[id]];
+      if (turn && turn.words[id] && !turn.answers[id] && who) call(who, 'draw_guess', { text: lucky ? turn.words[id].word : 'Huis' });
+      break;
+    }
+    case 'joker': if (s.choices[id] === undefined && rounds.length) call(base, 'joker_choose', { roundId: rounds[rnd(rounds.length)].id }); break;
+    case 'final':
+      if (s.status === 'wager' && s.wagers[id] === undefined) call(base, 'final_wager', { amount: rnd(settings.finalMaxWager + 1) });
+      else if (s.status === 'question' && s.answers[id] === undefined) call(base, 'submit_answer', { stepId: step.id, value: lucky ? step.answer : rnd(step.options.length) });
+      break;
+    case 'tiebreak':
+      if (s.status === 'open' && (s.teams || []).includes(id) && s.answers[id] === undefined) call(base, 'submit_answer', { value: Math.round((Number(step.answer) || 100) * (0.7 + Math.random() * 0.6)) });
+      break;
+  }
+}
 
 // ---------------------------------------------------------------
 // Opstarten

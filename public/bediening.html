@@ -91,7 +91,8 @@
 
     <details id="scores-panel">
       <summary>📊 Scores (alleen zichtbaar voor de quizmasters)</summary>
-      <p class="muted" style="margin:4px 0 8px;">De spelers en de tv zien de stand pas aan het einde. 🃏 = joker.</p>
+      <div class="setting"><label for="s-totals"><b>Tussenstand op tv na elke ronde</b><br><span class="muted">Aan: bij "Dit was ronde…" ziet iedereen ook het totaal per team. Uit: alleen de punten van die ronde. Altijd te wijzigen, ook tijdens de quiz.</span></label><input type="checkbox" id="s-totals"></div>
+      <p class="muted" style="margin:4px 0 8px;">Deze tabel zien alleen de quizmasters. 🃏 = joker.</p>
       <div id="scores-table" style="overflow:auto; font-size:13px;"></div>
     </details>
 
@@ -178,6 +179,10 @@
       <div class="setting" style="border:none;">
         <label for="max-teams"><b>Maximaal aantal teams</b><br><span class="muted">Vul dit in vóór het aanmeldscherm; daarna kan niemand meer een extra team maken.</span></label>
         <span style="display:flex; gap:6px;"><input type="number" id="max-teams" min="1" max="50" style="width:70px;"><button id="max-teams-save" class="btn-option btn-small">Opslaan</button></span>
+      </div>
+      <div class="setting" style="border:none;">
+        <label><b>🤖 Oefenen met testteams</b><br><span class="muted">Robots die zelf (willekeurig, soms goed) antwoorden, zodat je de hele quiz kunt doorlopen zonder telefoons. Toevoegen alleen vóór de start; een oefenquiz komt niet in de geschiedenis. Verwijder ze vóór de echte quiz (of gebruik Reset).</span></label>
+        <span style="display:flex; gap:6px; flex-wrap:wrap;"><button id="bots-add" class="btn-option btn-small">+3 testteams</button><button id="bots-remove" class="btn-option btn-small">Verwijder testteams</button></span>
       </div>
       <div id="team-list"></div>
     </details>
@@ -279,6 +284,9 @@
     $("btn-reset").onclick = () => { if (confirm("Alles wissen en opnieuw beginnen? Alle teams en scores gaan verloren.")) socket.emit("reset_quiz"); };
 
     const parseList = (txt) => String(txt).split(/[ ,;]+/).filter(Boolean).map(Number);
+    $("s-totals").onchange = () => socket.emit("set_round_totals", { on: $("s-totals").checked });
+    $("bots-add").onclick = () => socket.emit("add_bots", { n: 3 });
+    $("bots-remove").onclick = () => { if (confirm("Alle testteams verwijderen?")) socket.emit("remove_bots"); };
     $("btn-save-settings").onclick = () => socket.emit("update_settings", {
       roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value),
       finalMaxWager: Number($("s-wager").value), thirtySeconds: Number($("s-thirty").value),
@@ -557,6 +565,17 @@
         if (t.photo) { const rp = el("button", "btn-option btn-small", "🖼✕"); rp.title = "Teamfoto verwijderen"; rp.onclick = () => { if (confirm(`Teamfoto van ${t.name} verwijderen?`)) socket.emit("remove_team_photo", { teamId: t.teamId }); }; acts.prepend(rp); }
         head.append(acts);
         d.append(head);
+        // Basistelefoon weg (bijv. lege batterij)? Dan direct een andere telefoon van het team als basis kunnen aanwijzen
+        const baseM = t.members.find((m) => m.role === "base");
+        const backups = t.members.filter((m) => m.role !== "base" && m.connected);
+        if (!t.bot && baseM && !baseM.connected) {
+          const warn = el("div", "members");
+          warn.style.cssText = "background:#7f1d1d; border-radius:8px; padding:6px 8px; margin:4px 0;";
+          warn.append(`⚠️ Basistelefoon (${baseM.label}) is offline. `);
+          if (backups.length) backups.forEach((m) => { const b = el("button", "btn-option btn-small", `⭐ ${m.label} wordt basis`); b.onclick = () => socket.emit("set_base", { deviceId: m.deviceId }); warn.append(b); });
+          else warn.append("Er is geen andere telefoon van dit team verbonden: laat iemand opnieuw aansluiten.");
+          d.append(warn);
+        }
         t.members.forEach((m) => {
           const row = el("div", "members");
           row.append(`${m.connected ? "●" : "○"} ${m.label}${m.role === "base" ? " ⭐" : ""} `);
@@ -911,6 +930,10 @@
       }
 
       renderTeams(state);
+      if (document.activeElement !== $("s-totals")) $("s-totals").checked = !!state.settings.showRoundTotals;
+      const hasBots = state.teams.some((t) => t.bot);
+      $("bots-add").disabled = state.phase !== "LOBBY";
+      $("bots-remove").disabled = !hasBots;
 
       // Spring-naar-ronde lijst
       const sel = $("goto-round");

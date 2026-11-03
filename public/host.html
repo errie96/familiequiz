@@ -622,12 +622,12 @@
         barWrap.append(bar);
         const a = el("b", "", `+${r.round}`);
         a.style.color = "#fbbf24";
-        const b = el("span", "", `${r.total} totaal`);
+        const b = el("span", "", r.total === null ? "" : `${r.total} totaal`);
         b.style.color = "#94a3b8";
         row.append(barWrap, a, b);
         body.append(row);
       });
-      body.append(el("p", "tv-sub", `Maximaal ${s.max} punten per ronde. De joker wordt pas aan het eind ingezet.`));
+      body.append(el("p", "tv-sub", `Maximaal ${s.max} punten per ronde. De joker wordt pas aan het eind ingezet.${s.showTotals ? "" : " De totaalstand blijft geheim tot de ontknoping!"}`));
     }
 
     let logoKey = null;
