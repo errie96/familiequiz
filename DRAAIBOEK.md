@@ -46,9 +46,9 @@ De volgorde ligt vast. Elk scherm hieronder komt na een druk op de grote knop va
 3. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
 4. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
 5. **Teamfoto.** Na de testvragen (als duidelijk is dat alles werkt) maakt elke basistelefoon de teamfoto: de groene knop opent direct de camera, "Uit galerij" kiest een bestaande foto, "Overslaan" kan ook. De tv toont alle teams met een groen vinkje zodra de foto binnen is. De grote knop wordt pas "Volgende" als alle teams klaar zijn; met "Toch doorgaan" ga je eerder verder. Daarvoor en daarna kan een team de foto niet aanpassen (de quizmaster kan er in de bediening een verwijderen).
-6. **Joker.** Elk team kiest op de basistelefoon de ronde waarin het verwacht het best te scoren. Die ronde telt aan het eind dubbel. De tv laat zien op welke ronde elk team de joker zet. Je kunt pas verder als iedereen gekozen heeft.
-7. **Infoscherm: Hier begint de echte quiz.** Vanaf nu telt alles mee.
-8. **Ronde 1 tot en met 8.** Elke ronde begint met een tussenpagina: "Nu gaan we door naar…", tromgeroffel, en dan springt de rondenaam in beeld met uitleg en "Hier kun je 100 punten verdienen". Daarna volgt een oefenronde die niet meetelt, het scherm "Nu begint het echt!" en dan de echte vragen. Bij ronde 1 komt er ook een tussenpagina voor elke nieuwe categorie. Volgorde en aantal rondes stel je vooraf in de bediening in.
+6. **Infoscherm: Hier begint de echte quiz.** Vanaf nu telt alles mee.
+7. **Joker.** Elk team kiest op de basistelefoon de ronde waarin het verwacht het best te scoren. Die ronde telt aan het eind dubbel. De tv laat zien op welke ronde elk team de joker zet. Je kunt pas verder als iedereen gekozen heeft.
+8. **Ronde 1 tot en met 8.** Elke ronde begint met een tussenpagina: "Nu gaan we door naar…", tromgeroffel, en dan springt de rondenaam in beeld met uitleg, "Hier kun je 100 punten verdienen" en 🎯 hoe je die punten verdient (bijv. bij Hitster: de helft voor de goede plek in de tijdlijn, de helft voor het exacte jaartal). Daarna volgt een oefenronde die niet meetelt, het scherm "Nu begint het echt!" en dan de echte vragen. Bij ronde 1 komt er ook een tussenpagina voor elke nieuwe categorie. Volgorde en aantal rondes stel je vooraf in de bediening in.
 9. **Slotvraag** met inzet.
 10. **Beslissingsvraag**, alleen bij een gelijke stand op de eerste plaats. Anders verschijnt het scherm "Geen gelijke stand".
 11. **Einde:** ontknoping, overzicht per ronde en nakijken.
@@ -72,7 +72,7 @@ Eerst een oefenvraag, dan vijftig vragen in vijf categorieën van tien: algemene
 
 Eerst een oefenfoto, dan tien foto's. Geen meerkeuze: elk team typt één antwoord.
 
-- **Tv:** een wazige foto en hoeveel punten een goed antwoord nu nog oplevert.
+- **Tv:** een wazige foto en hoeveel punten een goed antwoord nu nog oplevert. Het fotokader past zich aan de foto aan (staand, liggend of vierkant).
 - **Telefoon:** de basistelefoon typt wat er op de foto staat. Eén poging per foto.
 - **Quizmaster:** tikt op "Scherper maken" om de foto stap voor stap scherper te maken (zes stappen). Als alle teams geantwoord hebben, toont de tv de scherpe foto en het goede antwoord. In de bediening keurt de quizmaster elk antwoord goed of fout (er staat al een voorstel).
 - **Punten:** hoe eerder goed, hoe meer: 10, 8, 6, 4, 3 of 2 punten, afhankelijk van de stap waarop het team antwoordde. Fout is 0.
@@ -101,7 +101,7 @@ Zoals Hitster. Alle teams beginnen met dezelfde twee startkaarten (jaartal, tite
 Eerst een oefenproduct, dan tien boodschappen. Per product schat het team de prijs van nu én van 15 jaar geleden.
 
 - **Telefoon:** de basistelefoon vult beide prijzen in.
-- **Tv:** product en hoeveelheid; na alle antwoorden de echte prijzen.
+- **Tv:** product en hoeveelheid; na alle antwoorden de echte prijzen. De bedragen (zowel de schattingen als de echte prijzen) komen niet op de tv; die zie je bij het nakijken.
 - **Punten:** per prijs krijgt het team dat het dichtstbij zit 5 punten, het tweede 3, het derde 2 en het vierde 1. Gelijk is gelijk.
 
 ### Ronde 6: Tekenen
@@ -197,11 +197,13 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm, dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
 
-**Instellingen op de telefoon.** Rechtsboven op elke telefoon staat een tandwiel ⚙️. Daar kan een speler de tekst groter maken (handig voor oudere spelers), hoog contrast aanzetten, trillen of 'scherm aan houden' uitzetten en de eigen naam wijzigen. Er staat ook een korte uitleg van het spel. Het menu openen telt niet als spieken.
+**Instellingen op de telefoon.** Bij het aanmelden staat op elke telefoon een korte uitleg van dit menu. Rechtsboven op elke telefoon staat een tandwiel ⚙️. Daar kan een speler de tekst groter maken (handig voor oudere spelers), hoog contrast aanzetten, trillen of 'scherm aan houden' uitzetten en de eigen naam wijzigen. Er staat ook een korte uitleg van het spel. Het menu openen telt niet als spieken.
 
 **Telefoon zonder verbinding.** Valt de wifi van een speler weg, dan krijgt die telefoon een rode balk "Verbinding kwijt" en zijn de knoppen uitgeschakeld tot hij terug is. Een team ziet na indienen een balk "✅ Ingediend!" in de eigen teamkleur (Android-telefoons trillen ook kort bij een nieuwe vraag en bij indienen).
 
 **Pauze.** De pauzeknop zet de quiz stil: timers stoppen, de tv en telefoons tonen een pauzescherm. Valt de server uit, dan blijft alles bewaard en staat de quiz na het herstarten op pauze. Telefoons sluiten vanzelf weer aan.
+
+**Indeling van de bediening.** Bovenaan staan altijd de vaste knoppen: de grote knop, vorige, pauze, posities op tv en het teamoverzicht. Alles wat je vooraf instelt staat onder **⚙️ Instellingen** (op een laptop altijd rechts in beeld). **🧭 Voorbereiding** loopt vóór de start stap voor stap door alles wat geregeld moet zijn: tv, vragenlijst, rondevolgorde, teams, Spotify, Hitster-muziek, thema en spelregels, en een eindcontrole. Dit menu opent vanzelf bij een nieuwe quiz en kan altijd opnieuw. **🚨** springt direct naar de noodknoppen. Werkt op telefoon, tablet en laptop.
 
 **Bediening tijdens het spel.** De grote knop en de rij teams blijven bovenaan staan als je naar beneden scrolt. In die rij zie je per team: ✓ heeft geantwoord, ⏳ nog bezig, 📵 basistelefoon offline, 🕵️ aantal keer weggekeken. Ingrijpende acties (vorige stap, vraag laten vervallen of goed rekenen, overslaan, springen, reset) vragen eerst om bevestiging. De noodknoppen staan apart in een rood omkaderd blok.
 
@@ -237,11 +239,11 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten.
 
-**De stand blijft geheim.** Bij "Dit was ronde…" ziet iedereen alleen de punten van die ronde; de totaalstand blijft geheim tot de ontknoping. Bij de prijzenronde komen de bedragen niet op de tv; die zie je bij het nakijken.
+**De stand blijft geheim.** Bij "Dit was ronde…" staan alleen de teams (met foto), zonder punten en zonder volgorde. Wil je tussendoor spanning? Met **🏅 Posities op tv** in de bediening zet je de tussenstand op de tv: alleen wie op welke plek staat, nooit de punten. Nogmaals tikken haalt hem weg. Bij de prijzenronde komen de bedragen niet op de tv; die zie je bij het nakijken.
 
 **Spiekgeluid.** Onder Instellingen kun je het alarmgeluid bij spiekmeldingen apart uitzetten op de tv en op je eigen bediening. De melding zelf blijft zichtbaar.
 
-**Pauze.** Tijdens de pauze loopt op de tv een diavoorstelling met alle teamfoto's.
+**Pauze.** Tijdens de pauze loopt op de tv een diavoorstelling met alle teamfoto's. Iedereen kan op de telefoon een **pauzefoto** maken: die verschijnt meteen groot op de tv en wordt bewaard (map data/fotos/). Na de quiz download je in de bediening alle foto's van de avond (teamfoto's en pauzefoto's) als zip, bijvoorbeeld om in de familie-app te delen.
 
 **Oefenen met testteams.** In het blok Teams voegt "+3 testteams" robots toe (🤖 Robot Appel, Peer, …). Ze maken geen foto, kiezen een joker en geven zelf antwoorden: willekeurig en ongeveer de helft goed. Zo kunnen de quizmasters samen de hele quiz doorlopen, inclusief beoordelen, de muziekronde en de ontknoping, zonder telefoons. Toevoegen kan alleen vóór de start; een oefenquiz met testteams komt niet in de quizgeschiedenis. Verwijder de testteams (of gebruik Reset) voordat de echte quiz begint.
 

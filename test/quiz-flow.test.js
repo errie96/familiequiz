@@ -32,9 +32,9 @@ test('pregame order shows round overview and explanations before tests and joker
   assert.ok(ids.indexOf('test_1') < ids.indexOf('teamphoto'));
   assert.ok(ids.indexOf('teamphoto') < ids.indexOf('joker'));
   assert.ok(ids.indexOf('test_intro') < ids.indexOf('test_1'));
-  assert.ok(ids.indexOf('test_1') < ids.indexOf('joker'));
-  assert.ok(ids.indexOf('joker') < ids.indexOf('real_start'));
-  assert.ok(ids.indexOf('real_start') < ids.indexOf('r1_intro'));
+  assert.ok(ids.indexOf('test_1') < ids.indexOf('real_start'));
+  assert.ok(ids.indexOf('real_start') < ids.indexOf('joker')); // eerst 'hier begint de echte quiz', dan de joker
+  assert.ok(ids.indexOf('joker') < ids.indexOf('r1_intro'));
   assert.ok(ids.indexOf('r1_result') > ids.indexOf('r1_c1_1'));
 });
 

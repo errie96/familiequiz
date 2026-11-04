@@ -41,6 +41,10 @@
     .qo.dim { opacity: 0.45; }
     .bar { transition: width 1.2s cubic-bezier(.2,.9,.3,1); }
     /* Overgang tussen rondes: een doek met de rondenaam schuift door het beeld */
+    #positions-overlay { position: fixed; inset: 0; z-index: 62; background: radial-gradient(circle, #1e293b, #020617); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3vh 4vw; }
+    #positions-list { display: flex; flex-direction: column; gap: 1.2vh; width: min(70vw, 1100px); margin-top: 2vh; }
+    .pos-row { display: flex; align-items: center; gap: 1.5vw; background: #1e293b; border-radius: 1vw; padding: 1vh 1.5vw; font-size: clamp(20px, 2.6vw, 56px); font-weight: bold; animation: trans-pop 0.6s ease-out both; }
+    .pos-row .pos-rank { min-width: 3.2em; color: #fbbf24; }
     #round-curtain { position: fixed; inset: 0; z-index: 65; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
       background: linear-gradient(120deg, #1e1b4b, #4c1d95 50%, #0f172a); pointer-events: none; transform: translateX(-105%); }
     #round-curtain.go { animation: curtain 2.4s cubic-bezier(.7,0,.3,1) forwards; }
@@ -152,6 +156,7 @@
   <div id="tv-timerbar" class="hidden"><div id="tv-timerfill"></div></div>
   <div id="tv-offline" class="hidden">⚠️ Verbinding met de quiz kwijt, opnieuw verbinden…</div>
   <div id="reveal-spot" class="hidden"></div>
+  <div id="positions-overlay" class="hidden"><h1 class="tv-title" style="color:#fbbf24;">📊 Tussenstand</h1><p class="tv-sub">Alleen de posities, de punten blijven geheim!</p><div id="positions-list"></div></div>
   <div id="round-curtain"><div class="rc-no"></div><div class="rc-title"></div></div>
 
   <header id="tv-top">
@@ -435,7 +440,10 @@
       $("info-title").textContent = s.title;
       $("info-text").textContent = s.text || "";
       p.classList.toggle("hidden", !s.roundIntro);
-      if (s.roundIntro) p.textContent = QuizFX.t("tussen.punten", { punten: s.points });
+      if (s.roundIntro) {
+        p.replaceChildren(document.createTextNode(QuizFX.t("tussen.punten", { punten: s.points })));
+        if (s.scoring) { const sc = el("div", "tv-sub", "🎯 " + s.scoring); sc.style.cssText = "margin-top:1.2vh; font-size:0.75em; max-width:75vw; margin-left:auto; margin-right:auto;"; p.append(sc); }
+      }
       const pre = $("info-pre");
       ["info-emoji", "info-title", "info-text", "info-points"].forEach((id) => $(id).classList.remove("trans-spin", "trans-title", "hide-until"));
       if (!s.transition) { pre.classList.add("hidden"); return; }
@@ -560,20 +568,58 @@
       }
     }
 
+    // Live tekeningen op de tv: per beurt één keer opbouwen, daarna alleen streepjes bijtekenen
+    let drawKey = null, liveStrokes = {}, liveCanvas = {};
+    socket.on("draw_ops_tv", (data) => {
+      const st = liveStrokes[data.team];
+      if (!st) return;
+      (data.ops || []).forEach((op) => {
+        if (op.t === "x") st.length = 0;
+        else if (op.t === "u") st.pop();
+        else { let x = st.find((y) => y.id === op.id); if (!x) { x = { id: op.id, c: op.c, w: op.w, p: [] }; st.push(x); } x.p.push(...op.p); }
+      });
+      if (liveCanvas[data.team]) QuizFX.paintStrokes(liveCanvas[data.team], st);
+    });
     function renderDraw(s, state) {
       showView("v-draw");
       const body = $("draw-body");
+      if (s.status === "drawing") {
+        $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}`;
+        const key = `${s.id}|${s.turn}|drawing`;
+        if (drawKey !== key) {
+          drawKey = key; liveStrokes = {}; liveCanvas = {};
+          body.replaceChildren();
+          const g = el("div", "gallery");
+          s.teams.forEach((t) => {
+            if (!t.strokes) return;
+            liveStrokes[t.name] = t.strokes.map((x) => ({ ...x, p: [...x.p] }));
+            const card = el("div", "gcard");
+            const wrap = el("div", "padwrap");
+            const cv = el("canvas");
+            liveCanvas[t.name] = cv;
+            wrap.append(cv);
+            const label = el("div", "draw-label"); label.dataset.team = t.name;
+            card.append(wrap, label);
+            g.append(card);
+            requestAnimationFrame(() => QuizFX.paintStrokes(cv, liveStrokes[t.name]));
+          });
+          body.append(g, el("div", "bigtimer", ""));
+          body.lastChild.id = "draw-bigtimer";
+        }
+        // alleen de labels bijwerken (wie tekent, wie heeft al geraden)
+        s.teams.forEach((t) => {
+          const lab = body.querySelector(`.draw-label[data-team="${CSS.escape(t.name)}"]`);
+          if (lab) lab.replaceChildren(teamChip(t.name, { done: t.answered, text: `${t.answered ? "✓ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}` }));
+        });
+        return;
+      }
+      drawKey = null;
       body.replaceChildren();
       if (s.status === "ready") {
         $("draw-title").textContent = `✏️ Tekenen · beurt ${s.turn} van ${s.total}`;
         body.append(el("p", "tv-sub", s.total ? QuizFX.t("teken.klaar") : "Er zijn geen teams met minstens twee spelers: deze ronde wordt overgeslagen."));
       } else if (s.status === "drawing") {
-        $("draw-title").textContent = `✏️ Beurt ${s.turn} van ${s.total}`;
-        const row = el("div", "chips-row");
-        s.teams.forEach((t) => row.append(teamChip(t.name, { done: t.answered, text: `${t.answered ? "✓ " : ""}${t.name}${t.drawer ? " · tekent: " + t.drawer : ""}` })));
-        body.append(row, el("div", "bigtimer", ""));
-        body.lastChild.id = "draw-bigtimer";
-        body.append(el("p", "tv-sub", QuizFX.t("teken.bezig")));
+        // (wordt hierboven afgehandeld)
       } else if (s.status === "judging" || s.status === "result") {
         $("draw-title").textContent = QuizFX.t("teken.uitslag", { beurt: s.turn, totaal: s.total });
         const g = el("div", "gallery");
@@ -583,7 +629,11 @@
           const wrap = el("div", "padwrap");
           const cv = el("canvas");
           wrap.append(cv);
-          card.append(wrap, el("div", "", `${t.name}: ${t.word || ""}`), el("div", "", t.drawer ? `getekend door ${t.drawer}` : ""));
+          const ans = t.guess ? `geraden: "${t.guess}"${t.ok === true ? " ✔" : t.ok === false ? " ✘" : ""}` : "niet geraden";
+          const lab = el("div", "", `${t.name}: ${t.word || ""}`); lab.style.fontWeight = "bold";
+          const sub = el("div", "", `${t.drawer ? `getekend door ${t.drawer} · ` : ""}${ans}`);
+          if (t.ok === true) sub.style.color = "#4ade80"; else if (t.ok === false) sub.style.color = "#f87171";
+          card.append(wrap, lab, sub);
           g.append(card);
           requestAnimationFrame(() => QuizFX.paintStrokes(cv, t.strokes));
         });
@@ -676,28 +726,12 @@
       $("rr-title").textContent = s.title;
       const body = $("rr-body");
       body.replaceChildren();
-      const max = s.max || 1;
-      s.rows.forEach((r, i) => {
-        const row = el("div", "rrow");
-        const who = el("span"); who.style.cssText = "display:inline-flex; align-items:center;";
-        who.append(QuizFX.avatar(r.name, r.photo, "1.7em", r.color), r.name);
-        row.append(el("span", "", medal(i + 1)), who);
-        const barWrap = el("div");
-        const bar = el("div", "bar");
-        const target = `${Math.max(1, (r.round / max) * 100)}%`;
-        const growKey = chipStep + "|bar|" + r.name;
-        if (!animSeen.has(growKey)) { animSeen.add(growKey); bar.style.width = "1%"; setTimeout(() => { bar.style.width = target; }, 120 + i * 180); }
-        else bar.style.width = target;
-        if (r.color) bar.style.background = r.color;
-        barWrap.append(bar);
-        const a = el("b", "", `+${r.round}`);
-        a.style.color = "#fbbf24";
-        const b = el("span", "", r.total === null ? "" : `${r.total} totaal`);
-        b.style.color = "#94a3b8";
-        row.append(barWrap, a, b);
-        body.append(row);
-      });
-      body.append(el("p", "tv-sub", `Maximaal ${s.max} punten per ronde. De joker wordt pas aan het eind ingezet.${s.showTotals ? "" : " De totaalstand blijft geheim tot de ontknoping!"}`));
+      // Geen punten en geen volgorde: alleen de teams, de stand blijft geheim
+      const grid = el("div", "team-cards");
+      grid.style.cssText = "justify-content:center; margin:4vh 0;";
+      (s.teams || []).forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", t.color), el("div", "", t.name)); grid.append(c); });
+      body.append(grid, el("p", "tv-sub", "👏 Goed gespeeld! De punten blijven geheim tot de ontknoping."));
+      if (s.next) body.append(el("p", "tv-sub", `Hierna: ${s.next}`));
     }
 
     let logoKey = null;
@@ -864,7 +898,10 @@
       const sl = albumSlides[albumIdx % albumSlides.length];
       if (!sl) { stage.replaceChildren(el("p", "tv-sub", "Er zijn nog geen teamfoto's of tekeningen.")); $("album-count").textContent = ""; return; }
       stage.classList.remove("go"); void stage.offsetWidth; stage.classList.add("go");
-      if (sl.kind === "photo") {
+      if (sl.kind === "pause") {
+        const img = el("img", "al-img"); img.src = sl.photo; img.alt = "";
+        stage.replaceChildren(img, el("div", "al-cap", `📸 ${sl.name}`), el("div", "al-sub", sl.label ? `pauzefoto van ${sl.label}` : "pauzefoto"));
+      } else if (sl.kind === "photo") {
         const img = el("img", "al-img"); img.src = sl.photo; img.alt = sl.name;
         if (sl.color) img.style.border = `0.6vw solid ${sl.color}`;
         stage.replaceChildren(img, el("div", "al-cap", sl.name), el("div", "al-sub", sl.rank === 1 ? "🏆 Winnaar!" : `${sl.rank}e plaats`));
@@ -910,25 +947,50 @@
     // ---------- Automatisch passend maken op elk schermformaat ----------
     // Past de inhoud niet in het beschikbare vlak, dan wordt het hele scherm (de actieve view) kleiner geschaald.
     let fitTimer = null;
+    // ---------- Tussenstand: alleen posities ----------
+    let posKey = null;
+    function renderPositions(list) {
+      const box = $("positions-overlay");
+      box.classList.toggle("hidden", !list);
+      if (!list) { posKey = null; return; }
+      const key = JSON.stringify(list);
+      if (key === posKey) return;
+      posKey = key;
+      $("positions-list").replaceChildren(...list.map((p, i) => {
+        const row = el("div", "pos-row");
+        row.style.animationDelay = `${i * 0.25}s`;
+        if (p.color) row.style.borderLeft = `0.5vw solid ${p.color}`;
+        row.append(el("span", "pos-rank", p.rank === 1 ? "🥇 1e" : p.rank === 2 ? "🥈 2e" : p.rank === 3 ? "🥉 3e" : `${p.rank}e`), QuizFX.avatar(p.name, p.photo, "1.6em", p.color), el("span", "", p.name));
+        return row;
+      }));
+    }
     // ---------- Pauze: diavoorstelling met de teamfoto's ----------
-    let pauseTimer = null, pauseIdx = 0, pauseKey = null;
+    // Teamfoto's en pauzefoto's door elkaar; een nieuwe pauzefoto komt meteen groot in beeld
+    let pauseTimer = null, pauseIdx = 0, pauseKey = null, pauseSeen = 0, pauseList = [];
     function stopPauseShow() { clearInterval(pauseTimer); pauseTimer = null; pauseKey = null; }
-    function startPauseShow(style) {
-      const list = Object.entries(style).filter(([, v]) => v.photo).map(([name, v]) => ({ name, ...v }));
-      const key = list.map((x) => x.name + x.photo).join("|");
+    function pauseSlide(item, isNew) {
+      const box = $("pause-show");
+      if (item.kind === "team") box.replaceChildren(QuizFX.avatar(item.name, item.photo, "clamp(150px, 22vw, 440px)", item.color), el("div", "spot-name", item.name));
+      else {
+        const img = el("img"); img.src = item.photo; img.alt = "";
+        img.style.cssText = "max-height:46vh; max-width:70vw; border-radius:1.5vw; box-shadow:0 10px 40px rgba(0,0,0,0.6); border:0.5vw solid #fff;";
+        box.replaceChildren(img, el("div", "spot-name", `${isNew ? "📸 Nieuw! " : "📸 "}${item.name}${item.label ? " · " + item.label : ""}`));
+      }
+      box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop");
+    }
+    function startPauseShow(style, photos) {
+      const teamsList = Object.entries(style).filter(([, v]) => v.photo).map(([name, v]) => ({ kind: "team", name, ...v }));
+      const pics = photos.map((p) => ({ kind: "pause", name: p.team, label: p.label, photo: p.url }));
+      const key = teamsList.map((x) => x.name + x.photo).join("|") + "#" + pics.length;
       if (key === pauseKey) return;
+      const fresh = pics.length > pauseSeen && pauseKey !== null ? pics[pics.length - 1] : null;
+      pauseSeen = pics.length;
       stopPauseShow();
       pauseKey = key;
-      const box = $("pause-show");
-      if (!list.length) { box.replaceChildren(); return; }
-      const show = () => {
-        const t = list[pauseIdx % list.length];
-        box.replaceChildren(QuizFX.avatar(t.name, t.photo, "clamp(150px, 22vw, 440px)", t.color), el("div", "spot-name", t.name));
-        box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop");
-        pauseIdx++;
-      };
-      show();
-      pauseTimer = setInterval(show, 4500);
+      pauseList = [...teamsList, ...pics];
+      if (!pauseList.length) { $("pause-show").replaceChildren(el("p", "tv-sub", "📸 Maak een pauzefoto met je telefoon: hij verschijnt hier!")); return; }
+      if (fresh) pauseSlide(fresh, true); else pauseSlide(pauseList[pauseIdx++ % pauseList.length], false);
+      pauseTimer = setInterval(() => pauseSlide(pauseList[pauseIdx++ % pauseList.length], false), 4500);
     }
     // ---------- Rondeovergang ----------
     let lastRoundHeader = null;
@@ -988,6 +1050,7 @@
       const inQuiz = state.phase === "PLAY";
       TEAMSTYLE = state.teamStyle || {};
       cheatSoundOn = state.cheatSound !== false;
+      renderPositions(state.positions);
       chipStep = step ? step.id : state.phase;
       QuizFX.applyTheme(state.theme);
       QuizFX.setTexts(state.texts);
@@ -1033,7 +1096,7 @@
 
 
       // Overlays hebben voorrang op de gewone schermen
-      if (state.phase === "PLAY" && state.paused) { showView("v-pause"); startPauseShow(state.teamStyle || {}); return; }
+      if (state.phase === "PLAY" && state.paused) { showView("v-pause"); startPauseShow(state.teamStyle || {}, state.pausePhotos || []); return; }
       stopPauseShow();
       if (state.review && state.review.data) {
         showView("v-review");

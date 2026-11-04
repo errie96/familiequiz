@@ -43,6 +43,24 @@ const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const PHOTOS_FILE = path.join(DATA_DIR, 'teamphotos.json'); // teamfoto's apart, zodat state.json klein blijft
 const MAX_PHOTO_CHARS = 200000;
+// Pauzefoto's: spelers mogen tijdens de pauze foto's maken; die komen direct op de tv en worden bewaard in
+// data/fotos/<datum>/ zodat ze na de quiz gedeeld kunnen worden (download als zip in de bediening)
+const PHOTO_DIR = path.join(DATA_DIR, 'fotos');
+const MAX_PAUSE_CHARS = 650000;
+let pausePhotos = []; // { file: 'datum/naam.jpg', team, label, at }
+function loadPausePhotos() {
+  pausePhotos = [];
+  try {
+    for (const day of fs.readdirSync(PHOTO_DIR).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()) {
+      for (const f of fs.readdirSync(path.join(PHOTO_DIR, day)).filter((x) => /^[\w-]+\.jpg$/.test(x)).sort()) {
+        const m = /^\d{6}-(.+?)-[a-z0-9]{6}\.jpg$/.exec(f);
+        pausePhotos.push({ file: `${day}/${f}`, team: m ? m[1].replace(/_/g, ' ') : '', label: '', at: day });
+      }
+    }
+  } catch (e) { /* nog geen foto's */ }
+}
+loadPausePhotos();
+const pausePhotoUrl = (p) => `/pauzefoto/${p.file}`;
 const FRESH = process.argv.includes('--fresh') || process.env.FRESH === '1';
 
 const MAX_TEAM_NAME = 24;
@@ -101,6 +119,24 @@ app.get('/download/log/:file', (req, res) => {
   const buf = LOG.read(req.params.file);
   if (!buf) return res.status(404).type('text').send('Logboek niet gevonden');
   res.set('Content-Disposition', `attachment; filename="${req.params.file}"`).type('text/plain').send(buf);
+});
+// Pauzefoto's (namen zijn willekeurig en worden streng gecontroleerd)
+app.get('/pauzefoto/:day/:file', (req, res) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.day) || !/^[\w-]+\.jpg$/.test(req.params.file)) return res.status(404).end();
+  const f = path.join(PHOTO_DIR, req.params.day, req.params.file);
+  if (!fs.existsSync(f)) return res.status(404).end();
+  res.set('Cache-Control', 'public, max-age=31536000, immutable').type('image/jpeg').send(fs.readFileSync(f));
+});
+// Alle foto's van de avond (teamfoto's + pauzefoto's) als zip
+app.get('/download/fotos.zip', (req, res) => {
+  if (req.query.t !== DOWNLOAD_TOKEN) return res.status(403).type('text').send('Geen toegang');
+  const { zip } = require('./lib/zip');
+  const files = {};
+  const slug = (s) => String(s).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'team';
+  for (const [teamId, p] of Object.entries(teamPhotos)) files[`teamfotos/${slug(teams[teamId] ? teams[teamId].name : teamId)}.jpg`] = Buffer.from(p.dataUrl.split(',')[1], 'base64');
+  for (const p of pausePhotos) { try { files[`pauzefotos/${p.file.replace('/', '_')}`] = fs.readFileSync(path.join(PHOTO_DIR, p.file)); } catch (e) { /* weg */ } }
+  if (!Object.keys(files).length) return res.status(404).type('text').send("Nog geen foto's");
+  res.set('Content-Disposition', `attachment; filename="familiequiz-fotos-${new Date().toISOString().slice(0, 10)}.zip"`).type('application/zip').send(zip(files));
 });
 // Teamfoto als los plaatje: zo hoeft de foto niet bij elke update opnieuw mee naar tv en telefoons
 app.get('/teamfoto/:teamId', (req, res) => {
@@ -497,6 +533,7 @@ let phase = 'LOBBY'; // LOBBY | PLAY | END
 let stepIndex = 0;
 let paused = false;
 let showStandings = false;
+let showPositions = false; // tussenstand op de tv: alleen posities, geen punten
 let review = null;   // { scope: rondeId | 'all', page }
 let reveal = 'idle'; // einduitslag: idle -> stepping (plek voor plek) -> done
 let revealN = 0;     // aantal onthulde plekken (van laag naar hoog)
@@ -686,6 +723,27 @@ function roundRaw(team, round) {
   }
   return { raw, max };
 }
+// Uitleg bij de start van een ronde: hoe verdien je hier punten? (de som wordt omgerekend naar de punten van de ronde)
+function scoringText(round) {
+  if (!round) return null;
+  const P = roundPoints(round);
+  const list = (a) => a.join(' · ');
+  switch (round.type) {
+    case 'mc': return `Elke goede vraag telt even zwaar. Alles goed = ${P} punten.`;
+    case 'blur': return `Hoe eerder je het goede antwoord geeft (hoe waziger de foto), hoe meer punten: ${list(settings.blurPoints)} per foto.`;
+    case 'logo': return `Het eerste goede antwoord krijgt de meeste punten: ${list(settings.logoPoints)} voor het 1e, 2e, 3e… goede team.`;
+    case 'price': return `Per product twee schattingen (nu en vroeger). Wie het dichtstbij zit krijgt de meeste punten: ${list(settings.pricePoints)}.`;
+    case 'memory': return 'Elk goed onthouden item levert punten op. Hoe meer je je herinnert, hoe meer punten.';
+    case 'hitster': {
+      const bonus = round.yearBonus ?? 1;
+      return bonus ? `Per liedje: de helft van de punten voor de goede plek in de tijdlijn, de andere helft voor het exacte jaartal. Wie als eerste ${settings.hitsterTarget} kaarten heeft, stopt de ronde.`
+        : `Per liedje: punten voor de goede plek in de tijdlijn. Wie als eerste ${settings.hitsterTarget} kaarten heeft, stopt de ronde.`;
+    }
+    case 'draw': return 'Elke goed geraden tekening levert punten op voor het team.';
+    case 'thirty': return 'Elk goed uitgelegd woord levert een punt op voor je team.';
+    default: return null;
+  }
+}
 function roundScore(team, round) {
   const { raw, max } = roundRaw(team, round);
   return max > 0 ? Math.round((raw / max) * roundPoints(round)) : 0;
@@ -812,6 +870,7 @@ function album() {
   const slides = [];
   const rk = ranking();
   for (const r of rk) if (teamPhotos[r.teamId]) slides.push({ kind: 'photo', name: r.name, photo: photoUrl(r.teamId), color: teams[r.teamId] ? teams[r.teamId].color : null, rank: r.rank });
+  for (const p of pausePhotos.slice(-60)) slides.push({ kind: 'pause', name: p.team, photo: pausePhotoUrl(p), color: null, label: p.label });
   for (const step of steps.filter((x) => x.kind === 'draw')) {
     const s = ss(step);
     (s.turns || []).forEach((turn) => {
@@ -1015,7 +1074,7 @@ const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tie
 const tiebreakPlayed = () => steps.some((x) => x.kind === 'tiebreak' && ssAll[x.id] && (ssAll[x.id].teams || []).length);
 function finishQuiz() {
   if (phase === 'END') return;
-  phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; timerClear();
+  phase = 'END'; reveal = 'idle'; endView = 'ranking'; review = null; showStandings = false; showPositions = false; timerClear();
   LOG.info('quiz_einde', {}); setTimeout(() => backupNow('einde'), 500);
   archiveFinishedQuiz();
 }
@@ -1440,7 +1499,7 @@ function publicStep(step) {
   const base = { kind: step.kind, id: step.id, round: step.round };
   switch (step.kind) {
     case 'info':
-      return { ...base, emoji: step.emoji, title: step.title, text: step.text, transition: !!step.transition, categoryIntro: !!step.categoryIntro, roundIntro: !!step.roundIntro, points: step.roundIntro ? roundPoints(roundById[step.round]) : null, roundNo: step.roundIntro ? roundById[step.round].no : null };
+      return { ...base, emoji: step.emoji, title: step.title, text: step.text, transition: !!step.transition, categoryIntro: !!step.categoryIntro, roundIntro: !!step.roundIntro, points: step.roundIntro ? roundPoints(roundById[step.round]) : null, roundNo: step.roundIntro ? roundById[step.round].no : null, scoring: step.roundIntro ? scoringText(roundById[step.round]) : null };
     case 'mc': {
       const showAnswer = s.status === 'closed' && revealsOnClose(step);
       return {
@@ -1477,7 +1536,10 @@ function publicStep(step) {
           name: t.name, drawer: turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] ? devices[turn.drawers[t.teamId]].label : null,
           answered: !!turn.answers[t.teamId],
           word: (s.status === 'judging' || s.status === 'result') && turn.words[t.teamId] ? turn.words[t.teamId].word : null,
-          strokes: s.status === 'judging' || s.status === 'result' ? turn.strokes[t.teamId] || [] : null
+          // tekeningen live op de tv (het woord blijft geheim tot de uitslag)
+          strokes: ['drawing', 'judging', 'result'].includes(s.status) && turn.words[t.teamId] ? turn.strokes[t.teamId] || [] : null,
+          guess: (s.status === 'judging' || s.status === 'result') && turn.answers[t.teamId] ? turn.answers[t.teamId].text : null,
+          ok: s.status === 'result' && turn.ok ? !!turn.ok[t.teamId] : null
         }));
       }
       return out;
@@ -1506,8 +1568,10 @@ function publicStep(step) {
     }
     case 'roundresult': {
       const round = roundById[step.round];
-      const rows = roundStandings(round).map((r) => ({ ...r, total: null })); // de totaalstand blijft geheim tot de ontknoping
-      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), showTotals: false, rows };
+      // Geen punten en geen volgorde: alle teams op alfabet. Punten zien we pas bij de ontknoping.
+      const next = rounds.find((r) => r.no === round.no + 1);
+      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, next: next ? `${next.emoji || ''} ${next.title}`.trim() : null,
+        teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), color: t.color || null })) };
     }
     case 'teamphoto':
       return { ...base, teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), skipped: !!s.skipped[t.teamId], connected: teamConnected(t) })) };
@@ -1766,6 +1830,8 @@ function broadcastState() {
   io.to('tv_room').emit('state_update', {
     ...common,
     cheatSound: settings.tvCheatSound !== false,
+    pausePhotos: phase === 'PLAY' && paused ? pausePhotos.slice(-40).map((p) => ({ url: pausePhotoUrl(p), team: p.team, label: p.label, at: p.at })) : null,
+    positions: phase === 'PLAY' && showPositions ? ranking().map((r) => ({ rank: r.rank, name: r.name, photo: r.photo, color: r.color })) : null,
     end: common.end && reveal === 'done' && endView === 'album' ? { ...common.end, album: album() } : common.end, // tekeningen alleen naar de tv
     step: step ? publicStep(step) : null,
     teamList: Object.values(teams).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
@@ -1794,7 +1860,8 @@ function broadcastState() {
     hitsterPlaylists,
     libraryDownload: `/download/Hitster-bibliotheek.xlsx?t=${DOWNLOAD_TOKEN}`,
     downloadToken: DOWNLOAD_TOKEN,
-    pinIsDefault: HOST_PIN === '1234', onlineHost: ON_RENDER,
+    pinIsDefault: HOST_PIN === '1234', onlineHost: ON_RENDER, photoCount: pausePhotos.length + Object.keys(teamPhotos).length,
+    showPositions,
     libraryUpdate,
     quiz: { ...quizSource, steps: steps.length, rounds: rounds.length, library: librarySource, librarySongs: (baseRaw.hitsterLibrary || []).length },
     plan: planView(), extraOptions: extraOptions(), themes: THEMES,
@@ -1829,7 +1896,7 @@ function phoneView(step, team, device, isBase) {
   const base = { type: step.kind, id: step.id, isBase, cheat: cheatSensitive(step) };
   switch (step.kind) {
     case 'info':
-      return { ...base, emoji: step.emoji, title: step.title, text: step.text };
+      return { ...base, emoji: step.emoji, title: step.title, text: step.text, scoring: step.roundIntro ? scoringText(roundById[step.round]) : null };
     case 'mc': {
       const a = s.answers[id];
       return {
@@ -2283,6 +2350,7 @@ function onConnection(socket) {
     const strokes = c.turn.strokes[c.team.teamId];
     clean.forEach((op) => applyOp(strokes, op));
     for (const d of connectedDevices(c.team)) if (d.deviceId !== c.device.deviceId && d.socketId) io.to(d.socketId).emit('draw_ops', { ops: clean });
+    io.to('tv_room').emit('draw_ops_tv', { team: c.team.name, turn: ss(cur()).turn, ops: clean }); // live meekijken op de tv
     scheduleSave();
   });
   // Nieuwe of herstelde telefoon vraagt de hele tekening op
@@ -2397,6 +2465,12 @@ function onConnection(socket) {
     paused = !paused;
     if (paused) timerStop(); else timerRun();
     io.emit(paused ? 'paused' : 'resumed');
+    sync();
+  });
+  // Tussenstand op de tv: alleen de posities (wie staat waar), nooit de punten
+  socket.on('toggle_positions', () => {
+    if (!isRemote(socket) || phase !== 'PLAY') return;
+    showPositions = !showPositions;
     sync();
   });
   socket.on('toggle_standings', () => {
@@ -2532,6 +2606,28 @@ function onConnection(socket) {
     if (phase !== 'PLAY' || paused || !now || now.kind !== 'teamphoto') return reply({ ok: false, message: 'De teamfoto maken we samen op het teamfotomoment, na de testvragen.' });
     if (dataUrl !== null && !validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
     setTeamPhoto(team.teamId, dataUrl);
+    reply({ ok: true });
+    sync();
+  });
+  // Pauzefoto: elke speler mag tijdens de pauze een foto maken; direct op de tv en bewaard in data/fotos/
+  socket.on('pause_photo', ({ dataUrl } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    const device = deviceOf(socket);
+    const team = device && teams[device.teamId];
+    if (!team) return reply({ ok: false, message: 'Je zit niet (meer) in een team.' });
+    if (phase !== 'PLAY' || !paused) return reply({ ok: false, message: "Pauzefoto's kunnen alleen tijdens de pauze." });
+    if (typeof dataUrl !== 'string' || dataUrl.length > MAX_PAUSE_CHARS || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot.' });
+    if (pausePhotos.length >= 500) return reply({ ok: false, message: "Het fotoalbum is vol." });
+    const day = new Date().toISOString().slice(0, 10);
+    const stamp = new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour12: false }).replace(/:/g, '');
+    const slug = team.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 30) || 'team';
+    const file = `${stamp}-${slug}-${crypto.randomBytes(3).toString('hex')}.jpg`;
+    try {
+      fs.mkdirSync(path.join(PHOTO_DIR, day), { recursive: true });
+      fs.writeFileSync(path.join(PHOTO_DIR, day, file), Buffer.from(dataUrl.split(',')[1], 'base64'));
+    } catch (e) { return reply({ ok: false, message: 'Opslaan is niet gelukt.' }); }
+    pausePhotos.push({ file: `${day}/${file}`, team: team.name, label: device.label, at: Date.now() });
+    LOG.info('pauzefoto', { team: team.name, speler: device.label });
     reply({ ok: true });
     sync();
   });

@@ -162,8 +162,14 @@ window.QuizFX = (function () {
       wrap = document.createElement("div");
       wrap.className = "blurbox";
       wrap.dataset.src = (media && media.src) || "";
+      // Het kader krijgt de verhouding van de foto zelf (staand, liggend of vierkant), binnen de ruimte op het scherm
       wrap.style.cssText = "width:min(60vw,900px); height:min(34vh,480px); margin:0 auto;";
       const img = document.createElement("img");
+      img.onload = () => {
+        const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 16 / 9;
+        wrap.style.cssText = `aspect-ratio:${ratio}; height:auto; width:min(80vw, ${ratio >= 1 ? "1100px" : "560px"}, calc(52vh * ${ratio.toFixed(3)})); margin:0 auto;`;
+        img.style.cssText += "width:100%; height:100%; object-fit:contain;";
+      };
       img.src = media ? media.src : "";
       img.alt = "";
       img.onerror = () => { img.remove(); const ph = placeholder("📷", label || "Foto ontbreekt"); wrap.appendChild(ph); };
@@ -393,7 +399,7 @@ window.QuizFX = (function () {
   }
 
   // Foto van de telefoon verkleinen tot een lichte JPEG (data-URL) voor de server
-  async function compressPhoto(file, maxSide = 800, square = false) {
+  async function compressPhoto(file, maxSide = 800, square = false, maxChars = 200000) {
     if (!file) throw new Error("Kies eerst een foto.");
     const image = await createImageBitmap(file);
     let sx = 0, sy = 0, sw = image.width, sh = image.height;
@@ -405,8 +411,8 @@ window.QuizFX = (function () {
     canvas.getContext("2d").drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     if (image.close) image.close();
     let dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-    if (dataUrl.length > 180000) dataUrl = canvas.toDataURL("image/jpeg", 0.45);
-    if (dataUrl.length > 200000) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
+    if (dataUrl.length > maxChars * 0.9) dataUrl = canvas.toDataURL("image/jpeg", 0.45);
+    if (dataUrl.length > maxChars) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
     return dataUrl;
   }
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)

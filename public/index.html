@@ -167,6 +167,11 @@
         <span style="font-size: 12px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
         <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;"></p>
       </div>
+      <div style="margin-top: 16px;">
+        <p style="color:#cbd5e1; font-size:15px; margin-bottom:6px;">📸 Maak een pauzefoto! Hij verschijnt meteen op het grote scherm en wordt bewaard voor na de quiz.</p>
+        <div id="pause-photo-picker"></div>
+        <p id="pause-photo-msg" class="note"></p>
+      </div>
       <small style="display:block; margin-top: 18px; color: #64748b;">De quiz gaat vanzelf verder zodra de quizmaster de pauze beëindigt.</small>
     </div>
 
@@ -541,6 +546,19 @@
       } catch (error) { picker.setBusy(false); status(error.message || "Foto kon niet worden verwerkt."); }
     }
     const panelPicker = photoPicker((file) => uploadTeamPhoto(file, panelPicker, photoStatus));
+    // Pauzefoto's: iedereen (niet alleen de basistelefoon) mag tijdens de pauze foto's maken
+    const pausePicker = photoPicker(async (file) => {
+      const msg = (t) => { $("pause-photo-msg").textContent = t; };
+      pausePicker.setBusy(true); msg("Foto voorbereiden…");
+      try {
+        const dataUrl = await QuizFX.compressPhoto(file, 1280, false, 600000);
+        socket.emit("pause_photo", { dataUrl }, (res) => {
+          pausePicker.setBusy(false);
+          msg(res && res.ok ? "✅ Staat op het grote scherm! Nog een?" : (res && res.message) || "Dat lukte niet.");
+        });
+      } catch (e) { pausePicker.setBusy(false); msg(e.message || "Foto kon niet worden verwerkt."); }
+    }, { camera: "📸 Pauzefoto maken" });
+    $("pause-photo-picker").append(pausePicker.row);
     $("team-photo-picker").append(panelPicker.row);
     $("btn-team-photo-remove").addEventListener("click", () => {
       if (!confirm("Teamfoto verwijderen?")) return;
@@ -578,11 +596,24 @@
     const BUILD = {
       lobby(box) {
         box.append(el("h2", "", QuizFX.t("tel.wachten.titel")), el("p", "note", QuizFX.t("tel.wachten.tekst")));
+        // Korte uitleg van de instellingen voor de spelers
+        const tip = el("div");
+        tip.style.cssText = "background:#1e293b; border-radius:12px; padding:12px 14px; margin-top:14px; text-align:left; line-height:1.5;";
+        tip.append(el("b", "", "⚙️ Handig om te weten"));
+        const ul = el("div", "note");
+        ul.innerHTML = "Rechtsboven zit een tandwiel ⚙️. Daar kun je:<br>• de <b>tekst groter</b> maken (Groot of Extra groot),<br>• <b>hoog contrast</b> aanzetten (beter leesbaar),<br>• <b>trillen</b> en <b>scherm aan houden</b> aan- of uitzetten,<br>• je <b>naam</b> aanpassen en lezen <b>hoe het spel werkt</b>.<br>Het menu openen telt niet als spieken.";
+        tip.append(ul);
+        const open = el("button", "btn-option", "⚙️ Instellingen openen");
+        open.style.cssText = "text-align:center; margin-top:8px;";
+        open.onclick = () => $("settings-btn").click();
+        tip.append(open);
+        box.append(tip);
       },
       info(box, v) {
         const d = el("div"); d.style.textAlign = "center";
         const e = el("div", "", v.emoji || ""); e.style.fontSize = "54px";
         d.append(e, el("h2", "", v.title), el("p", "note", v.text || ""));
+        if (v.scoring) { const sc = el("p", "note", "🎯 " + v.scoring); sc.style.cssText = "background:#1e293b; border-radius:10px; padding:10px; margin-top:10px;"; d.append(sc); }
         box.append(d);
       },
       roundresult(box) {
