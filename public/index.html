@@ -39,10 +39,6 @@
     .toggle-row input { width: 26px; height: 26px; flex: none; }
     #offline-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; background: #dc2626; color: #fff; font-weight: bold; text-align: center; padding: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
     body.offline #view button, body.offline #view input, body.offline #team-panel button { pointer-events: none; opacity: 0.45; }
-    #pending-flag { border-radius: 12px; padding: 12px; margin-bottom: 12px; text-align: center; font-weight: bold; background: #b45309; color: #fff; }
-    #role-bar { border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
-    #role-bar.base { background: linear-gradient(90deg, #a16207, #ca8a04); color: #fff; font-weight: bold; }
-    #role-bar.member { background: #1e3a5f; color: #dbeafe; }
     #submitted-flag { border-radius: 12px; padding: 14px; margin-bottom: 12px; text-align: center; font-weight: bold; font-size: 20px; color: #fff; animation: sub-in 0.4s ease-out; }
     @keyframes sub-in { from { transform: scale(0.85); opacity: 0; } to { transform: none; opacity: 1; } }
     .row2 > * { flex: 1; }
@@ -140,9 +136,7 @@
         <span class="badge" id="team-badge" style="background:#2563eb;"></span>
         <span class="badge hidden" id="timer-badge">⏱</span>
       </div>
-      <div id="role-bar" class="hidden"></div>
-      <div id="pending-flag" class="hidden">⏳ Antwoord wordt verstuurd…<div style="font-size:13px; font-weight:normal; margin-top:2px;">Valt de verbinding weg? Je antwoord blijft bewaard en gaat vanzelf alsnog.</div></div>
-      <div id="submitted-flag" class="hidden">✅ Ingediend en opgeslagen!<div id="submitted-sub" style="font-size:14px; font-weight:normal; margin-top:4px;">Wachten op de andere teams…</div></div>
+      <div id="submitted-flag" class="hidden">✅ Ingediend!<div style="font-size:14px; font-weight:normal; margin-top:4px;">Wachten op de andere teams…</div></div>
       <div id="view"></div>
 
       <div id="team-panel" class="hidden" style="margin-top:18px; border-top:1px solid #334155; padding-top:12px;">
@@ -227,7 +221,7 @@
       $("set-me").classList.toggle("hidden", !inTeam);
       if (inTeam) {
         if (document.activeElement !== $("set-name")) $("set-name").value = me.label || "";
-        $("set-team-info").textContent = `Je zit in team ${me.teamName}${me.role === "base" ? " en dit is de basistelefoon" : ` (basistelefoon: ${me.baseLabel || "?"})`}. Ander team? Gebruik "Team verlaten" onderaan het teamblok (kan niet met de basistelefoon).`;
+        $("set-team-info").textContent = `Je zit in team ${me.teamName}. Ander team? Gebruik "Team verlaten" onderaan het teamblok.`;
       }
       $("set-conn").textContent = socket.connected ? "🟢 Verbonden met de quiz" : "🔴 Geen verbinding, even geduld…";
     }
@@ -333,7 +327,7 @@
     const savePending = () => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (e) { /* privémodus */ } updatePendingFlag(); };
     function clearPending() { pending = []; savePending(); }
     setTimeout(() => updatePendingFlag(), 0);
-    function updatePendingFlag() { const f = $("pending-flag"); if (f) f.classList.toggle("hidden", !pending.length); }
+    function updatePendingFlag() { /* bewust geen zichtbare status: antwoorden worden stil opnieuw verstuurd */ }
     const savedAt = {}; // vraag -> tijd van bevestiging door de server
     function act(event, data, cb) {
       if (!RESUMABLE.has(event)) return socket.emit(event, data, cb);
@@ -356,7 +350,7 @@
       const keep = pending.filter((p) => p.viewId && p.viewId === viewId); // alleen als dezelfde vraag nog openstaat
       const dropped = pending.length - keep.length;
       pending = keep; savePending();
-      keep.forEach((p) => sendPending(p, (res) => { if (res && res.ok && !res.already) showToast("↺ Je antwoord is alsnog verstuurd en opgeslagen.", 4000, "#16a34a"); }));
+      keep.forEach((p) => sendPending(p, () => {}));
       if (dropped) showToast("Je vorige antwoord kwam te laat: die vraag was al gesloten.", 5000, "#b45309");
     }
     socket.on("kicked", () => { clearIdentity(); showJoin("Je team is verwijderd door de quizmaster."); });
@@ -480,7 +474,7 @@
         av.dataset.src = String(me.photo);
         slot.replaceChildren(av);
       }
-      $("team-photo-actions").classList.toggle("hidden", me.role !== "base");
+      $("team-photo-actions").classList.add("hidden"); // teamfoto alleen op het teamfotomoment (na de testvragen)
       panelPicker.cam.textContent = me.photo ? "📸 Nieuwe teamfoto" : "📸 Teamfoto maken";
       $("btn-team-photo-remove").classList.toggle("hidden", !me.photo);
       const pending = !!me.proposal;
@@ -1095,15 +1089,7 @@
       const sub = submittedNow(v);
       const flag = $("submitted-flag");
       flag.classList.toggle("hidden", !sub);
-      const at = savedAt[v.id];
-      $("submitted-sub").textContent = `${at ? `Opgeslagen om ${at.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}. ` : ""}${v.isBase ? "Je kunt het nog wijzigen zolang de vraag openstaat. " : ""}Wachten op de andere teams…`;
       if (sub && pending.some((p) => p.viewId === v.id)) { pending = pending.filter((p) => p.viewId !== v.id); savePending(); }
-      // Wie is de basistelefoon? Altijd zichtbaar tijdens het spel
-      const rb = $("role-bar");
-      const playing = v.type !== "lobby";
-      rb.classList.toggle("hidden", !playing);
-      rb.className = playing ? (v.isBase ? "base" : "member") : "hidden";
-      rb.textContent = v.isBase ? "⭐ Jij bent de basistelefoon: jij geeft de antwoorden voor je team." : `👀 Meekijk-telefoon. ${me && me.baseLabel ? me.baseLabel : "De basistelefoon"} geeft de antwoorden.`;
       flag.style.background = (me && me.color) || "#16a34a";
       if (sub && !lastSubmitted) buzz([40, 50, 40]);
       lastSubmitted = sub;

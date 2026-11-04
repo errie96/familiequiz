@@ -805,6 +805,11 @@ window.QuizSpotify = (function () {
     return found;
   }
 
+  // Alleen uit de playlist (extra muziekronde: eerst de playlist, daarna beslist de server over de Excel)
+  async function fromPlaylist(id, excludeKeys) {
+    if (!connected()) { lastError = "Spotify is niet verbonden in de bediening."; return null; }
+    return playlistTrack(id, new Set(excludeKeys || []));
+  }
   // Eerst de Hitster-playlist van de categorie (als die is ingesteld), dan Spotify zoeken, anders een iTunes-fragment
   async function randomTrack(cat, excludeKeys, playlist) {
     const exclude = new Set(excludeKeys || []);
@@ -824,5 +829,5 @@ window.QuizSpotify = (function () {
 
   // Jaar van de eerste uitgave voor een nummer uit de Excel (artiest = eerste naam)
   const firstYear = (t) => earliestYear({ ...t, firstArtist: String(t.artist || '').split(/ & |, /)[0] });
-  return { checkYear, hitsterAccountPlaylists, firstYear, findHitsterPlaylists, playlistTracks, connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf, lastError: () => lastError };
+  return { fromPlaylist, checkYear, hitsterAccountPlaylists, firstYear, findHitsterPlaylists, playlistTracks, connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf, lastError: () => lastError };
 })();

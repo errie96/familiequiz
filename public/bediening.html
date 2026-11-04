@@ -61,6 +61,11 @@
     </div>
 
     <div id="cheat-alerts" style="margin-top:10px;"></div>
+    <details id="prep-panel" class="hidden" open style="border:2px solid #2563eb;">
+      <summary>✅ Voorbereiding vóór de start <span id="prep-badge" class="muted"></span></summary>
+      <p class="muted" style="font-size:13px; margin:4px 0;">Doe dit voordat je de quiz start. Tik op een regel om naar het juiste blok te gaan. Tijdens de quiz ligt de rondevolgorde vast; extra rondes toevoegen kan wel.</p>
+      <div id="prep-list"></div>
+    </details>
     <div id="warnings" class="hidden" style="background:#78350f; border-radius:8px; padding:10px; margin-top:10px; font-size:13px;"></div>
 
     <!-- Hoofdbediening (blijft bovenaan staan tijdens scrollen) -->
@@ -113,7 +118,8 @@
 
     <details id="scores-panel">
       <summary>📊 Scores (alleen zichtbaar voor de quizmasters)</summary>
-      <div class="setting"><label for="s-totals"><b>Tussenstand op tv na elke ronde</b><br><span class="muted">Aan: bij "Dit was ronde…" ziet iedereen ook het totaal per team. Uit: alleen de punten van die ronde. Altijd te wijzigen, ook tijdens de quiz.</span></label><input type="checkbox" id="s-totals"></div>
+      <div class="setting"><label for="s-sound-tv"><b>🔔 Spiekgeluid op de tv</b><br><span class="muted">Alarmgeluid op het grote scherm bij een spiekmelding. De melding zelf blijft zichtbaar.</span></label><input type="checkbox" id="s-sound-tv"></div>
+      <div class="setting"><label for="s-sound-me"><b>🔔 Spiekgeluid op deze bediening</b><br><span class="muted">Piep en trillen op dit toestel. Geldt alleen voor dit toestel.</span></label><input type="checkbox" id="s-sound-me"></div>
       <p class="muted" style="margin:4px 0 8px;">Deze tabel zien alleen de quizmasters. 🃏 = joker.</p>
       <div id="scores-table" style="overflow:auto; font-size:13px;"></div>
     </details>
@@ -184,8 +190,8 @@
     <details id="playlists-panel">
       <summary>🎶 Hitster-playlists per editie <span id="pl-badge" class="muted"></span></summary>
       <p class="muted" style="margin:4px 0 8px; font-size:13px;">
-        Een extra muziekronde speelt eerst de nummers uit de Excel (tabblad Hitster bibliotheek) van die editie. Zijn die op, dan pakt de bediening
-        het volgende nummer uit de officiële Hitster-playlist op Spotify. Zonder playlist wordt vrij op Spotify gezocht.
+        Een extra muziekronde pakt eerst de nummers uit de officiële Hitster-playlist van die editie op Spotify (Spotify moet hier verbonden zijn).
+        Lukt dat niet, of komt er binnen 20 seconden niets, dan schakelt de ronde vanzelf over op de Hitster-Excel. Zijn die ook op, dan wordt vrij op Spotify gezocht.
         Het jaartal wordt gecontroleerd: bij een remaster of verzamelalbum zoekt de bediening het jaar van de eerste uitgave op.
       </p>
       <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:10px;">
@@ -331,6 +337,7 @@
 
     // ---------------- Spiekmeldingen (blijven staan tot de speler terug is) ----------------
     socket.on("cheat_beep", (a) => {
+      if (!soundMe) return; // geluid uitgezet voor dit toestel
       QuizFX.alarm(false);
       if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
     });
@@ -419,6 +426,45 @@
     $("log-refresh").onclick = loadLog;
     $("log-level").onchange = loadLog;
     $("backup-panel").addEventListener("toggle", () => { if ($("backup-panel").open) { loadBackups(); loadLog(); } });
+    // ---------------- Voorbereiding (alleen vóór de start) ----------------
+    const prepDone = (k) => localStorage.getItem("quiz_prep_" + k) === "1";
+    function openPanel(id) { const d = $(id); if (!d) return; d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    function renderPrep(state) {
+      const box = $("prep-panel");
+      box.classList.toggle("hidden", state.phase !== "LOBBY");
+      if (state.phase !== "LOBBY") return;
+      const media = (state.warnings || []).filter((w) => w.startsWith("📁")).length;
+      const other = (state.warnings || []).filter((w) => !w.startsWith("📁")).length;
+      const spOn = QuizSpotify.connected();
+      const items = [
+        { ok: state.tvCount > 0, text: "📺 Tv is verbonden", hint: "Open /host.html op de tv." },
+        { ok: !!state.settings.maxTeams, text: "👥 Maximaal aantal teams ingesteld", panel: "teams-panel" },
+        { ok: prepDone("plan"), text: "🗂️ Rondevolgorde bekeken", panel: "plan-panel", manual: "plan", hint: "Ligt vast na de start; extra rondes kunnen later nog." },
+        { ok: spOn, text: "🎵 Spotify verbonden", panel: "spotify-panel" },
+        { ok: spOn && !!spTarget(), text: "🔊 Afspeelapparaat gekozen en getest", panel: "spotify-panel" },
+        { ok: Object.keys(state.hitsterPlaylists || {}).length > 0, text: `🎶 Hitster-playlists gekoppeld (${Object.keys(state.hitsterPlaylists || {}).length})`, panel: "playlists-panel" },
+        { ok: !other, text: other ? `📋 Vragenlijst: ${other} waarschuwing(en)` : "📋 Vragenlijst zonder waarschuwingen", panel: "quiz-panel" },
+        { ok: !media, text: media ? "🖼️ Foto's of logo's ontbreken (zie bovenin)" : "🖼️ Alle foto's en logo's aanwezig" },
+        { ok: !(state.onlineHost && state.pinIsDefault), text: "🔐 Eigen toegangscode ingesteld", hint: state.onlineHost ? "Zet HOST_PIN in Render." : "Lokaal is 1234 prima." },
+        { ok: prepDone("theme"), text: "🎨 Thema gekozen", panel: "theme-panel", manual: "theme" }
+      ];
+      const n = items.filter((i) => i.ok).length;
+      $("prep-badge").textContent = `(${n} van ${items.length} klaar)`;
+      $("prep-list").replaceChildren(...items.map((i) => {
+        const row = el("div", "line");
+        row.style.cursor = i.panel ? "pointer" : "default";
+        const left = el("span", "", `${i.ok ? "✅" : "⬜"} ${i.text}`);
+        if (i.hint && !i.ok) left.append(el("div", "muted", i.hint));
+        row.append(left);
+        if (i.manual) {
+          const b = el("button", "btn-option btn-small", i.ok ? "Ongedaan" : "Gedaan");
+          b.onclick = (e) => { e.stopPropagation(); localStorage.setItem("quiz_prep_" + i.manual, i.ok ? "0" : "1"); renderPrep(S); };
+          row.append(b);
+        }
+        if (i.panel) row.onclick = () => openPanel(i.panel);
+        return row;
+      }));
+    }
     // ---------------- Teamoverzicht: wat doet elk team nu? ----------------
     function renderTeamOverview(state) {
       const box = $("team-overview");
@@ -576,7 +622,11 @@
         });
       } finally { $("pl-find").disabled = false; }
     };
-    $("s-totals").onchange = () => socket.emit("set_round_totals", { on: $("s-totals").checked });
+    // Spiekgeluid: tv (voor iedereen) en deze bediening (alleen dit toestel)
+    let soundMe = localStorage.getItem("quiz_cheat_sound") !== "off";
+    $("s-sound-me").checked = soundMe;
+    $("s-sound-me").onchange = () => { soundMe = $("s-sound-me").checked; localStorage.setItem("quiz_cheat_sound", soundMe ? "on" : "off"); };
+    $("s-sound-tv").onchange = () => socket.emit("set_cheat_sound", { tv: $("s-sound-tv").checked });
     $("bots-add").onclick = () => socket.emit("add_bots", { n: 3 });
     $("bots-remove").onclick = () => { if (confirm("Alle testteams verwijderen?")) socket.emit("remove_bots"); };
     $("btn-save-settings").onclick = () => socket.emit("update_settings", {
@@ -928,13 +978,21 @@
       }
     }
     async function fetchForPanel(p) {
+      // Eerst de Hitster-playlist; lukt dat niet, dan laat de server de Hitster-Excel gebruiken
+      const viaPlaylist = !!p.playlist;
+      const getTrack = (exclude) => viaPlaylist ? QuizSpotify.fromPlaylist(p.playlist, exclude) : QuizSpotify.randomTrack(p.category, exclude, null);
+      const giveUp = (why) => {
+        trackStatus = `Hitster-playlist lukt niet (${why}). Terugvallen op de Hitster-Excel…`;
+        socket.emit("playlist_failed", { roundId: p.roundId, reason: why }, () => { trackBusy = {}; renderPanel(S); });
+      };
+      if (viaPlaylist && !QuizSpotify.connected()) { if (!trackBusy["fail" + p.roundId]) { trackBusy["fail" + p.roundId] = true; giveUp("Spotify is niet verbonden"); } return; }
       if (p.needStart && !trackBusy["start" + p.roundId]) {
         trackBusy["start" + p.roundId] = true;
-        trackStatus = "Startkaarten zoeken…";
+        trackStatus = viaPlaylist ? "Startkaarten uit de Hitster-playlist pakken…" : "Startkaarten zoeken…";
         const exclude = [...p.exclude];
         const tracks = [];
         for (let n = 0; n < p.needStart; n++) {
-          const track = await QuizSpotify.randomTrack(p.category, exclude, p.playlist);
+          const track = await getTrack(exclude);
           if (!track) break;
           tracks.push(track);
           exclude.push(QuizSpotify.keyOf(track));
@@ -950,6 +1008,9 @@
             }
             renderPanel(S);
           });
+        } else if (viaPlaylist) {
+          giveUp(QuizSpotify.lastError() || "geen startkaarten gevonden");
+          return;
         } else {
           trackStatus = `Geen startkaarten gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken.`;
           delete trackBusy["start" + p.roundId];
@@ -958,16 +1019,17 @@
       }
       if (p.needSong && !trackBusy[p.stepId]) {
         trackBusy[p.stepId] = true;
-        trackStatus = p.playlist ? "Excel-lijst is op: liedje uit de Hitster-playlist pakken…" : "Lokale bibliotheek is op: online een liedje zoeken…";
+        trackStatus = viaPlaylist ? "Liedje uit de Hitster-playlist pakken…" : "Hitster-Excel is op: online een liedje zoeken…";
         const exclude = [...p.exclude];
         let accepted = false;
         for (let attempt = 0; attempt < (/^battle/.test(p.category) ? 10 : 3) && !accepted; attempt++) {
-          const track = await QuizSpotify.randomTrack(p.category, exclude, p.playlist);
+          const track = await getTrack(exclude);
           if (!track) break;
           const result = await new Promise((resolve) => socket.emit("provide_track", { stepId: p.stepId, track }, resolve));
           if (result && result.ok) accepted = true;
           else exclude.push(QuizSpotify.keyOf(track));
         }
+        if (!accepted && viaPlaylist) { giveUp(QuizSpotify.lastError() || "geen nieuw nummer in de playlist"); return; }
         if (!accepted) {
           trackBusy[p.stepId] = true; // handmatige herhaalactie voorkomt dat dezelfde mislukte zoekopdracht blijft lopen
           trackStatus = `Geen nieuw passend liedje gevonden. ${QuizSpotify.lastError()} Tik op Opnieuw zoeken, of sla dit liedje over.`;
@@ -1248,7 +1310,8 @@
       renderLibraryUpdate(state);
       fillYcCategories(state);
       $("pl-fill").disabled = state.phase !== "LOBBY" || plFillBusy;
-      if (document.activeElement !== $("s-totals")) $("s-totals").checked = !!state.settings.showRoundTotals;
+      if (document.activeElement !== $("s-sound-tv")) $("s-sound-tv").checked = state.settings.tvCheatSound !== false;
+      renderPrep(state);
       const hasBots = state.teams.some((t) => t.bot);
       $("bots-add").disabled = state.phase !== "LOBBY";
       $("bots-remove").disabled = !hasBots;

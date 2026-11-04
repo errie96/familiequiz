@@ -4,7 +4,7 @@ Bijgewerkt: 3 november 2026
 
 ## In het kort
 
-De familiequiz begint met een teamfoto en bestaat verder uit drie testvragen, een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand de totaalstand (tenzij de quizmaster de tussenstand aanzet); de uitslag komt pas aan het einde.
+De familiequiz begint met drie testvragen, daarna een teamfoto, en bestaat verder uit een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand de totaalstand (tenzij de quizmaster de tussenstand aanzet); de uitslag komt pas aan het einde.
 
 Er zijn drie schermen, alle drie in de browser:
 
@@ -42,10 +42,10 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 De volgorde ligt vast. Elk scherm hieronder komt na een druk op de grote knop van de bediening.
 
 1. **Welkomstpagina en lobby.** Eerst de welkomstpagina; na een druk op de knop het aanmeldscherm met de QR-code en de aangemelde teams. De quizmaster start met "Start de quiz" zodra alle teams binnen zijn.
-2. **Teamfoto.** Teams kunnen dit al in de lobby doen; elke nieuwe foto verschijnt dan groot naast de QR-code. Op dit scherm maakt de basistelefoon van elk team dat nog geen foto heeft de foto: de groene knop opent direct de camera, "Uit galerij" kiest een bestaande foto. De tv toont alle teams en zet een groen vinkje bij elk team waarvan de foto binnen is. Een team kan ook *Overslaan* kiezen. De grote knop wordt pas "Volgende" als alle teams klaar zijn; met "Toch doorgaan" ga je eerder verder. Een foto vervangen kan later nog in het teamblok op de telefoon, en in de bediening kun je een foto verwijderen.
-3. **Rondeoverzicht en uitleg per ronde.** Eerst alle rondes op een rij, daarna per ronde een uitlegscherm.
-4. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
-5. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
+2. **Rondeoverzicht en uitleg per ronde.** Eerst alle rondes op een rij, daarna per ronde een uitlegscherm.
+3. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
+4. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
+5. **Teamfoto.** Na de testvragen (als duidelijk is dat alles werkt) maakt elke basistelefoon de teamfoto: de groene knop opent direct de camera, "Uit galerij" kiest een bestaande foto, "Overslaan" kan ook. De tv toont alle teams met een groen vinkje zodra de foto binnen is. De grote knop wordt pas "Volgende" als alle teams klaar zijn; met "Toch doorgaan" ga je eerder verder. Daarvoor en daarna kan een team de foto niet aanpassen (de quizmaster kan er in de bediening een verwijderen).
 6. **Joker.** Elk team kiest op de basistelefoon de ronde waarin het verwacht het best te scoren. Die ronde telt aan het eind dubbel. De tv laat zien op welke ronde elk team de joker zet. Je kunt pas verder als iedereen gekozen heeft.
 7. **Infoscherm: Hier begint de echte quiz.** Vanaf nu telt alles mee.
 8. **Ronde 1 tot en met 8.** Elke ronde begint met een tussenpagina: "Nu gaan we door naar…", tromgeroffel, en dan springt de rondenaam in beeld met uitleg en "Hier kun je 100 punten verdienen". Daarna volgt een oefenronde die niet meetelt, het scherm "Nu begint het echt!" en dan de echte vragen. Bij ronde 1 komt er ook een tussenpagina voor elke nieuwe categorie. Volgorde en aantal rondes stel je vooraf in de bediening in.
@@ -205,7 +205,7 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Bediening tijdens het spel.** De grote knop en de rij teams blijven bovenaan staan als je naar beneden scrolt. In die rij zie je per team: ✓ heeft geantwoord, ⏳ nog bezig, 📵 basistelefoon offline, 🕵️ aantal keer weggekeken. Ingrijpende acties (vorige stap, vraag laten vervallen of goed rekenen, overslaan, springen, reset) vragen eerst om bevestiging. De noodknoppen staan apart in een rood omkaderd blok.
 
-**Telefoons.** Bovenaan staat altijd of een telefoon de basistelefoon is (⭐ goud) of een meekijk-telefoon. Na indienen verschijnt "✅ Ingediend en opgeslagen" met de tijd. Valt de wifi weg, dan blijft het antwoord bewaard en gaat het na het herverbinden vanzelf alsnog, zolang de vraag nog openstaat.
+**Telefoons.** Na indienen verschijnt "✅ Ingediend!". Valt de wifi weg, dan blijft het antwoord bewaard en gaat het na het herverbinden vanzelf alsnog, zolang de vraag nog openstaat.
 
 **Reservekopieën en logboek.** In het blok 🛟 maakt de app elke 5 minuten (en bij start, einde, uploads en vóór een reset) een kopie van alles: stand, geschiedenis, teamfoto's, playlists, vragenlijst en Hitster-bibliotheek. Download na de quiz een zip. Gaat er iets mis, kijk dan in het logboek: daar staat wat er gebeurde en welke fout er was.
 
@@ -233,11 +233,15 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Rondevolgorde.** In het blokje Rondes zet je vóór de start de rondes in de gewenste volgorde en zet je rondes aan of uit.
 
-**Extra rondes.** Onder het rondeplan kun je 30 Seconds, tekenen of de muziek nog een keer laten spelen, vooraf of later tijdens de quiz. Tijdens de quiz komt de extra ronde direct na de huidige ronde. Een extra ronde is net zoveel punten waard als elke andere ronde en heeft geen oefenronde. Bij een extra muziekronde kies je een Hitster-editie (Battle of the Generations in drie tijdvakken: t/m 1984, 1985–2004, 2005–2025) of een eigen lijst (80s & 90s, 00s & 10s). De nummers staan in het losse bestand Hitster-bibliotheek.xlsx, één tabblad per editie; de keuzelijst toont hoeveel nummers er klaarstaan. Zijn die op, dan pakt de bediening de liedjes en startkaarten uit de officiële Hitster-playlist van die editie op Spotify (al gekoppeld; te wijzigen in het blok 🎶 Hitster-playlists per editie), en anders zoekt hij zelf op Spotify; zonder Spotify-koppeling wordt een iTunes-fragment van 30 seconden op de tv afgespeeld. Laat Spotify verbonden: dan controleert de bediening bij elk nummer het jaartal (eerste uitgave) voordat het antwoord getoond wordt. Een extra muziekronde valt altijd terug op de Hitster-Excel, nooit op R4 Muziek: eerst een eigen (geüploade) bibliotheek, daarna de meegeleverde Hitster-bibliotheek.xlsx voor dezelfde categorie, daarna de playlist. De vaste muziekronde (R4) komt altijd uit de vragenlijst. De tijdlijnen beginnen opnieuw, en liedjes, tekenwoorden en 30 Seconds-kaarten die al gespeeld zijn komen niet nog een keer. Een extra ronde die nog niet begonnen is, kun je weer verwijderen.
+**Extra rondes.** Onder het rondeplan kun je 30 Seconds, tekenen of de muziek nog een keer laten spelen, vooraf of later tijdens de quiz. Tijdens de quiz komt de extra ronde direct na de huidige ronde. Een extra ronde is net zoveel punten waard als elke andere ronde en heeft geen oefenronde. Bij een extra muziekronde kies je een Hitster-editie (Battle of the Generations in drie tijdvakken: t/m 1984, 1985–2004, 2005–2025) of een eigen lijst (80s & 90s, 00s & 10s). Eerst komen de liedjes en startkaarten uit de officiële Hitster-playlist van die editie op Spotify (de bediening moet met Spotify verbonden zijn). Lukt dat niet, bijvoorbeeld omdat Spotify niet verbonden is of de bediening dicht is, dan schakelt de ronde na hooguit 20 seconden vanzelf over op de Hitster-Excel (Hitster-bibliotheek.xlsx, één tabblad per editie); de keuzelijst toont hoeveel nummers daar klaarstaan. Zijn die ook op, dan zoekt de bediening zelf op Spotify; zonder Spotify-koppeling wordt een iTunes-fragment van 30 seconden op de tv afgespeeld. Laat Spotify verbonden: dan controleert de bediening bij elk nummer het jaartal (eerste uitgave) voordat het antwoord getoond wordt. Bij de Excel gaat een eigen (geüploade) bibliotheek voor de meegeleverde; R4 Muziek wordt nooit gebruikt. De vaste muziekronde (R4) komt altijd uit de vragenlijst. De tijdlijnen beginnen opnieuw, en liedjes, tekenwoorden en 30 Seconds-kaarten die al gespeeld zijn komen niet nog een keer. Een extra ronde die nog niet begonnen is, kun je weer verwijderen.
 
 **Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten.
 
-**Tussenstand op tv.** Bovenin het blokje Scores staat de schakelaar "Tussenstand op tv na elke ronde". Uit (standaard): bij "Dit was ronde…" ziet iedereen alleen de punten van die ronde, de totaalstand blijft geheim tot de ontknoping. Aan: ook het totaal per team. De schakelaar werkt altijd, ook midden in de quiz.
+**De stand blijft geheim.** Bij "Dit was ronde…" ziet iedereen alleen de punten van die ronde; de totaalstand blijft geheim tot de ontknoping. Bij de prijzenronde komen de bedragen niet op de tv; die zie je bij het nakijken.
+
+**Spiekgeluid.** Onder Instellingen kun je het alarmgeluid bij spiekmeldingen apart uitzetten op de tv en op je eigen bediening. De melding zelf blijft zichtbaar.
+
+**Pauze.** Tijdens de pauze loopt op de tv een diavoorstelling met alle teamfoto's.
 
 **Oefenen met testteams.** In het blok Teams voegt "+3 testteams" robots toe (🤖 Robot Appel, Peer, …). Ze maken geen foto, kiezen een joker en geven zelf antwoorden: willekeurig en ongeveer de helft goed. Zo kunnen de quizmasters samen de hele quiz doorlopen, inclusief beoordelen, de muziekronde en de ontknoping, zonder telefoons. Toevoegen kan alleen vóór de start; een oefenquiz met testteams komt niet in de quizgeschiedenis. Verwijder de testteams (of gebruik Reset) voordat de echte quiz begint.
 

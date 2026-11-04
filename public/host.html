@@ -322,6 +322,7 @@
       <div class="huge">☕ 🍕 🍷</div>
       <h1 class="tv-title" style="color:#f59e0b;" data-t="pauze.titel">Pauze!</h1>
       <p class="tv-sub" data-t="pauze.tekst">Even bijkletsen en de glazen bijvullen.</p>
+      <div id="pause-show" class="lobby-spot" style="margin-top:3vh;"></div>
     </section>
   </main>
 
@@ -352,6 +353,7 @@
 
     // ---------- Spiekmeldingen: blijven staan tot de speler weer kijkt ----------
     let shownAlerts = new Set();
+    let cheatSoundOn = true; // in de bediening uit te zetten
     function renderAlerts(list) {
       const box = $("tv-alerts");
       box.replaceChildren();
@@ -361,7 +363,7 @@
         const d = el("div", "tv-alert");
         d.textContent = `⚠️ ${a.label} (${a.teamName}): scherm vergrendeld of app verlaten`;
         box.appendChild(d);
-        if (!shownAlerts.has(a.key)) QuizFX.alarm(false);
+        if (!shownAlerts.has(a.key) && cheatSoundOn) QuizFX.alarm(false);
       });
       shownAlerts = keys;
     }
@@ -553,10 +555,8 @@
       const box = $("price-result");
       box.replaceChildren();
       if (s.status === "revealed") {
-        const head = el("div", "chips-row");
-        head.append(el("span", "tchip", `Nu: ${QuizFX.euro(s.truth.now)}`), el("span", "tchip", `${s.agoYears} jaar geleden: ${QuizFX.euro(s.truth.ago)}`));
-        head.style.fontWeight = "bold";
-        box.append(head);
+        // De bedragen blijven geheim: die komen pas bij het nakijken
+        box.append(el("p", "tv-sub", "🔒 Antwoorden zijn binnen. De prijzen blijven nog even geheim!"));
       }
     }
 
@@ -910,6 +910,26 @@
     // ---------- Automatisch passend maken op elk schermformaat ----------
     // Past de inhoud niet in het beschikbare vlak, dan wordt het hele scherm (de actieve view) kleiner geschaald.
     let fitTimer = null;
+    // ---------- Pauze: diavoorstelling met de teamfoto's ----------
+    let pauseTimer = null, pauseIdx = 0, pauseKey = null;
+    function stopPauseShow() { clearInterval(pauseTimer); pauseTimer = null; pauseKey = null; }
+    function startPauseShow(style) {
+      const list = Object.entries(style).filter(([, v]) => v.photo).map(([name, v]) => ({ name, ...v }));
+      const key = list.map((x) => x.name + x.photo).join("|");
+      if (key === pauseKey) return;
+      stopPauseShow();
+      pauseKey = key;
+      const box = $("pause-show");
+      if (!list.length) { box.replaceChildren(); return; }
+      const show = () => {
+        const t = list[pauseIdx % list.length];
+        box.replaceChildren(QuizFX.avatar(t.name, t.photo, "clamp(150px, 22vw, 440px)", t.color), el("div", "spot-name", t.name));
+        box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop");
+        pauseIdx++;
+      };
+      show();
+      pauseTimer = setInterval(show, 4500);
+    }
     // ---------- Rondeovergang ----------
     let lastRoundHeader = null;
     function maybeCurtain(state) {
@@ -967,6 +987,7 @@
       const step = state.step;
       const inQuiz = state.phase === "PLAY";
       TEAMSTYLE = state.teamStyle || {};
+      cheatSoundOn = state.cheatSound !== false;
       chipStep = step ? step.id : state.phase;
       QuizFX.applyTheme(state.theme);
       QuizFX.setTexts(state.texts);
@@ -1012,7 +1033,8 @@
 
 
       // Overlays hebben voorrang op de gewone schermen
-      if (state.phase === "PLAY" && state.paused) return showView("v-pause");
+      if (state.phase === "PLAY" && state.paused) { showView("v-pause"); startPauseShow(state.teamStyle || {}); return; }
+      stopPauseShow();
       if (state.review && state.review.data) {
         showView("v-review");
         $("review-title").textContent = state.review.data.title;

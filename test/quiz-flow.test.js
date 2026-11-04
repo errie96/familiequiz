@@ -26,10 +26,11 @@ test('pregame order shows round overview and explanations before tests and joker
   });
 
   const ids = steps.map((step) => step.id);
-  assert.equal(ids[0], 'teamphoto'); // teamfoto direct na het aanmelden
-  assert.equal(ids[1], 'rounds_overview');
-  assert.equal(ids[2], 'round_guide_1');
-  assert.ok(ids.indexOf('teamphoto') < ids.indexOf('test_1'));
+  assert.equal(ids[0], 'rounds_overview');
+  assert.equal(ids[1], 'round_guide_1');
+  // teamfoto pas na de testvragen (eerst kijken of alles werkt), vóór de joker
+  assert.ok(ids.indexOf('test_1') < ids.indexOf('teamphoto'));
+  assert.ok(ids.indexOf('teamphoto') < ids.indexOf('joker'));
   assert.ok(ids.indexOf('test_intro') < ids.indexOf('test_1'));
   assert.ok(ids.indexOf('test_1') < ids.indexOf('joker'));
   assert.ok(ids.indexOf('joker') < ids.indexOf('real_start'));

@@ -123,7 +123,7 @@ const DEFAULT_SETTINGS = {
   hitsterTarget: 10,         // muziekronde stopt zodra een team zoveel kaarten in de tijdlijn heeft
   maxTeams: 0,               // maximaal aantal teams (0 = nog niet ingesteld); de host vult dit vooraf in
   finalMaxWager: 100,        // slotvraag: maximale inzet (teams kennen hun stand niet)
-  showRoundTotals: false,    // na elke ronde op de tv ook het totaal (tussenstand) tonen; altijd te wijzigen
+  tvCheatSound: true,        // alarmgeluid op de tv bij een spiekmelding
   theme: 'standaard',        // uiterlijk: standaard, winter, kerst, oudennieuw, zomer, halloween
   roundPlan: null,           // volgorde, aan/uit en "in 2 delen" per ronde (wordt in de bediening ingesteld)
   memorySeconds: 120,
@@ -139,7 +139,7 @@ function sanitizeSettings(input, base) {
     if (Array.isArray(src[k]) && src[k].length >= 1 && src[k].length <= len && src[k].every((n) => Number.isInteger(n) && n >= 0 && n <= 100)) out[k] = src[k];
   };
   if (typeof src.timerEnabled === 'boolean') out.timerEnabled = src.timerEnabled;
-  if (typeof src.showRoundTotals === 'boolean') out.showRoundTotals = src.showRoundTotals;
+  if (typeof src.tvCheatSound === 'boolean') out.tvCheatSound = src.tvCheatSound;
   int('roundPoints', 10, 1000);
   int('defaultTime', 5, 300);
   int('memorySeconds', 20, 900);
@@ -343,8 +343,10 @@ function extraOptions() {
     rounds: list.filter((r) => EXTRA_TYPES.includes(r.type)).map((r) => ({ id: r.id, title: r.title, type: r.type })),
     categories: Object.entries(HITSTER_CATS).map(([id, name]) => {
       const n = ((baseRaw && baseRaw.hitsterLibrary) || []).filter((song) => (song.category || 'original') === id).length;
-      const after = hitsterPlaylists[id] ? 'Hitster-playlist' : 'Spotify zoeken';
-      return { id, name: `${name} · ${n ? `${n} uit de Excel, daarna ${after}` : after}`, count: n };
+      const label = hitsterPlaylists[id]
+        ? `eerst Hitster-playlist${n ? `, daarna ${n} uit de Excel` : ', daarna Spotify zoeken'}`
+        : (n ? `${n} uit de Excel, daarna Spotify zoeken` : 'Spotify zoeken');
+      return { id, name: `${name} · ${label}`, count: n };
     })
   };
 }
@@ -357,6 +359,21 @@ function replan(order) {
 }
 let dynSongs = {};  // liedjes die de bediening online vindt (id -> liedje)
 let dynStart = {};  // rondeId -> online startkaarten
+// Extra muziekrondes: eerst de officiële Hitster-playlist op Spotify, pas als die niet lukt (geen Spotify-verbinding,
+// playlist niet bereikbaar of op) de Hitster-Excel. Per ronde onthouden we of de playlist is mislukt.
+let playlistFailed = {}; // rondeId -> reden
+const playlistFirst = (round) => !!(round && round.dynamic && hitsterPlaylists[round.category] && !playlistFailed[round.id]);
+function failPlaylist(roundId, reason) {
+  if (playlistFailed[roundId]) return;
+  playlistFailed[roundId] = String(reason || 'onbekend').slice(0, 200);
+  LOG.warn('playlist_terugval_excel', { ronde: roundId, reden: playlistFailed[roundId] });
+  const step = cur();
+  if (step && step.kind === 'song' && step.round === roundId) {
+    const s = ss(step);
+    Object.values(teams).forEach((team) => ensureTimeline(team, roundId));
+    if (s.status === 'loading' && songOf(step) && dynamicStartReady(roundId)) s.status = 'open';
+  }
+}
 let teamPhotos = {};  // teamId -> { dataUrl, v }: vaste teamfoto, bewaard in data/teamphotos.json
 const validPhoto = (d) => typeof d === 'string' && d.length <= MAX_PHOTO_CHARS && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d);
 // Vaste teamkleur: elk team krijgt bij het aanmelden de eerste vrije kleur uit dit palet
@@ -408,7 +425,7 @@ function cleanTrack(t) {
 function usedSongKeys() {
   const keys = new Set();
   steps.forEach((x) => { const id = x.kind === 'song' && ssAll[x.id] && ssAll[x.id].songId; if (id && songs[id]) keys.add(songs[id].key); });
-  Object.values(roundById).forEach((round) => (round.startIds || []).forEach((id) => { if (songs[id]) keys.add(songs[id].key); }));
+  Object.values(roundById).forEach((round) => { if (!playlistFirst(round)) (round.startIds || []).forEach((id) => { if (songs[id]) keys.add(songs[id].key); }); });
   Object.values(dynStart).flat().forEach((id) => { if (songs[id]) keys.add(songs[id].key); });
   rejectedKeys.forEach((k) => keys.add(k));
   return [...keys];
@@ -870,6 +887,7 @@ function songOf(step) {
   if (step.dynamic) {
     if (s.songId && songs[s.songId]) return songs[s.songId];
     const round = roundById[step.round];
+    if (playlistFirst(round)) { if (!s.waitSince) s.waitSince = Date.now(); return null; } // de bediening haalt een nummer uit de playlist
     const used = new Set(usedSongKeys());
     const primary = (round && round.pool || []).filter((id) => songs[id] && !used.has(songs[id].key));
     const fallback = (round && round.fallbackPool || []).filter((id) => songs[id] && !used.has(songs[id].key));
@@ -912,7 +930,12 @@ function revealSong(step) {
 // Elke muziekronde heeft een eigen tijdlijn per team (een extra ronde begint opnieuw met startkaarten)
 function dynamicStartIds(roundId) {
   const round = roundById[roundId];
-  return [...(round && round.startIds || []), ...(dynStart[roundId] || [])];
+  const online = dynStart[roundId] || [];
+  if (playlistFirst(round)) return [...online]; // startkaarten komen uit de playlist
+  // terugval: eerst wat er al uit de playlist kwam, aangevuld met de startkaarten uit de Excel
+  const seen = new Set(online.map((id) => songs[id] && songs[id].key));
+  const fromExcel = (round && round.startIds || []).filter((id) => songs[id] && !seen.has(songs[id].key));
+  return [...online, ...fromExcel].slice(0, Math.max(online.length, (round && round.startCards) || 2));
 }
 function dynamicStartReady(roundId) {
   const round = roundById[roundId];
@@ -1333,7 +1356,7 @@ function saveNow() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart, gameId, yearFixes, rejectedKeys, awardStats,
+      phase, stepIndex, paused, reveal, revealN, lobbyStage, endView, settings, seq, ssAll, dynSongs, dynStart, gameId, yearFixes, rejectedKeys, awardStats, playlistFailed,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams,
       undoHistory,
@@ -1374,6 +1397,7 @@ function loadSaved() {
   gameId = typeof data.gameId === 'string' ? data.gameId : null;
   dynSongs = data.dynSongs && typeof data.dynSongs === 'object' ? data.dynSongs : {};
   dynStart = data.dynStart && typeof data.dynStart === 'object' ? data.dynStart : {};
+  playlistFailed = data.playlistFailed && typeof data.playlistFailed === 'object' ? data.playlistFailed : {};
   compileQuiz(content.warnings);
   ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
   undoHistory = Array.isArray(data.undoHistory) ? data.undoHistory.slice(-UNDO_LIMIT) : [];
@@ -1442,11 +1466,8 @@ function publicStep(step) {
       return out; // het antwoord staat alleen op de telefoons, niet op de tv
     }
     case 'price': {
-      const out = { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, teams: teamChips(step) };
-      if (s.status === 'revealed') {
-        out.truth = { now: step.now, ago: step.ago };
-      }
-      return out;
+      // De bedragen komen bewust niet op de tv (ook niet na het sluiten): die blijven voor het nakijken
+      return { ...base, status: s.status, name: step.name, unit: step.unit, emoji: step.emoji, agoYears: step.agoYears, teams: teamChips(step) };
     }
     case 'draw': {
       const turn = s.turns[s.turn];
@@ -1485,8 +1506,8 @@ function publicStep(step) {
     }
     case 'roundresult': {
       const round = roundById[step.round];
-      const rows = roundStandings(round).map((r) => (settings.showRoundTotals ? r : { ...r, total: null }));
-      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), showTotals: !!settings.showRoundTotals, rows };
+      const rows = roundStandings(round).map((r) => ({ ...r, total: null })); // de totaalstand blijft geheim tot de ontknoping
+      return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, max: roundPoints(round), showTotals: false, rows };
     }
     case 'teamphoto':
       return { ...base, teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), skipped: !!s.skipped[t.teamId], connected: teamConnected(t) })) };
@@ -1529,7 +1550,8 @@ function hostPanel(step) {
       if (!song || s.status === 'loading') {
         const round = roundById[step.round];
         return { type: 'song', status: 'loading', dynamic: true, stepId: step.id, roundId: step.round, category: round.category, categoryName: HITSTER_CATS[round.category],
-          playlist: hitsterPlaylists[round.category] ? hitsterPlaylists[round.category].id : null,
+          playlist: playlistFirst(round) ? hitsterPlaylists[round.category].id : null,
+          playlistFailed: playlistFailed[round.id] || null,
           needSong: !s.songId, needStart: Math.max(0, (round.startCards || 2) - dynamicStartIds(step.round).length), exclude: usedSongKeys() };
       }
       const round = roundById[step.round];
@@ -1743,6 +1765,7 @@ function broadcastState() {
 
   io.to('tv_room').emit('state_update', {
     ...common,
+    cheatSound: settings.tvCheatSound !== false,
     end: common.end && reveal === 'done' && endView === 'album' ? { ...common.end, album: album() } : common.end, // tekeningen alleen naar de tv
     step: step ? publicStep(step) : null,
     teamList: Object.values(teams).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
@@ -1771,6 +1794,7 @@ function broadcastState() {
     hitsterPlaylists,
     libraryDownload: `/download/Hitster-bibliotheek.xlsx?t=${DOWNLOAD_TOKEN}`,
     downloadToken: DOWNLOAD_TOKEN,
+    pinIsDefault: HOST_PIN === '1234', onlineHost: ON_RENDER,
     libraryUpdate,
     quiz: { ...quizSource, steps: steps.length, rounds: rounds.length, library: librarySource, librarySongs: (baseRaw.hitsterLibrary || []).length },
     plan: planView(), extraOptions: extraOptions(), themes: THEMES,
@@ -2464,6 +2488,14 @@ function onConnection(socket) {
     reply({ ok: true });
     sync();
   });
+  // De bediening kan geen nummers uit de playlist halen: terugvallen op de Hitster-Excel
+  socket.on('playlist_failed', ({ roundId, reason } = {}, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!roundById[roundId] || !roundById[roundId].dynamic) return reply({ ok: false });
+    failPlaylist(roundId, reason);
+    reply({ ok: true });
+    sync();
+  });
   socket.on('provide_start', ({ roundId, tracks } = {}, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
     if (!isRemote(socket) || !roundById[roundId] || !roundById[roundId].dynamic || !Array.isArray(tracks)) return reply({ ok: false, reason: 'invalid_round' });
@@ -2496,6 +2528,8 @@ function onConnection(socket) {
     const team = device && teams[device.teamId];
     if (!team) return reply({ ok: false, message: 'Je zit niet (meer) in een team.' });
     if (team.baseDeviceId !== device.deviceId) return reply({ ok: false, message: 'Alleen de basistelefoon kan de teamfoto aanpassen.' });
+    const now = cur();
+    if (phase !== 'PLAY' || paused || !now || now.kind !== 'teamphoto') return reply({ ok: false, message: 'De teamfoto maken we samen op het teamfotomoment, na de testvragen.' });
     if (dataUrl !== null && !validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
     setTeamPhoto(team.teamId, dataUrl);
     reply({ ok: true });
@@ -2801,7 +2835,7 @@ function onConnection(socket) {
     if (!isRemote(socket)) return;
     backupNow('voor-reset', true); // eerst een kopie: een reset is anders definitief
     phase = 'LOBBY'; stepIndex = 0; paused = false; showStandings = false; review = null; reveal = 'idle'; revealN = 0; lobbyStage = 'welcome'; endView = 'ranking';
-    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; teamPhotos = {}; rejectedKeys = []; awardStats = {}; Object.keys(botSockets).forEach((k) => delete botSockets[k]); serverErrors.length = 0; undoHistory = []; gameId = null;
+    ssAll = {}; teams = {}; devices = {}; alerts = {}; dynSongs = {}; dynStart = {}; playlistFailed = {}; teamPhotos = {}; rejectedKeys = []; awardStats = {}; Object.keys(botSockets).forEach((k) => delete botSockets[k]); serverErrors.length = 0; undoHistory = []; gameId = null;
     timerClear();
     // Een reset is bewust definitief: voorkom dat een oude reservekopie de vorige quiz terugzet.
     try { removeStateFiles(STATE_FILE); removeStateFiles(PHOTOS_FILE); } catch (e) { console.error('Opschonen van quizopslag mislukt:', e.message); }
@@ -2935,9 +2969,10 @@ function onConnection(socket) {
     }
     sync();
   });
-  socket.on('set_round_totals', ({ on } = {}) => {
+  // Geluid van spiekmeldingen op de tv aan/uit (altijd te wijzigen)
+  socket.on('set_cheat_sound', ({ tv } = {}) => {
     if (!isRemote(socket)) return;
-    settings.showRoundTotals = !!on;
+    settings.tvCheatSound = !!tv;
     sync();
   });
   // Testteams (robots) om de quiz te oefenen zonder echte telefoons
@@ -3060,6 +3095,13 @@ if (require.main === module) {
       console.log(`Let op: HOST_PIN is niet ingesteld. Deze code is willekeurig gekozen en bewaard in ${HOST_CODE_FILE}.`);
       console.log('Zet liever zelf HOST_PIN in de instellingen van Render (bijv. drie woorden met streepjes).');
     }
+    // Waakhond: komt er binnen 20 seconden geen nummer uit de playlist (bijv. bediening dicht), dan de Excel
+    setInterval(() => {
+      const step = phase === 'PLAY' && !paused ? cur() : null;
+      if (!step || step.kind !== 'song' || !step.dynamic) return;
+      const round = roundById[step.round], s = ss(step);
+      if (playlistFirst(round) && s.status === 'loading' && s.waitSince && Date.now() - s.waitSince > 20000) { failPlaylist(round.id, "geen nummer uit de playlist binnen 20 seconden"); sync(); }
+    }, 3000);
     LOG.info('server_gestart', { poort: PORT, render: ON_RENDER, hersteld: !!restored });
     backupNow('opstart');
     setInterval(() => backupNow('auto'), 5 * 60e3); // elke 5 minuten, alleen als er iets veranderd is
