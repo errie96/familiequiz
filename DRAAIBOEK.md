@@ -12,7 +12,7 @@ Er zijn drie schermen, alle drie in de browser:
 | --- | --- | --- | --- |
 | Tv | /host.html | Iedereen kijkt mee | Vragen, foto's, logo's, timer, spiekmeldingen. Geen knoppen. |
 | Telefoon | / (hoofdadres) | Elke speler | Team kiezen en antwoorden geven. |
-| Bediening | /bediening.html | Quizmasters, met pincode | Alles bedienen: volgende scherm, beoordelen, pauze, noodknoppen. |
+| Bediening | /bediening.html | Quizmasters, met toegangscode | Alles bedienen: volgende scherm, beoordelen, pauze, noodknoppen. |
 
 Elk team heeft één **basistelefoon**. Alleen die dient antwoorden in. De andere teamleden kijken mee op hun eigen telefoon en overleggen. Uitzonderingen: bij tekenen komt iedereen aan de beurt (tekent de basistelefoon zelf, dan vult een ander teamlid tijdelijk het antwoord in) en bij 30 Seconds legt iedereen een keer uit.
 
@@ -20,7 +20,7 @@ De quizmaster heeft één grote knop die steeds zegt wat de volgende stap is (bi
 
 ## Voorbereiding
 
-Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ronde. Tot vlak voor de start kun je die nog wijzigen; na de start niet meer.
+Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ronde. Tot vlak voor de start kun je die nog wijzigen; na de start niet meer. De nummers voor extra muziekrondes staan apart in **Hitster-bibliotheek.xlsx**; zo is de vragenlijst eenvoudig door anderen te gebruiken.
 
 **Vooraf, in de dagen ervoor**
 
@@ -32,7 +32,7 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 
 1. Start de server. Lokaal met npm start; op Render ruim van tevoren de tv-pagina openen, want het gratis plan heeft een minuut nodig om wakker te worden.
 2. Open op de tv /host.html en druk één keer op OK of klik op het scherm. Anders blokkeert de browser het geluid. Het tv-scherm past zich aan het formaat van de tv of beamer aan: past iets niet, dan wordt het scherm automatisch kleiner gemaakt. De tv vraagt zelf om niet in slaap te vallen; zet op een laptop voor de zekerheid ook de slaapstand en schermbeveiliging uit. Valt de verbinding weg, dan staat rechtsboven op de tv een rode melding tot hij terug is.
-3. Open op je telefoon /bediening.html en vul de pincode in. Rechtsboven in de bediening staat "📺 Tv verbonden" (groen) of "Tv niet verbonden!" (rood): zo zie je meteen of de tv nog meedoet. Controleer in het blokje Vragenlijst (Excel) dat de juiste versie is ingelezen. Nieuwe Excel? Upload hem daar, of vervang het bestand en tik op "Opnieuw inlezen".
+3. Open op je telefoon /bediening.html en vul de toegangscode in (alleen de eerste keer; daarna onthoudt het toestel een sessie, niet de code). Rechtsboven in de bediening staat "📺 Tv verbonden" (groen) of "Tv niet verbonden!" (rood): zo zie je meteen of de tv nog meedoet. Controleer in het blokje Vragenlijst (Excel) dat de juiste versie is ingelezen. Nieuwe Excel? Upload hem daar, of vervang het bestand en tik op "Opnieuw inlezen".
 4. Kijk bovenin de bediening naar waarschuwingen, bijvoorbeeld een vraag zonder foute antwoorden of een liedje zonder jaar (die vragen worden overgeslagen), of een foto, logo of geluidsbestand dat ontbreekt in public/media/ (📁, per ronde).
 5. Op de tv staat eerst de welkomstpagina (tekst uit de Excel, tabblad Teksten). Vul in de bediening bij Teams eerst het maximale aantal teams in (verplicht), tik dan op "Toon het aanmeldscherm" en laat de spelers de QR-code scannen. Is het maximum bereikt, of is de quiz eenmaal begonnen, dan kan niemand meer een nieuw team maken, alleen nog aansluiten bij een bestaand team. Eenmaal begonnen is begonnen. Iedereen vult eerst de eigen naam in en maakt dan een team, of sluit aan bij een bestaand team. Wie het team aanmaakt, is eerst de basistelefoon; het team kan samen een andere telefoon kiezen.
 6. Kies in de bediening het thema (bijvoorbeeld Kerst of Winter) en zet de rondes in de gewenste volgorde (blokje Rondes). Instellingen en de rondevolgorde kun je alleen vóór de start aanpassen; het thema altijd.
@@ -164,6 +164,14 @@ Staan na de slotvraag twee of meer teams gelijk op de eerste plaats, dan volgt a
 
 De knop "Stand" toont op de tv de eindstand als lijst.
 
+**Na de ontknoping** zijn er in de bediening extra knoppen voor de tv:
+
+- **🏅 Prijsjes op tv**: de app reikt zelf awards uit, één kaart tegelijk met tromgeroffel. Per soort ronde het beste team (bijvoorbeeld Beste tekenaars, Muziekkenners), en daarnaast Snelle jongens (vaakst als eerste geantwoord), Durfallen (hoogste inzet bij de slotvraag), Jokermeesters, Spiekkoningen, Net niet (tweede plaats) en Volhouders (laatste plaats).
+- **📷 Fotoalbum op tv**: een diavoorstelling met alle teamfoto's en tekeningen van de avond. Leuk om op de achtergrond te laten lopen.
+- **📤 Uitslag delen**: maakt een plaatje van de eindstand met teamfoto's om in de familie-app te zetten. Spelers hebben dezelfde knop op hun telefoon.
+
+Op het aanmeldscherm staat bij een volgende quiz een **Hall of fame** met de winnaars van eerdere jaren.
+
 ## Punten en spelregels
 
 Elke ronde levert maximaal 100 punten op, hoeveel vragen er ook in zitten. Een team krijgt het percentage van het maximum dat het haalt: 30 van de 50 meerkeuzevragen goed is 60 punten. Bij tekenen en 30 Seconds wordt per team gerekend, zodat grote en kleine teams eerlijk tegen elkaar spelen. Oefenvragen tellen nooit mee. Zo is elke ronde even zwaar en is de joker eerlijk, ook bij extra rondes (die zijn ook 100 punten waard).
@@ -189,14 +197,23 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm, dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
 
+**Instellingen op de telefoon.** Rechtsboven op elke telefoon staat een tandwiel ⚙️. Daar kan een speler de tekst groter maken (handig voor oudere spelers), hoog contrast aanzetten, trillen of 'scherm aan houden' uitzetten en de eigen naam wijzigen. Er staat ook een korte uitleg van het spel. Het menu openen telt niet als spieken.
+
 **Telefoon zonder verbinding.** Valt de wifi van een speler weg, dan krijgt die telefoon een rode balk "Verbinding kwijt" en zijn de knoppen uitgeschakeld tot hij terug is. Een team ziet na indienen een balk "✅ Ingediend!" in de eigen teamkleur (Android-telefoons trillen ook kort bij een nieuwe vraag en bij indienen).
 
 **Pauze.** De pauzeknop zet de quiz stil: timers stoppen, de tv en telefoons tonen een pauzescherm. Valt de server uit, dan blijft alles bewaard en staat de quiz na het herstarten op pauze. Telefoons sluiten vanzelf weer aan.
+
+**Bediening tijdens het spel.** De grote knop en de rij teams blijven bovenaan staan als je naar beneden scrolt. In die rij zie je per team: ✓ heeft geantwoord, ⏳ nog bezig, 📵 basistelefoon offline, 🕵️ aantal keer weggekeken. Ingrijpende acties (vorige stap, vraag laten vervallen of goed rekenen, overslaan, springen, reset) vragen eerst om bevestiging. De noodknoppen staan apart in een rood omkaderd blok.
+
+**Telefoons.** Bovenaan staat altijd of een telefoon de basistelefoon is (⭐ goud) of een meekijk-telefoon. Na indienen verschijnt "✅ Ingediend en opgeslagen" met de tijd. Valt de wifi weg, dan blijft het antwoord bewaard en gaat het na het herverbinden vanzelf alsnog, zolang de vraag nog openstaat.
+
+**Reservekopieën en logboek.** In het blok 🛟 maakt de app elke 5 minuten (en bij start, einde, uploads en vóór een reset) een kopie van alles: stand, geschiedenis, teamfoto's, playlists, vragenlijst en Hitster-bibliotheek. Download na de quiz een zip. Gaat er iets mis, kijk dan in het logboek: daar staat wat er gebeurde en welke fout er was.
 
 **Noodknoppen** in de bediening:
 
 - **Dubbel tikken is veilig:** de grote knop is na een tik even geblokkeerd en een tik die bij een vorig scherm hoort wordt genegeerd. Ook als beide quizmasters tegelijk drukken, wordt er dus nooit een scherm overgeslagen.
 - **Foutje in de quiz:** gaat er in de software iets mis, dan verschijnt bovenin de bediening "Foutje opgevangen …" en loopt de quiz gewoon door. Probeer de actie zo nodig opnieuw.
+- **Alle bediening-toestellen uitloggen:** als iemand de toegangscode heeft afgekeken; daarna moet iedereen de code opnieuw invoeren.
 - **Toch afsluiten zonder te wachten:** als een telefoon hangt en je niet op alle teams wilt wachten.
 - **Vorige stap, of springen naar een ronde.**
 - **Deze stap overslaan.**
@@ -216,7 +233,7 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Rondevolgorde.** In het blokje Rondes zet je vóór de start de rondes in de gewenste volgorde en zet je rondes aan of uit.
 
-**Extra rondes.** Onder het rondeplan kun je 30 Seconds, tekenen of de muziek nog een keer laten spelen, vooraf of later tijdens de quiz. Tijdens de quiz komt de extra ronde direct na de huidige ronde. Een extra ronde is net zoveel punten waard als elke andere ronde en heeft geen oefenronde. Bij een extra muziekronde kies je een categorie zoals in de Hitster-app (Original, Guilty Pleasures, Rock Classics, Nederpop, Summer Party, 80s & 90s, 00s & 10s). Eerst worden de nummers uit het tabblad *Hitster bibliotheek* van die categorie gespeeld (de keuzelijst toont hoeveel er zijn); pas als die op zijn zoekt de bediening de liedjes en startkaarten automatisch op Spotify; zonder Spotify-koppeling wordt een iTunes-fragment van 30 seconden op de tv afgespeeld. De eerste muziekronde komt altijd uit de Excel. Een gevonden nummer telt alleen als het jaartal in de categorie valt en de artiest bij Spotify het juiste genre heeft. De tijdlijnen beginnen opnieuw, en liedjes, tekenwoorden en 30 Seconds-kaarten die al gespeeld zijn komen niet nog een keer. Een extra ronde die nog niet begonnen is, kun je weer verwijderen.
+**Extra rondes.** Onder het rondeplan kun je 30 Seconds, tekenen of de muziek nog een keer laten spelen, vooraf of later tijdens de quiz. Tijdens de quiz komt de extra ronde direct na de huidige ronde. Een extra ronde is net zoveel punten waard als elke andere ronde en heeft geen oefenronde. Bij een extra muziekronde kies je een Hitster-editie (Battle of the Generations in drie tijdvakken: t/m 1984, 1985–2004, 2005–2025) of een eigen lijst (80s & 90s, 00s & 10s). De nummers staan in het losse bestand Hitster-bibliotheek.xlsx, één tabblad per editie; de keuzelijst toont hoeveel nummers er klaarstaan. Zijn die op, dan pakt de bediening de liedjes en startkaarten uit de officiële Hitster-playlist van die editie op Spotify (al gekoppeld; te wijzigen in het blok 🎶 Hitster-playlists per editie), en anders zoekt hij zelf op Spotify; zonder Spotify-koppeling wordt een iTunes-fragment van 30 seconden op de tv afgespeeld. Laat Spotify verbonden: dan controleert de bediening bij elk nummer het jaartal (eerste uitgave) voordat het antwoord getoond wordt. Een extra muziekronde valt altijd terug op de Hitster-Excel, nooit op R4 Muziek: eerst een eigen (geüploade) bibliotheek, daarna de meegeleverde Hitster-bibliotheek.xlsx voor dezelfde categorie, daarna de playlist. De vaste muziekronde (R4) komt altijd uit de vragenlijst. De tijdlijnen beginnen opnieuw, en liedjes, tekenwoorden en 30 Seconds-kaarten die al gespeeld zijn komen niet nog een keer. Een extra ronde die nog niet begonnen is, kun je weer verwijderen.
 
 **Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten.
 
@@ -233,7 +250,11 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 - [ ] Liedjeslijst voor ronde 4 afmaken: 2 startkaarten en minstens 25 liedjes, met het juiste jaar.
 - [ ] Genoeg tekenwoorden (ronde 6) en 30 Seconds-kaarten (ronde 7) voor het aantal spelers.
 - [ ] Spotify koppelen in de bediening, het afspeelapparaat kiezen en een muziekvraag testen.
+- [ ] Hitster-lijsten klaarzetten (bediening, blok 🎶, met Spotify verbonden): eventueel Lijsten bijwerken en Aanvullen, dan Jaartallen controleren (± 20 minuten), daarna de Excel downloaden en in de projectmap/GitHub zetten.
+- [ ] Een extra muziekronde testen met Spotify verbonden (de officiële playlists zijn al gekoppeld; controleer in blok 🎶 of ze werken).
 - [ ] Oefenvragen per ronde nalopen (kolom Oefen? in de Excel).
 - [ ] Oefenquiz met testteams doorlopen met beide quizmasters (tv + bediening), daarna testteams verwijderen.
+- [ ] Online: een lange toegangscode instellen (HOST_PIN, bijv. drie woorden met streepjes).
+- [ ] Na de quiz: in het blok 🛟 een zip van alles downloaden en bewaren.
 - [ ] Generale repetitie met een paar echte telefoons (iPhone en Android), tv en bediening; ook een teamfoto maken.
 - [ ] Voor de avond op Render: betaald plan met schijf aanzetten, anders gaat de stand bij een herstart verloren.

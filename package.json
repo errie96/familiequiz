@@ -7,11 +7,14 @@
     "start": "node server.js",
     "fresh": "node server.js --fresh",
     "vendor": "node scripts/download-vendor.js",
-    "test": "node --test"
+    "test": "node --test",
+    "update-hitster": "node scripts/update-hitster.js"
   },
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

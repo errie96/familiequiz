@@ -17,8 +17,32 @@
     .entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #334155; padding: 8px 4px; }
     .entry button { width: auto; margin: 0; padding: 4px 10px; background: #475569; color: #fff; }
     .row2 { display: flex; gap: 8px; }
+    body { padding-top: 64px; } /* ruimte voor het tandwiel rechtsboven */
+    /* Instellingen van de speler: tekstgrootte en hoog contrast */
+    body.size-1 .card { zoom: 1.2; }
+    body.size-2 .card { zoom: 1.4; }
+    body.contrast { background: #000; }
+    body.contrast .card { background: #000; border: 2px solid #fff; }
+    body.contrast, body.contrast .note, body.contrast .muted, body.contrast p { color: #fff !important; }
+    body.contrast .btn-option { background: #111 !important; color: #fff !important; border: 2px solid #fff !important; }
+    body.contrast .btn-primary { border: 2px solid #fff; }
+    body.contrast input { border: 2px solid #fff !important; background: #000 !important; }
+    #settings-btn { position: fixed; top: 10px; right: 10px; z-index: 45; width: 44px; height: 44px; padding: 0; margin: 0; border-radius: 50%; background: #334155; color: #fff; font-size: 22px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+    #settings-panel { position: fixed; inset: 0; z-index: 55; background: rgba(2,6,23,0.85); display: flex; align-items: flex-start; justify-content: center; padding: 16px; overflow-y: auto; }
+    #settings-panel .sheet { background: #1e293b; border-radius: 14px; padding: 18px; width: 100%; max-width: 520px; margin-top: 30px; }
+    body.contrast #settings-panel .sheet { background: #000; border: 2px solid #fff; }
+    #settings-panel h3 { margin: 16px 0 6px; font-size: 17px; }
+    .seg { display: flex; gap: 6px; }
+    .seg button { margin: 0; flex: 1; background: #334155; color: #fff; font-size: 15px; }
+    .seg button.on { background: #2563eb; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #334155; }
+    .toggle-row input { width: 26px; height: 26px; flex: none; }
     #offline-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; background: #dc2626; color: #fff; font-weight: bold; text-align: center; padding: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
     body.offline #view button, body.offline #view input, body.offline #team-panel button { pointer-events: none; opacity: 0.45; }
+    #pending-flag { border-radius: 12px; padding: 12px; margin-bottom: 12px; text-align: center; font-weight: bold; background: #b45309; color: #fff; }
+    #role-bar { border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    #role-bar.base { background: linear-gradient(90deg, #a16207, #ca8a04); color: #fff; font-weight: bold; }
+    #role-bar.member { background: #1e3a5f; color: #dbeafe; }
     #submitted-flag { border-radius: 12px; padding: 14px; margin-bottom: 12px; text-align: center; font-weight: bold; font-size: 20px; color: #fff; animation: sub-in 0.4s ease-out; }
     @keyframes sub-in { from { transform: scale(0.85); opacity: 0; } to { transform: none; opacity: 1; } }
     .row2 > * { flex: 1; }
@@ -27,6 +51,46 @@
   </style>
 </head>
 <body>
+  <button id="settings-btn" aria-label="Instellingen">⚙️</button>
+  <div id="settings-panel" class="hidden" role="dialog" aria-label="Instellingen">
+    <div class="sheet">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="margin:0;">⚙️ Instellingen</h2>
+        <button id="settings-close" class="btn-option" style="width:auto; margin:0; padding:8px 14px;">✕ Sluiten</button>
+      </div>
+      <p class="note" style="margin-top:4px;">Deze instellingen gelden alleen voor deze telefoon.</p>
+
+      <h3>🔠 Tekstgrootte</h3>
+      <div class="seg" id="set-size">
+        <button data-v="0" style="font-size:15px;">A<br><small>Normaal</small></button>
+        <button data-v="1" style="font-size:19px;">A<br><small>Groot</small></button>
+        <button data-v="2" style="font-size:23px;">A<br><small>Extra groot</small></button>
+      </div>
+
+      <h3>👁️ Weergave en meldingen</h3>
+      <label class="toggle-row"><span><b>Hoog contrast</b><br><span class="note">Zwart-wit met duidelijke randen, makkelijker te lezen.</span></span><input type="checkbox" id="set-contrast"></label>
+      <label class="toggle-row"><span><b>Trillen</b><br><span class="note">Kort trillen bij een nieuwe vraag en na indienen (Android).</span></span><input type="checkbox" id="set-vibrate"></label>
+      <label class="toggle-row"><span><b>Scherm aan houden</b><br><span class="note">Voorkomt dat de telefoon in slaap valt tijdens de quiz. Uitzetten spaart batterij.</span></span><input type="checkbox" id="set-awake"></label>
+
+      <div id="set-me" class="hidden">
+        <h3>🙋 Mijn naam</h3>
+        <div class="row2"><input type="text" id="set-name" maxlength="16" style="margin:0;"><button id="set-name-save" class="btn-primary" style="width:auto; margin:0; padding:10px 16px;">Opslaan</button></div>
+        <p id="set-name-msg" class="note" style="margin-top:6px;"></p>
+        <h3>👥 Mijn team</h3>
+        <p class="note" id="set-team-info"></p>
+      </div>
+
+      <h3>❓ Hoe werkt het?</h3>
+      <div class="note" style="line-height:1.5;">
+        • Elk team heeft één <b>basistelefoon</b>: alleen die geeft de antwoorden. De andere telefoons kijken mee.<br>
+        • Kijk naar het <b>grote scherm</b> voor de vragen, foto's en de uitslag.<br>
+        • Blijf in deze app tijdens een vraag: wegklikken wordt gemeld als <b>spieken</b>.<br>
+        • Valt de verbinding weg? Gewoon wachten, de app maakt zelf opnieuw verbinding.<br>
+        • Lege batterij van de basistelefoon? Vraag de quizmaster een andere telefoon basis te maken.
+      </div>
+      <p class="note" id="set-conn" style="margin-top:12px;"></p>
+    </div>
+  </div>
   <div id="offline-bar" class="hidden">📡 Verbinding kwijt, even geduld… (antwoorden kan pas als hij terug is)</div>
   <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
 
@@ -76,7 +140,9 @@
         <span class="badge" id="team-badge" style="background:#2563eb;"></span>
         <span class="badge hidden" id="timer-badge">⏱</span>
       </div>
-      <div id="submitted-flag" class="hidden">✅ Ingediend!<div style="font-size:14px; font-weight:normal; margin-top:4px;">Wachten op de andere teams…</div></div>
+      <div id="role-bar" class="hidden"></div>
+      <div id="pending-flag" class="hidden">⏳ Antwoord wordt verstuurd…<div style="font-size:13px; font-weight:normal; margin-top:2px;">Valt de verbinding weg? Je antwoord blijft bewaard en gaat vanzelf alsnog.</div></div>
+      <div id="submitted-flag" class="hidden">✅ Ingediend en opgeslagen!<div id="submitted-sub" style="font-size:14px; font-weight:normal; margin-top:4px;">Wachten op de andere teams…</div></div>
       <div id="view"></div>
 
       <div id="team-panel" class="hidden" style="margin-top:18px; border-top:1px solid #334155; padding-top:12px;">
@@ -135,11 +201,47 @@
     const SCREENS = ["join-screen", "game-screen", "pause-screen", "standings-screen", "look-screen"];
     function showScreen(id) { SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id)); }
 
+    // ---------------- Instellingen van deze telefoon ----------------
+    const PREF_KEY = "fq_prefs";
+    const prefs = Object.assign({ size: 0, contrast: false, vibrate: true, awake: true }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } })());
+    function applyPrefs() {
+      document.body.classList.toggle("size-1", prefs.size === 1);
+      document.body.classList.toggle("size-2", prefs.size === 2);
+      document.body.classList.toggle("contrast", !!prefs.contrast);
+      $("set-size").querySelectorAll("button").forEach((b) => b.classList.toggle("on", Number(b.dataset.v) === prefs.size));
+      $("set-contrast").checked = !!prefs.contrast;
+      $("set-vibrate").checked = !!prefs.vibrate;
+      $("set-awake").checked = !!prefs.awake;
+    }
+    function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* privémodus */ } applyPrefs(); }
+    $("set-size").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { prefs.size = Number(b.dataset.v); savePrefs(); }));
+    $("set-contrast").addEventListener("change", () => { prefs.contrast = $("set-contrast").checked; savePrefs(); });
+    $("set-vibrate").addEventListener("change", () => { prefs.vibrate = $("set-vibrate").checked; savePrefs(); if (prefs.vibrate) buzz(60); });
+    $("set-awake").addEventListener("change", () => { prefs.awake = $("set-awake").checked; savePrefs(); requestWakeLock(); });
+    // Het instellingenmenu telt niet als spieken: de speler blijft in de app
+    $("settings-btn").addEventListener("click", () => { renderSettingsInfo(); $("settings-panel").classList.remove("hidden"); });
+    $("settings-close").addEventListener("click", () => $("settings-panel").classList.add("hidden"));
+    $("settings-panel").addEventListener("click", (e) => { if (e.target === $("settings-panel")) $("settings-panel").classList.add("hidden"); });
+    function renderSettingsInfo() {
+      const inTeam = typeof me !== "undefined" && me;
+      $("set-me").classList.toggle("hidden", !inTeam);
+      if (inTeam) {
+        if (document.activeElement !== $("set-name")) $("set-name").value = me.label || "";
+        $("set-team-info").textContent = `Je zit in team ${me.teamName}${me.role === "base" ? " en dit is de basistelefoon" : ` (basistelefoon: ${me.baseLabel || "?"})`}. Ander team? Gebruik "Team verlaten" onderaan het teamblok (kan niet met de basistelefoon).`;
+      }
+      $("set-conn").textContent = socket.connected ? "🟢 Verbonden met de quiz" : "🔴 Geen verbinding, even geduld…";
+    }
+    $("set-name-save").addEventListener("click", () => {
+      socket.emit("rename_self", { name: $("set-name").value }, (res) => { $("set-name-msg").textContent = res && res.ok ? "✅ Naam aangepast." : (res && res.message) || "Dat lukte niet."; });
+    });
+    applyPrefs();
+
     // ---------------- Wake Lock ----------------
     let wakeLock = null;
     async function requestWakeLock() {
+      if (!prefs.awake) { if (wakeLock) { try { await wakeLock.release(); } catch (e) { /* niets */ } wakeLock = null; } return; }
       try {
-        if ("wakeLock" in navigator) {
+        if ("wakeLock" in navigator && !wakeLock) {
           wakeLock = await navigator.wakeLock.request("screen");
           wakeLock.addEventListener("release", () => { wakeLock = null; });
         }
@@ -177,7 +279,31 @@
       QuizFX.countdown("phone", null, () => {});
     }
     // Verbinding kwijt? Rode balk en knoppen uit, zodat niemand denkt dat een antwoord is ingediend terwijl het niet aankomt
-    function setOffline(off) { $("offline-bar").classList.toggle("hidden", !off); document.body.classList.toggle("offline", off); }
+    // ---------------- Verbinding: duidelijke melding en netjes terugkeren ----------------
+    let offlineSince = 0, offlineTick = null, wasOffline = false;
+    function showToast(text, ms = 4000, color = "#0ea5e9") {
+      const t = $("toast");
+      t.textContent = text; t.style.background = color;
+      t.classList.remove("hidden");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.add("hidden"), ms);
+    }
+    function setOffline(off) {
+      document.body.classList.toggle("offline", off);
+      $("offline-bar").classList.toggle("hidden", !off);
+      if (off) {
+        if (!offlineSince) offlineSince = Date.now();
+        wasOffline = true;
+        clearInterval(offlineTick);
+        const upd = () => {
+          const sec = Math.round((Date.now() - offlineSince) / 1000);
+          $("offline-bar").textContent = sec < 15
+            ? "📡 Verbinding kwijt, opnieuw verbinden…"
+            : `📡 Al ${sec} seconden geen verbinding. Controleer je wifi. ${pending.length ? "Je antwoord is bewaard en wordt verstuurd zodra je weer verbonden bent." : "Je blijft in je team; de app gaat vanzelf verder."}`;
+        };
+        upd(); offlineTick = setInterval(upd, 1000);
+      } else { clearInterval(offlineTick); offlineSince = 0; }
+    }
     socket.on("disconnect", () => setOffline(true));
     socket.on("connect_error", () => setOffline(true));
     socket.on("connect", () => {
@@ -185,8 +311,54 @@
       if (deviceId) { socket.emit("hello", { deviceId }); requestWakeLock(); }
       else showJoin();
     });
-    socket.on("need_join", () => { clearIdentity(); showJoin(); });
-    socket.on("session", (data) => { saveIdentity(data.deviceId); if (!document.hidden) notifyBack(); });
+    socket.on("need_join", (data) => {
+      const known = !!deviceId;
+      clearIdentity(); clearPending();
+      showJoin(known && data && data.reason === "unknown" ? "Je telefoon hoort niet meer bij een team (de quiz is opnieuw gestart of je team is verwijderd). Meld je hieronder opnieuw aan." : undefined);
+    });
+    socket.on("session", (data) => {
+      saveIdentity(data.deviceId);
+      if (!document.hidden) notifyBack();
+      if (wasOffline) { wasOffline = false; showToast("✅ Weer verbonden, je zit nog in je team.", 3000, "#16a34a"); }
+      resumeOnNextState = true; // na de eerstvolgende stand: onafgemaakte acties alsnog versturen
+    });
+
+    // ---------------- Acties die niet verloren mogen gaan ----------------
+    // Een antwoord wordt eerst op de telefoon bewaard. Komt er (door een wegvallende verbinding) geen bevestiging,
+    // dan wordt het na het herverbinden automatisch opnieuw verstuurd, zolang dezelfde vraag nog openstaat.
+    const PENDING_KEY = "fq_pending";
+    const RESUMABLE = new Set(["submit_answer", "submit_text", "submit_price", "place_card", "joker_choose", "final_wager", "draw_guess", "teamphoto_skip"]);
+    let pending = (() => { try { return (JSON.parse(localStorage.getItem(PENDING_KEY)) || []).filter((p) => Date.now() - p.at < 10 * 60e3); } catch (e) { return []; } })();
+    let resumeOnNextState = false;
+    const savePending = () => { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (e) { /* privémodus */ } updatePendingFlag(); };
+    function clearPending() { pending = []; savePending(); }
+    setTimeout(() => updatePendingFlag(), 0);
+    function updatePendingFlag() { const f = $("pending-flag"); if (f) f.classList.toggle("hidden", !pending.length); }
+    const savedAt = {}; // vraag -> tijd van bevestiging door de server
+    function act(event, data, cb) {
+      if (!RESUMABLE.has(event)) return socket.emit(event, data, cb);
+      const item = { id: Math.random().toString(36).slice(2), event, data: data || null, viewId: latestState && latestState.view ? latestState.view.id : null, at: Date.now() };
+      pending = pending.filter((p) => !(p.event === event && p.viewId === item.viewId)); // nieuwste antwoord telt
+      pending.push(item); savePending();
+      sendPending(item, cb);
+    }
+    function sendPending(item, cb) {
+      if (!socket.connected) return; // blijft bewaard tot we weer verbonden zijn
+      socket.timeout(7000).emit(item.event, item.data, (err, res) => {
+        if (err) return; // geen bevestiging: blijft bewaard en gaat bij herverbinden opnieuw
+        pending = pending.filter((p) => p.id !== item.id); savePending();
+        if (res && res.ok && item.viewId) savedAt[item.viewId] = new Date();
+        if (cb) cb(res);
+      });
+    }
+    function resumePending(state) {
+      const viewId = state.view ? state.view.id : null;
+      const keep = pending.filter((p) => p.viewId && p.viewId === viewId); // alleen als dezelfde vraag nog openstaat
+      const dropped = pending.length - keep.length;
+      pending = keep; savePending();
+      keep.forEach((p) => sendPending(p, (res) => { if (res && res.ok && !res.already) showToast("↺ Je antwoord is alsnog verstuurd en opgeslagen.", 4000, "#16a34a"); }));
+      if (dropped) showToast("Je vorige antwoord kwam te laat: die vraag was al gesloten.", 5000, "#b45309");
+    }
     socket.on("kicked", () => { clearIdentity(); showJoin("Je team is verwijderd door de quizmaster."); });
     socket.on("quiz_reset", () => { clearIdentity(); showJoin(); });
 
@@ -382,14 +554,7 @@
     });
     $("btn-base-yes").addEventListener("click", () => socket.emit("respond_base", { approve: true }, () => {}));
     $("btn-base-no").addEventListener("click", () => socket.emit("respond_base", { approve: false }, () => {}));
-    let toastTimer = null;
-    socket.on("team_notice", (data) => {
-      const t = $("toast");
-      t.textContent = data.text;
-      t.classList.remove("hidden");
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => t.classList.add("hidden"), 6000);
-    });
+    socket.on("team_notice", (data) => showToast(data.text, 6000));
     $("btn-leave").addEventListener("click", () => {
       if (!confirm("Weet je zeker dat je dit team wilt verlaten?")) return;
       socket.emit("leave_team", null, (res) => {
@@ -434,6 +599,21 @@
         const e = el("div", "", "🏁 🏆"); e.style.fontSize = "54px";
         d.append(e, el("h2", "", QuizFX.t("tel.einde.titel")), el("p", "note", QuizFX.t("tel.einde.tekst")));
         box.append(d);
+        // Uitslag als plaatje delen (pas na de ontknoping, anders zou het de spanning verklappen)
+        const share = el("button", "btn-primary", "📤 Deel de uitslag");
+        const msg = el("p", "note");
+        share.onclick = async () => {
+          const end = latestState && latestState.end;
+          if (!end || end.reveal !== "done" || !end.scores) { msg.textContent = "Na de ontknoping kun je hier de uitslag delen."; return; }
+          share.disabled = true; msg.textContent = "Plaatje maken…";
+          try {
+            const date = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+            const blob = await QuizFX.resultImage({ title: "Familiequiz", subtitle: date, rows: end.scores });
+            const how = await QuizFX.shareImage(blob, `familiequiz-uitslag-${new Date().toISOString().slice(0, 10)}.png`, "De uitslag van de familiequiz! 🏆");
+            msg.textContent = how === "shared" ? "✔ Gedeeld!" : how === "downloaded" ? "✔ Plaatje opgeslagen." : "";
+          } finally { share.disabled = false; }
+        };
+        box.append(share, msg);
       },
 
       // ----- Meerkeuze, foto blur en logo's -----
@@ -460,7 +640,7 @@
         const send = submitBtn("Antwoord indienen 📤", () => {
           if (selected === null) return;
           send.disabled = true;
-          socket.emit("submit_answer", { stepId: v.id, value: selected }, (res) => {
+          act("submit_answer", { stepId: v.id, value: selected }, (res) => {
             send.disabled = false;
             if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); }
           });
@@ -564,7 +744,7 @@
           if (sel === null) return;
           send.disabled = true;
           const year = parseInt(yi.value, 10);
-          socket.emit("place_card", { stepId: v.id, slot: sel, year: Number.isInteger(year) ? year : undefined }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
+          act("place_card", { stepId: v.id, slot: sel, year: Number.isInteger(year) ? year : undefined }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
         });
         function paint() {
           slots.forEach((s, i) => s.classList.toggle("sel", sel === i));
@@ -597,7 +777,7 @@
           const now = parse(nowI), ago = parse(agoI);
           if (!(now >= 0) || !(ago >= 0) || nowI.value.trim() === "" || agoI.value.trim() === "") { err.textContent = "Vul beide prijzen in."; err.classList.remove("hidden"); return; }
           send.disabled = true;
-          socket.emit("submit_price", { stepId: v.id, now, ago }, (res) => {
+          act("submit_price", { stepId: v.id, now, ago }, (res) => {
             send.disabled = false;
             if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); }
           });
@@ -700,7 +880,7 @@
           const text = input.value.trim();
           if (!text) return;
           if (!confirm(`"${text}" indienen? Jullie hebben maar één poging.`)) return;
-          socket.emit("draw_guess", { text }, (res) => { if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
+          act("draw_guess", { text }, (res) => { if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
         };
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
         const btn = submitBtn("Antwoord indienen 📤", send);
@@ -731,7 +911,7 @@
           const text = input.value.trim();
           if (!text) return;
           if (!confirm(`"${text}" indienen? Jullie hebben maar één poging.`)) return;
-          socket.emit("submit_text", { stepId: v.id, text }, (res) => { if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
+          act("submit_text", { stepId: v.id, text }, (res) => { if (!res || !res.ok) { err.textContent = ERR[res && res.reason] || "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
         };
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
         box.append(input, submitBtn("Antwoord indienen 📤", send), err);
@@ -777,7 +957,7 @@
         if (!v.photo && !v.skipped) {
           const skip = el("button", "btn-option", "Overslaan (zonder foto)");
           skip.style.textAlign = "center";
-          skip.onclick = () => { if (confirm("Doorgaan zonder teamfoto? Je kunt later in het teamblok alsnog een foto maken.")) socket.emit("teamphoto_skip", null, () => {}); };
+          skip.onclick = () => { if (confirm("Doorgaan zonder teamfoto? Je kunt later in het teamblok alsnog een foto maken.")) act("teamphoto_skip", null, () => {}); };
           box.append(skip);
         }
         status.textContent = v.photo ? "✅ Teamfoto staat op het grote scherm. Niet tevreden? Maak hem opnieuw." : v.skipped ? "Jullie gaan zonder foto verder." : "Tik op de groene knop: de camera gaat meteen open. Of kies een foto uit je galerij.";
@@ -811,7 +991,7 @@
         send.onclick = () => {
           if (!selected || send.disabled) return;
           send.disabled = true;
-          socket.emit("joker_choose", { roundId: selected }, (result) => {
+          act("joker_choose", { roundId: selected }, (result) => {
             if (result && result.ok) { status.textContent = "✅ Jokerkeuze ingediend!"; send.textContent = "✅ Joker ingediend"; }
             else { status.textContent = "Indienen is niet gelukt. Kies de ronde opnieuw."; send.disabled = false; }
           });
@@ -835,7 +1015,7 @@
         const send = submitBtn("Antwoord indienen 📤", () => {
           const n = Number(String(gi.value).replace(",", ".").replace(/[^0-9.\-]/g, ""));
           if (gi.value.trim() === "" || !Number.isFinite(n)) { err.textContent = "Vul een getal in."; err.classList.remove("hidden"); return; }
-          socket.emit("submit_answer", { stepId: v.id, value: n }, (res) => { if (!res || !res.ok) { err.textContent = "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
+          act("submit_answer", { stepId: v.id, value: n }, (res) => { if (!res || !res.ok) { err.textContent = "Indienen is niet gelukt."; err.classList.remove("hidden"); } });
         });
         send.classList.toggle("hidden", !canAnswer);
         box.append(gi, send, err);
@@ -860,7 +1040,7 @@
           const err = el("p", "bad hidden"); err.style.textAlign = "center";
           const ok = submitBtn(v.wager !== null ? "Inzet wijzigen" : "Inzet bevestigen", () => {
             const amount = Math.floor(Number(input.value));
-            socket.emit("final_wager", { amount }, (res) => {
+            act("final_wager", { amount }, (res) => {
               if (!res || !res.ok) { err.textContent = (res && res.message) || "Dat lukte niet."; err.classList.remove("hidden"); }
               else err.classList.add("hidden");
             });
@@ -880,7 +1060,7 @@
           opts.append(b);
           return b;
         });
-        const send = submitBtn("Antwoord indienen 📤", () => { if (selected !== null) socket.emit("submit_answer", { stepId: v.id, value: selected }, () => {}); });
+        const send = submitBtn("Antwoord indienen 📤", () => { if (selected !== null) act("submit_answer", { stepId: v.id, value: selected }, () => {}); });
         function paint() { buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; }); send.classList.toggle("hidden", !canAnswer || selected === null); }
         paint();
         box.append(opts, send);
@@ -895,7 +1075,7 @@
 
     // Trillen bij een nieuwe vraag en bij indienen (werkt op Android; iPhone ondersteunt geen trillen vanuit de browser),
     // en een duidelijke "Ingediend!"-balk in de teamkleur zolang de vraag nog open staat.
-    const buzz = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* niets */ } };
+    const buzz = (pattern) => { try { if (prefs.vibrate && navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* niets */ } };
     function submittedNow(v) {
       switch (v.type) {
         case "mc": case "price": case "logo": return v.status === "open" && !!v.answered;
@@ -915,6 +1095,15 @@
       const sub = submittedNow(v);
       const flag = $("submitted-flag");
       flag.classList.toggle("hidden", !sub);
+      const at = savedAt[v.id];
+      $("submitted-sub").textContent = `${at ? `Opgeslagen om ${at.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}. ` : ""}${v.isBase ? "Je kunt het nog wijzigen zolang de vraag openstaat. " : ""}Wachten op de andere teams…`;
+      if (sub && pending.some((p) => p.viewId === v.id)) { pending = pending.filter((p) => p.viewId !== v.id); savePending(); }
+      // Wie is de basistelefoon? Altijd zichtbaar tijdens het spel
+      const rb = $("role-bar");
+      const playing = v.type !== "lobby";
+      rb.classList.toggle("hidden", !playing);
+      rb.className = playing ? (v.isBase ? "base" : "member") : "hidden";
+      rb.textContent = v.isBase ? "⭐ Jij bent de basistelefoon: jij geeft de antwoorden voor je team." : `👀 Meekijk-telefoon. ${me && me.baseLabel ? me.baseLabel : "De basistelefoon"} geeft de antwoorden.`;
       flag.style.background = (me && me.color) || "#16a34a";
       if (sub && !lastSubmitted) buzz([40, 50, 40]);
       lastSubmitted = sub;
@@ -957,7 +1146,12 @@
     ];
     let prevPaused = false;
 
+    let latestState = null;
+    let toastTimer = null;
     socket.on("state_update", (state) => {
+      latestState = state;
+      if (resumeOnNextState && state.view) { resumeOnNextState = false; resumePending(state); }
+      else if (socket.connected && state.view && pending.some((p) => p.viewId !== state.view.id)) { pending = pending.filter((p) => p.viewId === state.view.id); savePending(); }
       if (!deviceId || !state.me) return;
       me = state.me;
       lastState = state;

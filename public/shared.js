@@ -65,6 +65,24 @@ window.QuizFX = (function () {
     osc.connect(gain); gain.connect(c.destination);
     osc.start(); osc.stop(c.currentTime + 0.12);
   }
+  // Vrolijke "ding" bij een goed antwoord en een "whoosh" bij een nieuwe ronde
+  function ding() {
+    const c = audio(); if (!c) return;
+    [880, 1320].forEach((f, i) => {
+      const osc = c.createOscillator(), gain = c.createGain(), t0 = c.currentTime + i * 0.12;
+      osc.type = "triangle"; osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.4);
+      osc.connect(gain); gain.connect(c.destination); osc.start(t0); osc.stop(t0 + 0.42);
+    });
+  }
+  function whoosh() {
+    const c = audio(); if (!c) return;
+    const len = Math.floor(c.sampleRate * 0.7), buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len);
+    const src = c.createBufferSource(), filt = c.createBiquadFilter(), gain = c.createGain();
+    src.buffer = buf; filt.type = "bandpass"; filt.frequency.setValueAtTime(400, c.currentTime); filt.frequency.exponentialRampToValueAtTime(2400, c.currentTime + 0.6);
+    gain.gain.value = 0.25; src.connect(filt); filt.connect(gain); gain.connect(c.destination); src.start();
+  }
   function launchConfetti() {
     if (typeof confetti !== "function") return;
     const end = Date.now() + 7000;
@@ -252,9 +270,10 @@ window.QuizFX = (function () {
     li.style.marginBottom = "8px";
     const isWinner = player.rank === 1;
     let badge = `#${player.rank}`;
-    if (player.rank === 1) { badge = "🥇 WINNAAR"; li.style.background = "#2563eb"; li.style.border = "2px solid #60a5fa"; }
-    else if (player.rank === 2) { badge = "🥈 #2"; li.style.background = "#1e293b"; }
-    else if (player.rank === 3) { badge = "🥉 #3"; li.style.background = "#1e293b"; }
+    // Duidelijk eindklassement: goud, zilver en brons vallen meteen op
+    if (player.rank === 1) { badge = "🥇 WINNAAR"; li.style.background = "linear-gradient(90deg, #b45309, #f59e0b)"; li.style.border = "3px solid #fde68a"; li.style.fontSize = "1.25em"; li.style.boxShadow = "0 0 2vw rgba(251,191,36,0.55)"; }
+    else if (player.rank === 2) { badge = "🥈 #2"; li.style.background = "linear-gradient(90deg, #475569, #94a3b8)"; li.style.fontSize = "1.1em"; }
+    else if (player.rank === 3) { badge = "🥉 #3"; li.style.background = "linear-gradient(90deg, #7c2d12, #c2410c)"; li.style.fontSize = "1.05em"; }
     else li.style.background = "#0f172a";
     const label = document.createElement("span");
     const b = document.createElement("b");
@@ -266,7 +285,7 @@ window.QuizFX = (function () {
     label.append(document.createTextNode(player.name));
     const pts = document.createElement("b");
     pts.textContent = `${player.score} pt`;
-    pts.style.color = isWinner ? "#fde047" : "#38bdf8";
+    pts.style.color = isWinner ? "#fff" : player.rank <= 3 ? "#fef3c7" : "#38bdf8";
     pts.style.fontSize = isWinner ? "1.2em" : "1em";
     li.append(label, pts);
     return li;
@@ -399,7 +418,61 @@ window.QuizFX = (function () {
     else a.textContent = (Array.from(String(name || "?").trim())[0] || "?").toUpperCase(); // Array.from: ook emoji als eerste teken
     return a;
   }
-  return { wantAwake, compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  // ---------- Uitslag als plaatje (om te delen in de familie-app) ----------
+  const loadImg = (src) => new Promise((resolve) => { if (!src) return resolve(null); const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = src; });
+  async function resultImage({ title, subtitle, rows }) {
+    try { await document.fonts.load("bold 60px Quizfont"); } catch (e) { /* standaardletter */ }
+    const W = 1080, rowH = 150, top = 330, H = Math.min(2400, top + rows.length * rowH + 140);
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d");
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#1e1b4b"); bg.addColorStop(1, "#0f172a");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const font = (px) => `bold ${px}px Quizfont, "Segoe UI", Roboto, sans-serif`;
+    g.textAlign = "center"; g.fillStyle = "#fbbf24"; g.font = font(78); g.fillText("🏆 " + (title || "Familiequiz"), W / 2, 130);
+    g.fillStyle = "#cbd5e1"; g.font = font(40); g.fillText(subtitle || "", W / 2, 200);
+    g.fillStyle = "#38bdf8"; g.font = font(44); g.fillText("Einduitslag", W / 2, 280);
+    const imgs = await Promise.all(rows.map((r) => loadImg(r.photo)));
+    rows.forEach((r, i) => {
+      const y = top + i * rowH;
+      if (y + rowH > H - 100) return;
+      g.fillStyle = r.rank === 1 ? "rgba(251,191,36,0.18)" : "rgba(255,255,255,0.06)";
+      g.beginPath(); (g.roundRect ? g.roundRect(60, y, W - 120, rowH - 20, 26) : g.rect(60, y, W - 120, rowH - 20)); g.fill();
+      g.fillStyle = r.color || "#475569"; g.fillRect(60, y, 14, rowH - 20);
+      g.textAlign = "left"; g.font = font(54); g.fillStyle = "#fff";
+      g.fillText(r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : `#${r.rank}`, 100, y + 82);
+      const cx = 270, cy = y + (rowH - 20) / 2, rad = 50;
+      g.save(); g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.closePath();
+      if (imgs[i]) {
+        g.clip();
+        const im = imgs[i], side = Math.min(im.width, im.height);
+        g.drawImage(im, (im.width - side) / 2, (im.height - side) / 2, side, side, cx - rad, cy - rad, rad * 2, rad * 2);
+      } else {
+        g.fillStyle = r.color || "#475569"; g.fill();
+        g.fillStyle = "#fff"; g.font = font(48); g.textAlign = "center"; g.fillText((Array.from(r.name || "?")[0] || "?").toUpperCase(), cx, cy + 17);
+      }
+      g.restore();
+      g.strokeStyle = r.color || "#94a3b8"; g.lineWidth = 6; g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.stroke();
+      g.textAlign = "left"; g.fillStyle = "#fff"; g.font = font(46);
+      let name = r.name; while (g.measureText(name).width > 520 && name.length > 3) name = name.slice(0, -2) + "…";
+      g.fillText(name, 350, y + 80);
+      g.textAlign = "right"; g.fillStyle = "#fbbf24"; g.font = font(50); g.fillText(`${r.score}`, W - 100, y + 82);
+    });
+    g.textAlign = "center"; g.fillStyle = "#64748b"; g.font = font(30); g.fillText("Familiequiz · bedankt voor het meespelen!", W / 2, H - 50);
+    return new Promise((resolve) => c.toBlob(resolve, "image/png"));
+  }
+  // Delen via het deelmenu van de telefoon (WhatsApp e.d.); kan dat niet, dan downloaden
+  async function shareImage(blob, filename, text) {
+    const file = new File([blob], filename, { type: "image/png" });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Familiequiz", text }); return "shared"; }
+    } catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    return "downloaded";
+  }
+
+  return { ding, whoosh, resultImage, shareImage, wantAwake, compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
@@ -455,7 +528,7 @@ window.QuizSpotify = (function () {
     const r = await fetch("https://api.spotify.com/v1" + path, { method, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
     let json = null;
     try { json = await r.json(); } catch (e) { /* 204 zonder inhoud */ }
-    return { status: r.status, json };
+    return { status: r.status, json, retryAfter: Number(r.headers && r.headers.get && r.headers.get("retry-after")) || 0 };
   }
   async function find(title, artist) {
     const clean = String(title).replace(/\(.*?\)/g, "").replace(/\.\.\./g, "").trim();
@@ -506,7 +579,17 @@ window.QuizSpotify = (function () {
     nederpop: { years: [1965, 2024], genres: ["dutch pop", "nederpop", "dutch rock", "nederlandstalig"] },
     summer:   { years: [1980, 2024], genres: ["latin pop", "reggaeton", "tropical house", "dance pop"] },
     "80s90s": { years: [1980, 1999], genres: null },
-    "00s10s": { years: [2000, 2019], genres: null }
+    "00s10s": { years: [2000, 2019], genres: null },
+    // Overige Hitster-edities: als hun playlist op is (of ontbreekt) wordt hiermee gezocht
+    refresh: { years: [1960, 2025], genres: null },
+    top40: { years: [1965, 2025], genres: ["dutch pop", "nederpop", "dance pop", "pop"] },
+    hiphop: { years: [1985, 2025], genres: ["hip hop", "rap", "dutch hip hop"] },
+    soundtracks: { years: [1960, 2025], genres: ["soundtrack", "movie tunes", "show tunes"] },
+    christmas: { years: [1950, 2025], genres: ["christmas"] },
+    celebration: { years: [1960, 2025], genres: ["dance pop", "disco", "party"] },
+    bingo: { years: [1960, 2025], genres: null },
+    battle1: { years: [1950, 1984], genres: null }, battle2: { years: [1985, 2004], genres: null }, battle3: { years: [2005, 2025], genres: null },
+    flyingmic: { years: [1960, 2025], genres: null }
   };
   const CATEGORY_SEARCH = {
     original: ["top hits", "billboard classics", "pop classics", "world hits"],
@@ -515,7 +598,10 @@ window.QuizSpotify = (function () {
     nederpop: ["nederpop hits", "nederlandstalig", "top 40 nederland", "dutch hits"],
     summer: ["summer hits", "zomerhits", "latin pop hits", "beach party"],
     "80s90s": ["80s pop hits", "90s smash hits", "80s greatest", "90s dance"],
-    "00s10s": ["2000s radio hits", "2010s pop anthems", "top hits 2010"]
+    "00s10s": ["2000s radio hits", "2010s pop anthems", "top hits 2010"],
+    refresh: ["top hits", "pop classics"], top40: ["top 40 nederland", "dutch hits"], hiphop: ["hip hop classics", "rap hits"],
+    soundtracks: ["movie soundtrack hits", "film music"], christmas: ["christmas hits", "kerst hits"], celebration: ["party hits", "feest hits"],
+    bingo: ["top hits", "party hits"], battle1: ["60s hits", "70s hits", "oldies"], battle2: ["80s hits", "90s hits"], battle3: ["2010s hits", "2020s hits"], flyingmic: ["meezingers", "sing along hits"]
   };
   // Heruitgaven, live, covers enz. geven vaak een verkeerd jaartal
   const SP_SKIP = /(karaoke|tribute|instrumental|remaster|\blive\b|remix|version|sped up|slowed|cover)/i;
@@ -527,6 +613,7 @@ window.QuizSpotify = (function () {
   const GENRE_OK = {
     guilty: /(euro|dance pop|boy band|girl group|schlager|bubblegum|italo|eurodance|party|teen pop|europop)/i,
     rock: /(rock|metal|grunge|punk|britpop|new wave|hard rock|glam)/i,
+    hiphop: /(hip hop|rap|trap|drill|grime|r&b|urban)/i,
     nederpop: /(dutch|nederpop|nederlands|levenslied|flemish|carnaval|volendam)/i,
     summer: /(latin|reggaeton|tropical|dancehall|moombahton|soca|calypso|bachata|salsa|samba|zomer|beach)/i
   };
@@ -599,9 +686,132 @@ window.QuizSpotify = (function () {
     }
     return null;
   }
-  // Eerst Spotify (volledig nummer), anders een iTunes-fragment van 30 seconden
-  async function randomTrack(cat, excludeKeys) {
+  // ---------- Officiële Hitster-playlists ----------
+  // Playlist één keer helemaal ophalen (per bediening-sessie bewaard). Spotify heeft het eindpunt /items
+  // (nieuw) en /tracks (oud); we proberen beide, zodat het blijft werken.
+  const playlistCache = {};
+  async function playlistTracks(id) {
+    if (playlistCache[id]) return playlistCache[id];
+    const list = [];
+    for (const kind of ["items", "tracks"]) {
+      list.length = 0;
+      let offset = 0, total = 1, failed = null;
+      while (offset < total && offset < 2000) {
+        const r = await api("GET", `/playlists/${id}/${kind}?market=NL&limit=50&offset=${offset}`);
+        if (r.status !== 200 || !r.json) { failed = r.status; break; }
+        total = r.json.total || 0;
+        for (const it of r.json.items || []) {
+          const t = it && (it.track || it.item);
+          if (!t || t.type === "episode" || t.is_local || !t.uri || !t.name || !t.artists || !t.album || !t.album.release_date) continue;
+          list.push({ title: t.name, artist: t.artists.slice(0, 2).map((a) => a.name).join(", "), firstArtist: t.artists[0].name,
+            year: parseInt(t.album.release_date.slice(0, 4), 10), uri: t.uri, albumType: t.album.album_type, albumName: t.album.name || "" });
+        }
+        if (!(r.json.items || []).length) break;
+        offset += (r.json.items || []).length;
+      }
+      if (!failed && list.length) return (playlistCache[id] = [...list]);
+      if (failed === 401) { lastError = "Spotify-login verlopen: ontkoppel en verbind opnieuw."; return null; }
+      if (failed) lastError = `Spotify geeft deze playlist niet vrij (fout ${failed}). Tip: kopieer de Hitster-playlist in Spotify naar een eigen playlist en plak die link.`;
+    }
+    return null;
+  }
+  // Hitster gebruikt het jaar van de eerste uitgave. Spotify geeft vaak het jaar van een remaster of verzamelalbum:
+  // daarom zoeken we het vroegste jaar van hetzelfde nummer van dezelfde artiest.
+  const norm = (x) => String(x || "").toLowerCase().replace(/\(.*?\)|\[.*?\]|-.*remaster.*$|- .*version.*$/g, "").replace(/[^a-z0-9à-ÿ ]/g, "").replace(/\s+/g, " ").trim();
+  async function earliestYear(t) {
+    try {
+      const title = norm(t.title);
+      const r = await api("GET", `/search?type=track&limit=10&market=NL&q=${encodeURIComponent(`track:"${title}" artist:"${t.firstArtist || t.artist}"`)}`);
+      const items = (r.json && r.json.tracks && r.json.tracks.items) || [];
+      const years = items.filter((i) => i && i.album && i.album.release_date && norm(i.name) === title && i.artists.some((a) => norm(a.name) === norm(t.firstArtist || t.artist)))
+        .map((i) => parseInt(i.album.release_date.slice(0, 4), 10)).filter((y) => y > 1900);
+      return years.length ? Math.min(t.year, ...years) : t.year;
+    } catch (e) { return t.year; }
+  }
+  // Jaartal controleren voor de knop "Jaartallen controleren": { ok, year }. Bij te veel verzoeken (429) even wachten.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function checkYear(t) {
+    const title = norm(t.title), first = String(t.artist || "").split(/ & |, /)[0];
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const r = await api("GET", `/search?type=track&limit=10&market=NL&q=${encodeURIComponent(`track:"${title}" artist:"${first}"`)}`);
+      if (r.status === 429) { await sleep(Math.min(60, r.retryAfter || 5 * (attempt + 1)) * 1000); continue; }
+      if (r.status === 401) { lastError = "Spotify-login verlopen: ontkoppel en verbind opnieuw."; return { ok: false, year: t.year, stop: true }; }
+      if (r.status !== 200) return { ok: false, year: t.year };
+      const items = (r.json && r.json.tracks && r.json.tracks.items) || [];
+      const years = items.filter((i) => i && i.album && i.album.release_date && norm(i.name) === title && i.artists.some((a) => norm(a.name) === norm(first)))
+        .map((i) => parseInt(i.album.release_date.slice(0, 4), 10)).filter((y) => y > 1900);
+      // Niets gevonden? Dan is het jaar niet te controleren: niet als gecontroleerd markeren
+      return years.length ? { ok: true, year: Math.min(t.year, ...years) } : { ok: false, year: t.year };
+    }
+    return { ok: false, year: t.year };
+  }
+  // Alle playlists van het officiële Hitster-account op Spotify
+  const HITSTER_USER = "ta8hnikdhdctwuvkj2nl9itix";
+  async function hitsterAccountPlaylists() {
+    const all = [];
+    for (let offset = 0; offset < 500; offset += 50) {
+      const r = await api("GET", `/users/${HITSTER_USER}/playlists?limit=50&offset=${offset}`);
+      if (r.status !== 200 || !r.json) break;
+      all.push(...(r.json.items || []).filter((p) => p && p.id));
+      if (!r.json.next) break;
+    }
+    return all;
+  }
+  async function playlistTrack(id, exclude) {
+    const all = await playlistTracks(id);
+    if (!all) return null;
+    const free = all.filter((t) => !exclude.has(keyOf(t)));
+    if (!free.length) { lastError = "Alle nummers uit deze Hitster-playlist zijn al gebruikt."; return null; }
+    const t = pick(free);
+    const year = await earliestYear(t);
+    const title = t.title.replace(/\s+-\s+.*(remaster|version|mono|stereo).*$/i, "").replace(/\s*[([][^)\]]*(remaster|version)[^)\]]*[)\]]/i, "").trim();
+    return { title, artist: t.artist, year, uri: t.uri, source: "hitster" };
+  }
+  // Officiële Hitster-playlists automatisch opzoeken (account HITSTER), met voorkeur voor de Nederlandse versie
+  const EDITION_QUERY = {
+    original: "HITSTER Nederlands", refresh: "HITSTER Original Refresh", nederpop: "HITSTER 100% NL", top40: "HITSTER Top 40 NL",
+    guilty: "HITSTER Guilty Pleasures", summer: "HITSTER Summer Party", rock: "HITSTER Rock", hiphop: "HITSTER Hip Hop",
+    soundtracks: "HITSTER Soundtracks", christmas: "HITSTER Christmas", celebration: "HITSTER Celebration", bingo: "HITSTER Bingo",
+    battle1: "HITSTER Battle of the Generations", battle2: "HITSTER Battle of the Generations", battle3: "HITSTER Battle of the Generations", flyingmic: "HITSTER Flying Mic"
+  };
+  const FOREIGN = /(deutsch|german|\bde\b|\buk\b|\bus\b|usa|english|fran[cç]ais|\bfr\b|espa[nñ]ol|svenska|norsk|dansk|suomi|polski|italiano|portugu|ö|österreich|schweiz|vlaams|belgi)/i;
+  async function findHitsterPlaylists(cats) {
+    const found = {};
+    // Eerst de playlists van het officiële Hitster-account zelf; lukt dat niet, dan zoeken
+    const account = await hitsterAccountPlaylists();
+    for (const cat of cats) {
+      const q = EDITION_QUERY[cat];
+      if (!q) continue;
+      let items = account;
+      if (!items.length) {
+        const r = await api("GET", `/search?type=playlist&limit=10&market=NL&q=${encodeURIComponent(q)}`);
+        if (r.status === 401) { lastError = "Spotify-login verlopen: ontkoppel en verbind opnieuw."; break; }
+        items = ((r.json && r.json.playlists && r.json.playlists.items) || []).filter((p) => p && p.id && p.owner && (p.owner.id === HITSTER_USER || /hitster/i.test((p.owner.display_name || "") + " " + (p.owner.id || ""))));
+      }
+      const words = q.toLowerCase().replace("hitster", "").split(/\s+/).filter((w) => w.length > 1 && w !== "nl");
+      const scored = items.map((p) => {
+        const name = (p.name || "").toLowerCase();
+        let score = words.filter((w) => name.includes(w)).length * 3;
+        if (/(\bnl\b|nederland|dutch)/i.test(name)) score += 2;
+        if (FOREIGN.test(name)) score -= 4;
+        if (cat === "original" && /(refresh|guilty|rock|summer|bingo|christmas|hip hop|soundtrack|100%|top 40|celebration|battle|flying)/i.test(name)) score -= 5;
+        return { p, score };
+      }).sort((a, b) => b.score - a.score);
+      if (scored.length && scored[0].score > 0) {
+        const p = scored[0].p;
+        found[cat] = { id: p.id, name: p.name, total: (p.tracks && p.tracks.total) || (p.items && p.items.total) || null };
+      }
+    }
+    return found;
+  }
+
+  // Eerst de Hitster-playlist van de categorie (als die is ingesteld), dan Spotify zoeken, anders een iTunes-fragment
+  async function randomTrack(cat, excludeKeys, playlist) {
     const exclude = new Set(excludeKeys || []);
+    if (playlist && connected()) {
+      const t = await playlistTrack(playlist, exclude);
+      if (t) return t;
+    }
     // Eerst Spotify (volledig nummer, categorie gecontroleerd); lukt dat niet, dan een iTunes-fragment
     if (connected()) {
       const t = await spotifyTrack(cat, exclude);
@@ -612,5 +822,7 @@ window.QuizSpotify = (function () {
     return it;
   }
 
-  return { connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf, lastError: () => lastError };
+  // Jaar van de eerste uitgave voor een nummer uit de Excel (artiest = eerste naam)
+  const firstYear = (t) => earliestYear({ ...t, firstArtist: String(t.artist || '').split(/ & |, /)[0] });
+  return { checkYear, hitsterAccountPlaylists, firstYear, findHitsterPlaylists, playlistTracks, connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf, lastError: () => lastError };
 })();
