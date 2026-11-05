@@ -76,7 +76,7 @@
 
       <h3>👁️ Weergave en meldingen</h3>
       <label class="toggle-row"><span><b>Hoog contrast</b><br><span class="note">Zwart-wit met duidelijke randen, makkelijker te lezen.</span></span><input type="checkbox" id="set-contrast"></label>
-      <label class="toggle-row"><span><b>Trillen</b><br><span class="note">Kort trillen bij een nieuwe vraag en na indienen (Android).</span></span><input type="checkbox" id="set-vibrate"></label>
+      <label class="toggle-row"><span><b>Trillen</b><br><span class="note">Kort trillen bij een nieuwe vraag en na indienen. iPhone: alleen een korte tik (iOS 18 of nieuwer, met "Systeemhaptiek" aan).</span></span><input type="checkbox" id="set-vibrate"></label>
       <label class="toggle-row"><span><b>Scherm aan houden</b><br><span class="note">Voorkomt dat de telefoon in slaap valt tijdens de quiz. Uitzetten spaart batterij.</span></span><input type="checkbox" id="set-awake"></label>
 
       <div id="set-me" class="hidden">
@@ -640,24 +640,38 @@
       roundresult(box) {
         box.append(bigEl("📊"), el("h2", "", "Dit was de ronde!"), el("p", "note", "Kijk naar het grote scherm."));
       },
-      end(box) {
+      end(box, v) {
         const d = el("div"); d.style.textAlign = "center";
         const e = el("div", "", "🏁 🏆"); e.style.fontSize = "54px";
         d.append(e, el("h2", "", QuizFX.t("tel.einde.titel")), el("p", "note", QuizFX.t("tel.einde.tekst")));
         box.append(d);
-        // Uitslag als plaatje delen (pas na de ontknoping, anders zou het de spanning verklappen)
+        // Uitslag als plaatje delen (pas na de ontknoping, anders zou het de spanning verklappen).
+        // Het plaatje wordt vooraf gemaakt: de iPhone staat delen alleen toe meteen na de tik, niet na lang rekenen.
         const share = el("button", "btn-primary", "📤 Deel de uitslag");
         const msg = el("p", "note");
+        const rows = v && v.share;
+        if (!rows) { share.disabled = true; msg.textContent = "Na de ontknoping kun je hier de uitslag delen."; box.append(share, msg); return; }
+        const fname = `familiequiz-uitslag-${new Date().toISOString().slice(0, 10)}.png`;
+        const key = JSON.stringify(rows);
+        if (shareCache.key !== key) {
+          shareCache.key = key; shareCache.blob = null;
+          const date = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+          shareCache.ready = QuizFX.resultImage({ title: "Familiequiz", subtitle: date, rows }).then((b) => { if (shareCache.key === key) shareCache.blob = b; return b; }).catch(() => null);
+        }
         share.onclick = async () => {
-          const end = latestState && latestState.end;
-          if (!end || end.reveal !== "done" || !end.scores) { msg.textContent = "Na de ontknoping kun je hier de uitslag delen."; return; }
-          share.disabled = true; msg.textContent = "Plaatje maken…";
+          const blob = shareCache.blob || await shareCache.ready;
+          if (!blob) { msg.textContent = "Het plaatje maken lukte niet."; return; }
+          const file = new File([blob], fname, { type: "image/png" });
           try {
-            const date = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
-            const blob = await QuizFX.resultImage({ title: "Familiequiz", subtitle: date, rows: end.scores });
-            const how = await QuizFX.shareImage(blob, `familiequiz-uitslag-${new Date().toISOString().slice(0, 10)}.png`, "De uitslag van de familiequiz! 🏆");
-            msg.textContent = how === "shared" ? "✔ Gedeeld!" : how === "downloaded" ? "✔ Plaatje opgeslagen." : "";
-          } finally { share.disabled = false; }
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], title: "Familiequiz", text: "De uitslag van de familiequiz! 🏆" });
+              msg.textContent = "✔ Gedeeld!";
+              return;
+            }
+          } catch (e) { if (e && e.name === "AbortError") return; }
+          // Delen kan niet (bijv. via http op het thuisnetwerk): plaatje groot tonen, lang indrukken om te bewaren of te delen
+          showShareImage(blob);
+          msg.textContent = "Houd het plaatje ingedrukt om het te bewaren of te delen.";
         };
         box.append(share, msg);
       },
@@ -1134,7 +1148,18 @@
 
     // Trillen bij een nieuwe vraag en bij indienen (werkt op Android; iPhone ondersteunt geen trillen vanuit de browser),
     // en een duidelijke "Ingediend!"-balk in de teamkleur zolang de vraag nog open staat.
-    const buzz = (pattern) => { try { if (prefs.vibrate && navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* niets */ } };
+    const shareCache = { key: null, blob: null, ready: null };
+    function showShareImage(blob) {
+      const url = URL.createObjectURL(blob);
+      const ov = el("div"); ov.style.cssText = "position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.92); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px;";
+      const img = el("img"); img.src = url; img.alt = "Uitslag van de familiequiz"; img.style.cssText = "max-width:100%; max-height:75vh; border-radius:12px; -webkit-touch-callout:default;";
+      const save = el("a", "btn-primary", "⬇️ Opslaan"); save.href = url; save.download = `familiequiz-uitslag-${new Date().toISOString().slice(0, 10)}.png`; save.style.textAlign = "center";
+      const close = el("button", "btn-option", "Sluiten"); close.style.textAlign = "center";
+      close.onclick = () => { ov.remove(); URL.revokeObjectURL(url); };
+      ov.append(el("p", "note", "Houd het plaatje ingedrukt om het te bewaren of te delen."), img, save, close);
+      document.body.append(ov);
+    }
+    const buzz = (pattern) => { if (prefs.vibrate) QuizFX.haptic(pattern); }; // Android: trillen; iPhone (iOS 18+): korte tik
     function submittedNow(v) {
       switch (v.type) {
         case "mc": case "price": case "logo": return v.status === "open" && !!v.answered;
@@ -1191,6 +1216,7 @@
         case "final": return [v.id, v.status, v.answered, v.wager !== null, v.isBase, v.result ? 1 : 0].join("|");
         case "tiebreak": return [v.id, v.status, v.answered, v.isBase, v.inGame].join("|");
         case "info": return [v.type, v.id].join("|");
+        case "end": return ["end", v.share ? JSON.stringify(v.share) : ""].join("|"); // opnieuw opbouwen zodra de uitslag gedeeld kan worden
         default: return v.type + (v.id || "");
       }
     }

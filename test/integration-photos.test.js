@@ -48,7 +48,8 @@ test('teamfoto: origineel komt via eenmalige sleutel binnen en gaat in de foto-z
   assert.equal(fs.readFileSync(file).length, original.length);
 
   const zipBuf = await zipNames();
-  assert.ok(zipBuf.includes(Buffer.from('teamfotos/Zeegse_Zuiperds.jpg')), 'teamfoto in de zip');
+  const day = new Date().toISOString().slice(0, 10);
+  assert.ok(zipBuf.includes(Buffer.from(`teamfotos/${day}_Zeegse_Zuiperds.jpg`)), 'teamfoto in de zip (met datum)');
   // zip is gedeflate; controleer de ongecomprimeerde grootte in de centrale map: die van het origineel
   const cd = zipBuf.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
   assert.equal(zipBuf.readUInt32LE(cd + 24), original.length, 'het origineel, niet de kleine versie');
@@ -56,5 +57,10 @@ test('teamfoto: origineel komt via eenmalige sleutel binnen en gaat in de foto-z
   // nieuwe teamfoto: het oude origineel verdwijnt (anders komt een verkeerde foto in het album)
   await a.call('set_team_photo', { dataUrl: tinyJpeg });
   assert.equal(fs.existsSync(file), false);
+
+  // na een reset van de quiz blijven de teamfoto's in de foto-zip staan
+  app.host.send('reset_quiz', { confirm: true });
+  const afterReset = await zipNames();
+  assert.ok(afterReset.includes(Buffer.from(`teamfotos/${day}_Zeegse_Zuiperds.jpg`)), 'teamfoto overleeft een reset');
   await sleep(1);
 });

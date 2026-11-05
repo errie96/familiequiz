@@ -496,6 +496,43 @@ window.QuizFX = (function () {
       return r.ok;
     } catch (e) { return false; }
   }
+  // Geluiden kunnen op de tv of op de bediening klinken. De tv zet een "route": geeft die false terug, dan speelt
+  // het geluid hier niet (de tv stuurt het dan door naar de bediening). Ook interne aanroepen gaan via de route.
+  let soundRoute = null;
+  function setSoundRoute(fn) { soundRoute = typeof fn === "function" ? fn : null; }
+  const routed = (name, fn) => function (...args) {
+    try { if (soundRoute && soundRoute(name, args) === false) return; } catch (e) { /* dan gewoon hier */ }
+    return fn.apply(this, args);
+  };
+  buzzer = routed("buzzer", buzzer); triumph = routed("triumph", triumph); ding = routed("ding", ding);
+  whoosh = routed("whoosh", whoosh); drumHit = routed("drumHit", drumHit); fanfare = routed("fanfare", fanfare); tick = routed("tick", tick);
+
+  // Trillen. Android: de Vibration API. iPhone kent die niet; sinds iOS 18 geeft Safari wel een korte "tik"
+  // (haptische feedback) bij een schakelaar (<input switch>). Die truc gebruiken we als reserve: één tik per puls.
+  let hapticLabel = null;
+  function iosTap() {
+    try {
+      if (!hapticLabel) {
+        hapticLabel = document.createElement("label");
+        hapticLabel.setAttribute("aria-hidden", "true");
+        hapticLabel.style.cssText = "position:fixed; left:-9999px; top:0; width:1px; height:1px; overflow:hidden; opacity:0;";
+        const sw = document.createElement("input");
+        sw.type = "checkbox"; sw.setAttribute("switch", ""); sw.tabIndex = -1;
+        hapticLabel.appendChild(sw);
+        document.body.appendChild(hapticLabel);
+      }
+      hapticLabel.click();
+    } catch (e) { /* geen trillen mogelijk */ }
+  }
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  function haptic(pattern) {
+    const p = Array.isArray(pattern) ? pattern : [pattern || 60];
+    try { if (navigator.vibrate && !isIOS) { navigator.vibrate(p); return; } } catch (e) { /* reserve hieronder */ }
+    if (!isIOS) return;
+    let t = 0;
+    p.forEach((ms, i) => { if (i % 2 === 0) setTimeout(iosTap, t); t += ms; });
+  }
+
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
   function avatar(name, photo, size, color) {
     const a = document.createElement(photo ? "img" : "span");
@@ -559,7 +596,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, haptic, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

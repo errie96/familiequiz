@@ -78,6 +78,38 @@ function originalUploadKey(relFile) {
 }
 const teamOriginalFile = (teamId) => `teamfotos/${String(teamId).replace(/[^\w-]/g, '')}.jpg`;
 const pauseOriginalFile = (p) => `pauze/${p.file}`;
+// Teamfoto's ook los bewaren in data/fotos/teamfotos/<datum>/, zodat ze in de foto-zip blijven staan,
+// ook na een reset van de quiz of een nieuwe testavond (de quiz zelf bewaart ze in teamphotos.json)
+const TEAM_ARCHIVE = path.join(PHOTO_DIR, 'teamfotos');
+const safeId = (id) => String(id).replace(/[^\w-]/g, '');
+const nameSlug = (n) => String(n || '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'team';
+let archiveCache = null; // lijst van bewaarde teamfoto's; opnieuw lezen na een wijziging
+function archivedTeamPhotos() {
+  if (archiveCache) return archiveCache;
+  const out = [];
+  try {
+    for (const day of fs.readdirSync(TEAM_ARCHIVE).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()) {
+      for (const f of fs.readdirSync(path.join(TEAM_ARCHIVE, day)).filter((x) => /^[\w-]+--[\w-]+\.jpg$/.test(x)).sort()) {
+        const m = /^(.+)--([\w-]+)\.jpg$/.exec(f);
+        out.push({ day, file: f, slug: m[1], teamId: m[2] });
+      }
+    }
+  } catch (e) { /* nog geen teamfoto's bewaard */ }
+  archiveCache = out;
+  return out;
+}
+function archiveTeamPhoto(teamId, dataUrl) {
+  archiveCache = null;
+  // eerst oude versies van dit team weg (opnieuw gemaakt of verwijderd door de quizmaster)
+  for (const a of archivedTeamPhotos()) if (a.teamId === safeId(teamId)) { try { fs.unlinkSync(path.join(TEAM_ARCHIVE, a.day, a.file)); } catch (e) { /* al weg */ } }
+  if (!dataUrl) return;
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    fs.mkdirSync(path.join(TEAM_ARCHIVE, day), { recursive: true });
+    fs.writeFileSync(path.join(TEAM_ARCHIVE, day, `${nameSlug(teams[teamId] ? teams[teamId].name : 'team')}--${safeId(teamId)}.jpg`), Buffer.from(dataUrl.split(',')[1], 'base64'));
+  } catch (e) { LOG.warn('teamfoto_bewaren_mislukt', { fout: e.message }); }
+  archiveCache = null;
+}
 function readOriginal(rel) { try { return fs.readFileSync(path.join(ORIG_DIR, rel)); } catch (e) { return null; } }
 function removeOriginal(rel) { try { fs.unlinkSync(path.join(ORIG_DIR, rel)); } catch (e) { /* er was er geen */ } }
 const FRESH = process.argv.includes('--fresh') || process.env.FRESH === '1';
@@ -164,7 +196,13 @@ app.get('/download/fotos.zip', (req, res) => {
   const files = {};
   const slug = (s) => String(s).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'team';
   // Origineel (ware grootte) als dat binnen is, anders de kleine tv-versie
-  for (const [teamId, p] of Object.entries(teamPhotos)) files[`teamfotos/${slug(teams[teamId] ? teams[teamId].name : teamId)}.jpg`] = readOriginal(teamOriginalFile(teamId)) || Buffer.from(p.dataUrl.split(',')[1], 'base64');
+  // Teamfoto's: alle bewaarde (ook van eerdere avonden of van vóór een reset), plus de huidige als die nog niet bewaard was
+  const archived = archivedTeamPhotos();
+  for (const a of archived) { try { files[`teamfotos/${a.day}_${a.slug}.jpg`] = readOriginal(teamOriginalFile(a.teamId)) || fs.readFileSync(path.join(TEAM_ARCHIVE, a.day, a.file)); } catch (e) { /* weg */ } }
+  for (const [teamId, p] of Object.entries(teamPhotos)) {
+    if (archived.some((a) => a.teamId === safeId(teamId))) continue;
+    files[`teamfotos/${slug(teams[teamId] ? teams[teamId].name : teamId)}.jpg`] = readOriginal(teamOriginalFile(teamId)) || Buffer.from(p.dataUrl.split(',')[1], 'base64');
+  }
   for (const p of pausePhotos) { try { files[`pauzefotos/${p.file.replace('/', '_')}`] = readOriginal(pauseOriginalFile(p)) || fs.readFileSync(path.join(PHOTO_DIR, p.file)); } catch (e) { /* weg */ } }
   if (!Object.keys(files).length) return res.status(404).type('text').send("Nog geen foto's");
   res.set('Content-Disposition', `attachment; filename="familiequiz-fotos-${new Date().toISOString().slice(0, 10)}.zip"`).type('application/zip').send(zip(files));
@@ -220,7 +258,9 @@ const DEFAULT_SETTINGS = {
   maxTeams: 0,               // maximaal aantal teams (0 = nog niet ingesteld); de host vult dit vooraf in
   finalMaxWager: 100,        // slotvraag: maximale inzet (teams kennen hun stand niet)
   tvCheatSound: true,        // alarmgeluid op de tv bij een spiekmelding
-  momentum: true,            // na elke ronde korte meldingen op de tv ("X stijgt 2 plaatsen!"), zonder punten
+  momentum: true,
+  cheatGrace: 1,              // seconden wachten voordat een spiekmelding komt (0 = meteen)
+  soundOut: 'tv',             // waar de quizgeluiden klinken: 'tv' of 'bediening'            // na elke ronde korte meldingen op de tv ("X stijgt 2 plaatsen!"), zonder punten
   theme: 'standaard',        // uiterlijk: standaard, winter, kerst, oudennieuw, zomer, halloween
   roundPlan: null,           // volgorde, aan/uit en "in 2 delen" per ronde (wordt in de bediening ingesteld)
   memorySeconds: 120,
@@ -238,6 +278,8 @@ function sanitizeSettings(input, base) {
   if (typeof src.timerEnabled === 'boolean') out.timerEnabled = src.timerEnabled;
   if (typeof src.tvCheatSound === 'boolean') out.tvCheatSound = src.tvCheatSound;
   if (typeof src.momentum === 'boolean') out.momentum = src.momentum;
+  if (['tv', 'bediening'].includes(src.soundOut)) out.soundOut = src.soundOut;
+  int('cheatGrace', 0, 5);
   int('roundPoints', 10, 1000);
   int('defaultTime', 5, 300);
   int('memorySeconds', 20, 900);
@@ -497,12 +539,16 @@ function loadPhotos() {
   const photos = saved && saved.data ? saved.data.photos : {};
   teamPhotos = {};
   for (const [teamId, p] of Object.entries(photos)) if (teams[teamId] && p && validPhoto(p.dataUrl)) teamPhotos[teamId] = { dataUrl: p.dataUrl, v: Number(p.v) || Date.now() };
+  // Teamfoto's van vóór deze versie ook los bewaren, zodat ze een reset overleven
+  const archived = new Set(archivedTeamPhotos().map((a) => a.teamId));
+  for (const [teamId, p] of Object.entries(teamPhotos)) if (!archived.has(safeId(teamId))) archiveTeamPhoto(teamId, p.dataUrl);
 }
 function setTeamPhoto(teamId, dataUrl) {
   removeOriginal(teamOriginalFile(teamId)); // oud origineel weg; een nieuwe foto stuurt zijn eigen origineel
   if (dataUrl) teamPhotos[teamId] = { dataUrl, v: Date.now() };
   else delete teamPhotos[teamId];
   savePhotos();
+  archiveTeamPhoto(teamId, dataUrl);
 }
 function addDynSong(id, t) {
   const song = {
@@ -1331,8 +1377,20 @@ function enterStep() {
 const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tiebreak', 'logo'].includes(step.kind);
 
 // Spiekmelding pas na een korte wachttijd: even de meldingenbalk omlaag trekken, een WhatsApp-pop-up of het
-// bedieningspaneel van de iPhone geeft dan geen alarm. Is de telefoon binnen CHEAT_GRACE_MS terug, dan gebeurt er niets.
-const CHEAT_GRACE_MS = Math.max(0, Number(process.env.CHEAT_GRACE_MS ?? 3000));
+// bedieningspaneel van de iPhone geeft dan geen alarm. Is de telefoon binnen de wachttijd terug, dan gebeurt er niets.
+// De wachttijd stelt de quizmaster in (0–5 s, standaard 1 s); CHEAT_GRACE_MS (ms) overschrijft dat, voor tests.
+const cheatGraceMs = () => (process.env.CHEAT_GRACE_MS !== undefined ? Math.max(0, Number(process.env.CHEAT_GRACE_MS) || 0) : Math.max(0, Math.min(5, Number(settings.cheatGrace ?? 1))) * 1000);
+// Telefoon is weg tijdens een vraag (app verlaten, scherm op slot of verbinding weg): na de wachttijd melden
+function startCheatWait(device, step) {
+  if (!device || !step || !cheatSensitive(step) || paused || phase !== 'PLAY' || !teams[device.teamId]) return;
+  if (alerts[device.deviceId] || cheatPending[device.deviceId]) return; // al gemeld of al aan het wachten
+  const deviceId = device.deviceId, stepId = step.id;
+  const wait = cheatGraceMs();
+  if (!wait) return raiseCheat(deviceId, stepId);
+  cheatPending[deviceId] = setTimeout(() => {
+    try { raiseCheat(deviceId, stepId); } catch (e) { reportError('spiekmelding', e); }
+  }, wait);
+}
 const cheatPending = {}; // deviceId -> timer
 function cancelCheat(deviceId) {
   if (cheatPending[deviceId]) { clearTimeout(cheatPending[deviceId]); delete cheatPending[deviceId]; }
@@ -1423,12 +1481,15 @@ function planDraw(step) {
   s.status = 'ready';
   s.total = Math.max(0, ...Object.values(teams).map((t) => drawPlanTurns(s, t)));
   if (!s.total) s.status = 'result';
+  else assignDrawTurn(step); // tekenaars meteen aanwijzen, zodat ze zich kunnen klaarmaken vóór de start
 }
 // Teams die deze beurt meedoen: er tekent iemand en de basistelefoon is verbonden
 function eligibleDrawTeams(step, turn) {
   return Object.values(teams).filter((t) => turn && turn.drawers[t.teamId] && devices[turn.drawers[t.teamId]] && devices[turn.answerers[t.teamId]] && devices[turn.answerers[t.teamId]].connected);
 }
-function startDrawTurn(step) {
+// Beurt voorbereiden: per team een tekenaar en een woord kiezen. De status blijft 'ready': tv en telefoons laten
+// zien wie er gaat tekenen (het woord nog niet), en de quizmaster start de beurt als iedereen klaar is.
+function assignDrawTurn(step) {
   const s = ss(step);
   s.drew = s.drew || {};
   const pool = step.words.length ? step.words : [{ word: 'Fiets', alt: [] }];
@@ -1458,6 +1519,23 @@ function startDrawTurn(step) {
     turn.strokes[team.teamId] = [];
   }
   s.turns[s.turn] = turn;
+}
+function startDrawTurn(step) {
+  const s = ss(step);
+  if (!s.turns[s.turn]) assignDrawTurn(step);
+  const turn = s.turns[s.turn];
+  // Is een aangewezen tekenaar intussen weg (telefoon uit of uit het team)? Dan iemand anders die nog niet tekende
+  for (const team of Object.values(teams)) {
+    const cur = turn.drawers[team.teamId];
+    if (!cur || (devices[cur] && devices[cur].connected)) continue;
+    const done = (s.drew[team.teamId] || []).filter((id) => id !== cur);
+    const alt = teamDevices(team).find((d) => d.connected && d.deviceId !== cur && !done.includes(d.deviceId));
+    if (!alt) continue;
+    s.drew[team.teamId] = [...done, alt.deviceId];
+    turn.drawers[team.teamId] = alt.deviceId;
+    const others = teamDevices(team).filter((d) => d.deviceId !== alt.deviceId);
+    turn.answerers[team.teamId] = alt.deviceId !== team.baseDeviceId ? team.baseDeviceId : ((others.find((d) => d.connected) || others[0]) || {}).deviceId;
+  }
   s.status = 'drawing';
 }
 // Na de beurt: de quizmaster keurt de antwoorden (voorgevuld met wat automatisch lijkt te kloppen)
@@ -1486,6 +1564,27 @@ function planThirty(step) {
   s.turn = 0;
   s.turns = [];
   s.status = s.order.length ? 'ready' : 'finished';
+}
+// Naar de volgende 30 Seconds-beurt. Iedereen komt aan de beurt: spelers die later aansloten komen achteraan
+// in de rij, en is de volgende uitlegger even niet verbonden, dan schuift die (één keer) door naar achteren.
+function advanceThirty(step) {
+  const s = ss(step);
+  s.turn++;
+  const inOrder = new Set(s.order.map((o) => o.deviceId));
+  for (const t of Object.values(teams).sort(bySeq)) for (const d of teamDevices(t)) if (!inOrder.has(d.deviceId)) { s.order.push({ teamId: t.teamId, deviceId: d.deviceId }); inOrder.add(d.deviceId); }
+  s.requeued = s.requeued || [];
+  for (let guard = 0; guard < 50 && s.turn < s.order.length; guard++) {
+    const o = s.order[s.turn];
+    const d = devices[o.deviceId];
+    if (!d || !teams[d.teamId]) { s.order.splice(s.turn, 1); continue; } // speler is weg uit de quiz
+    if (d.teamId !== o.teamId) o.teamId = d.teamId; // van team gewisseld
+    if (d.connected || s.requeued.includes(o.deviceId)) break;
+    if (!s.order.slice(s.turn + 1).some((x) => devices[x.deviceId] && devices[x.deviceId].connected)) break;
+    s.order.push(...s.order.splice(s.turn, 1));
+    s.requeued.push(o.deviceId);
+  }
+  if (s.turn < s.order.length) s.status = 'ready';
+  else { s.turn = Math.max(0, s.order.length - 1); s.status = 'result'; } // niemand meer over: ronde kan afgesloten
 }
 function startThirty(step) {
   const s = ss(step);
@@ -2037,16 +2136,16 @@ function mainAction() {
       if (s.status === 'judging') return go('✅ Nakijken klaar', () => { s.status = 'done'; });
       return go('Volgende ▶️', next);
     case 'draw':
-      if (s.status === 'ready') return go(`▶️ Start beurt ${s.turn + 1} van ${s.total}`, () => startDrawTurn(step));
+      if (s.status === 'ready') return go(`▶️ Start beurt ${s.turn + 1} van ${s.total}: tekenaars krijgen hun woord`, () => startDrawTurn(step), s.turns[s.turn] ? `Tekenaars: ${Object.values(teams).filter((t) => s.turns[s.turn].drawers[t.teamId]).map((t) => `${t.name}: ${devices[s.turns[s.turn].drawers[t.teamId]] ? devices[s.turns[s.turn].drawers[t.teamId]].label : '?'}`).join(', ')}` : '');
       if (s.status === 'drawing') return none('⏳ Wachten tot elk team een antwoord heeft ingediend…', `Nog niet ingediend: ${eligibleDrawTeams(step, s.turns[s.turn]).filter((t) => !s.turns[s.turn].answers[t.teamId]).map((t) => t.name).join(', ') || '–'}`);
       if (s.status === 'judging') return go('✅ Beoordeling bevestigen', () => { s.turns[s.turn].done = true; s.status = 'result'; });
-      if (s.status === 'result' && s.turn + 1 < (s.total || 0)) return go(`▶️ Volgende beurt (${s.turn + 2} van ${s.total})`, () => { s.turn++; s.status = 'ready'; });
+      if (s.status === 'result' && s.turn + 1 < (s.total || 0)) return go(`👉 Tekenaars voor beurt ${s.turn + 2} van ${s.total}`, () => { s.turn++; s.status = 'ready'; assignDrawTurn(step); }, 'De tekenaars zien het op hun telefoon en kunnen zich klaarmaken; daarna start je de beurt.');
       return go('Ronde afsluiten ▶️', next);
     case 'thirty':
       if (s.status === 'ready') return go(`▶️ Start: ${teams[s.order[s.turn].teamId] ? teams[s.order[s.turn].teamId].name : '?'}`, () => startThirty(step));
       if (s.status === 'running') return go('⏹️ Stop (tijd om)', () => stopThirty(step));
       if (s.status === 'judging') return go('✅ Uitslag bevestigen', () => { s.turns[s.turn].done = true; s.status = 'result'; });
-      if (s.status === 'result' && s.turn + 1 < s.order.length) return go('Volgende beurt ▶️', () => { s.turn++; s.status = 'ready'; });
+      if (s.status === 'result' && s.turn + 1 < s.order.length) return go(`Volgende beurt (${s.turn + 2} van ${s.order.length}) ▶️`, () => advanceThirty(step));
       return go('Ronde afsluiten ▶️', next);
     case 'demo_draw':
       if (s.status === 'ready') return go(`▶️ Start oefenbeurt: jij tekent "${step.word}"`, () => { s.status = 'drawing'; s.strokes = []; }, 'Teken in de bediening; de tekening verschijnt live op de tv. Iedereen raadt hardop.');
@@ -2122,6 +2221,7 @@ function broadcastState() {
   io.to('tv_room').emit('state_update', {
     ...common,
     cheatSound: settings.tvCheatSound !== false,
+    soundOut: settings.soundOut || 'tv',
     pausePhotos: phase === 'PLAY' && paused ? pausePhotos.slice(-40).map((p) => ({ url: pausePhotoUrl(p), team: p.team, label: p.label, at: p.at })) : null,
     positions: phase === 'PLAY' && showPositions ? positionsPayload(showPositions) : null,
     end: common.end && reveal === 'done' && endView === 'album' ? { ...common.end, album: album() } : common.end, // tekeningen alleen naar de tv
@@ -2155,7 +2255,7 @@ function broadcastState() {
     pinIsDefault: HOST_PIN === '1234', onlineHost: ON_RENDER,
     readiness: phase === 'LOBBY' ? readiness() : null,
     upNext: phase === 'PLAY' ? upNext() : null,
-    internet, photoCount: pausePhotos.length + Object.keys(teamPhotos).length,
+    internet, photoCount: pausePhotos.length + new Set([...archivedTeamPhotos().map((a) => a.teamId), ...Object.keys(teamPhotos).map(safeId)]).size,
     showPositions,
     libraryUpdate,
     quiz: { ...quizSource, steps: steps.length, rounds: rounds.length, library: librarySource, librarySongs: (baseRaw.hitsterLibrary || []).length },
@@ -2174,7 +2274,7 @@ function broadcastState() {
       standings: null,
       roundName: common.header.round,
       timer: null,
-      view: phase === 'PLAY' ? phoneView(step, t, d, isBase) : phase === 'END' ? { type: 'end' } : { type: 'lobby' },
+      view: phase === 'PLAY' ? phoneView(step, t, d, isBase) : phase === 'END' ? { type: 'end', share: reveal === 'done' ? ranking().map((r) => ({ rank: r.rank, name: r.name, photo: r.photo, color: r.color, score: r.score })) : null } : { type: 'lobby' },
       me: {
         memberId: d.memberId, teamId: t.teamId, teamName: t.name, color: t.color || '#64748b', photo: photoUrl(t.teamId), label: d.label, role: isBase ? 'base' : 'member',
         baseLabel: devices[t.baseDeviceId] ? devices[t.baseDeviceId].label : '', proposal: proposalFor(t, d),
@@ -2226,7 +2326,7 @@ function phoneView(step, team, device, isBase) {
       return {
         ...base, status: s.status, role, answered: !!a, given: a ? a.text : null, turn: s.turn + 1, total: s.total || 0,
         answererLabel: turn && devices[turn.answerers[id]] ? devices[turn.answerers[id]].label : null,
-        word: role === 'drawer' && turn ? turn.words[id].word : null,
+        word: role === 'drawer' && turn && s.status !== 'ready' ? turn.words[id].word : null, // pas bij de start
         drawerLabel: turn && turn.drawers[id] && devices[turn.drawers[id]] ? devices[turn.drawers[id]].label : null,
         answerWord: (s.status === 'judging' || s.status === 'result') && turn && turn.words[id] ? turn.words[id].word : null
       };
@@ -2741,12 +2841,7 @@ function onConnection(socket) {
     const team = device && teams[device.teamId];
     if (!team) return;
     if (Number.isFinite(t) && device.lastBackT && t < device.lastBackT) return; // te laat aangekomen bericht
-    if (alerts[device.deviceId] || cheatPending[device.deviceId]) return; // al gemeld of al aan het wachten
-    const deviceId = device.deviceId, stepId = step.id;
-    if (!CHEAT_GRACE_MS) return raiseCheat(deviceId, stepId);
-    cheatPending[deviceId] = setTimeout(() => {
-      try { raiseCheat(deviceId, stepId); } catch (e) { reportError('spiekmelding', e); }
-    }, CHEAT_GRACE_MS);
+    startCheatWait(device, step);
   });
   socket.on('player_back', ({ t } = {}) => {
     const device = deviceOf(socket);
@@ -3289,6 +3384,9 @@ function onConnection(socket) {
     if (device && device.socketId === socket.id) {
       noteDropped(device);
       device.connected = false;
+      // Verbinding weg tijdens een vraag telt ook als 'weg' (een vergrendelde telefoon stuurt soms geen bericht meer);
+      // komt de telefoon binnen de wachttijd terug, dan vervalt de melding vanzelf
+      if (!device.bot) startCheatWait(device, cur());
       sync();
     }
   });
@@ -3414,6 +3512,34 @@ function onConnection(socket) {
     if (!isRemote(socket)) return;
     settings.tvCheatSound = !!tv;
     sync();
+  });
+  // Wachttijd voor spiekmeldingen (0–5 s) en waar de quizgeluiden klinken: altijd te wijzigen
+  socket.on('set_cheat_grace', ({ seconds } = {}) => {
+    if (!isRemote(socket) || !Number.isInteger(seconds) || seconds < 0 || seconds > 5) return;
+    settings.cheatGrace = seconds;
+    sync();
+  });
+  socket.on('set_sound_out', ({ where } = {}) => {
+    if (!isRemote(socket) || !['tv', 'bediening'].includes(where)) return;
+    settings.soundOut = where;
+    if (where === 'tv') io.to('remote_room').emit('quiz_sound', { name: 'media_pause' }); // bediening stopt een lopend fragment
+    LOG.info('geluid_naar', { waar: where });
+    sync();
+  });
+  // De tv speelt een geluid af terwijl de geluiden naar de bediening moeten: doorsturen naar de bediening(en)
+  const TV_SOUNDS = new Set(['buzzer', 'triumph', 'ding', 'whoosh', 'drumHit', 'fanfare', 'tick', 'media_play', 'media_pause']);
+  socket.on('tv_sound', ({ name, args, src, at } = {}) => {
+    if (socket.data.role !== 'tv' || settings.soundOut !== 'bediening' || !TV_SOUNDS.has(name)) return;
+    const now = Date.now(); // niet spammen: hooguit 12 geluiden per 2 seconden per tv
+    socket.data.soundAt = (socket.data.soundAt || []).filter((t) => now - t < 2000);
+    if (socket.data.soundAt.length >= 12) return;
+    socket.data.soundAt.push(now);
+    const payload = { name, args: Array.isArray(args) ? args.slice(0, 3).filter((x) => ['number', 'boolean', 'string'].includes(typeof x) && String(x).length < 40) : [] };
+    if (name === 'media_play') {
+      if (typeof src !== 'string' || src.length > 500 || !/^(https:\/\/|\/media\/)/.test(src)) return;
+      payload.src = src; payload.at = Number.isFinite(at) ? Math.max(0, Math.min(at, 3600)) : 0;
+    }
+    io.to('remote_room').emit('quiz_sound', payload);
   });
   // Momentum-meldingen op de tv aan/uit (altijd te wijzigen)
   socket.on('set_momentum', ({ on } = {}) => {

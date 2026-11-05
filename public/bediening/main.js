@@ -101,6 +101,11 @@ socket.on("state_update", (state) => {
   $("pl-fill").disabled = state.phase !== "LOBBY" || plFillBusy;
   if (document.activeElement !== $("s-sound-tv")) $("s-sound-tv").checked = state.settings.tvCheatSound !== false;
   if (document.activeElement !== $("s-momentum")) $("s-momentum").checked = state.settings.momentum !== false;
+  if (document.activeElement !== $("s-cheat-grace")) $("s-cheat-grace").value = String(state.settings.cheatGrace ?? 1);
+  // Geluid via de bediening: alleen het toestel waarop dat gekozen is speelt af (anders hoor je het dubbel)
+  soundOut = state.settings.soundOut || "tv";
+  if (document.activeElement !== $("s-sound-out")) $("s-sound-out").value = soundOut === "bediening" && soundHere() ? "bediening" : "tv";
+  $("s-sound-out").title = soundOut === "bediening" && !soundHere() ? "De geluiden klinken nu op een andere bediening." : "";
   renderPrep(state);
   const hasBots = state.teams.some((t) => t.bot);
   $("bots-add").disabled = state.phase !== "LOBBY";

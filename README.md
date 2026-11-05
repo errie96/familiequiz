@@ -36,7 +36,8 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Teamkleur kiezen**: bij het aanmelden kiest elk team een vrije kleur; de telefoon van het team kleurt subtiel mee.
 - **Tekenronde**: de tekeningen verschijnen live op de tv; bij de uitslag met woord, geraden antwoord en ✔/✘.
 - **Foto blur**: het fotokader op de tv neemt de verhouding van de foto over.
-- **Spiekmelding met wachttijd**: pas als een telefoon tijdens een vraag langer dan 3 seconden weg is (meldingenbalk of pop-up telt dus niet). Aan te passen met de omgevingsvariabele `CHEAT_GRACE_MS` (in milliseconden; `0` = meteen melden).
+- **Spiekmelding met wachttijd**: pas als een telefoon tijdens een vraag langer weg is dan de wachttijd (standaard 1 s, in de bediening in te stellen: meteen, 1, 2, 3 of 5 s). Ook het wegvallen van de verbinding tijdens een vraag telt. `CHEAT_GRACE_MS` (ms) overschrijft de instelling, voor tests.
+- **Geluid via tv of bediening**: instelling *🔊 Quizgeluiden via*. Bij "bediening" stuurt de tv elk geluid en audiofragment door (`tv_sound` → `quiz_sound`) en speelt alleen het toestel waarop het gekozen is af.
 - **Spiekgeluid**: in de bediening (Instellingen) apart uit te zetten op de tv en op het eigen bediening-toestel; de meldingen zelf blijven zichtbaar.
 - **Bediening**: vaste knoppen bovenaan (grote knop, vorige, pauze, posities, teamoverzicht); alle instellingen onder *⚙️ Instellingen* (op een laptop altijd rechts); *🚨* naar de noodknoppen. Werkt op telefoon, tablet en laptop.
 - **Voorbereiding (🧭)**: vóór de start een stap-voor-stap menu (tv, vragenlijst, rondes, teams, Spotify, Hitster, thema en spelregels, eindcontrole) met daarna de checklist (tv verbonden, aantal teams, rondevolgorde, Spotify en afspeelapparaat, Hitster-playlists, vragenlijst, foto's en logo's, toegangscode, thema). De rondevolgorde ligt na de start vast; extra rondes toevoegen kan wel.
@@ -59,8 +60,8 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Tussenpagina's** met animatie: "Nu gaan we door naar…" bij elke ronde en elke categorie.
 - **Joker** vóór ronde 1; de tv toont waarop elk team de joker zet.
 - **Foto blur** is een open vraag; de quizmaster keurt goed/fout. **Geheugen**: geen klok, alleen de basistelefoon schrijft.
-- **Tekenen**: iedereen tekent een keer (ook de basis; dan vult een ander het antwoord in). Beurt eindigt als elk team heeft ingediend. Tekeningen staan bij het beoordelen en nakijken.
-- **30 Seconds**: woorden live goedkeuren; ze kleuren meteen groen op de tv.
+- **Tekenen**: iedereen tekent een keer (ook de basis; dan vult een ander het antwoord in). De tekenaars worden vóór elke beurt aangewezen (tv en telefoon tonen wie), het woord komt pas bij de start. Beurt eindigt als elk team heeft ingediend. Tekeningen staan bij het beoordelen en nakijken.
+- **30 Seconds**: woorden live goedkeuren; ze kleuren meteen groen op de tv. Iedereen legt één keer uit: wie later aansluit komt achteraan in de rij, en wie even niet verbonden is schuift één keer door naar achteren.
 - **Slotvraag**: inzet maximaal 100 punten (instelbaar). Geen gelijke stand → scherm "Geen gelijke stand".
 - **Ontknoping** plek voor plek: elke druk onthult de volgende plek (tijd voor prijzen).
 

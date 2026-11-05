@@ -145,6 +145,12 @@ $("s-sound-me").checked = soundMe;
 $("s-sound-me").onchange = () => { soundMe = $("s-sound-me").checked; localStorage.setItem("quiz_cheat_sound", soundMe ? "on" : "off"); };
 $("s-sound-tv").onchange = () => socket.emit("set_cheat_sound", { tv: $("s-sound-tv").checked });
 $("s-momentum").onchange = () => socket.emit("set_momentum", { on: $("s-momentum").checked });
+$("s-cheat-grace").onchange = () => socket.emit("set_cheat_grace", { seconds: Number($("s-cheat-grace").value) });
+$("s-sound-out").onchange = () => {
+  const where = $("s-sound-out").value;
+  if (where === "bediening") { localStorage.setItem("quiz_sound_here", "on"); unlockQuizSound(); } else localStorage.removeItem("quiz_sound_here");
+  socket.emit("set_sound_out", { where });
+};
 $("bots-add").onclick = () => socket.emit("add_bots", { n: 3 });
 $("bots-remove").onclick = () => { if (confirm("Alle testteams verwijderen?")) socket.emit("remove_bots"); };
 $("btn-save-settings").onclick = () => socket.emit("update_settings", {

@@ -110,6 +110,7 @@ Eerst een oefenproduct, dan tien boodschappen. Per product schat het team de pri
 Alle teams tekenen tegelijk, elk een ander woord.
 
 - **Quizmaster:** doet eerst zelf een oefenbeurt: hij tekent in de bediening, de tekening verschijnt live op de tv en iedereen raadt hardop. Daarna tikt hij op "Start beurt". Per team wordt willekeurig een teamlid gekozen dat nog niet getekend heeft, ook de basistelefoon.
+- **Eerst de tekenaars, dan de start:** vóór elke beurt staat al vast wie er tekent. De tv toont per team de tekenaar, en op de telefoon van de tekenaar staat "Jij bent de tekenaar!". Zo kan die zich klaarmaken. Pas als de quizmaster de beurt start, verschijnt het woord. Is een tekenaar intussen weg, dan neemt een teamgenoot die nog niet tekende het over.
 - **Telefoon van de tekenaar:** toont het woord en een tekenvlak met kleuren, dik/dun, terug en wissen. Elke lijn verschijnt direct op de telefoons van de teamgenoten.
 - **Basistelefoon:** ziet de tekening live en dient één antwoord in; een tweede poging kan niet. Tekent de basistelefoon zelf, dan vult een ander teamlid tijdelijk het antwoord in.
 - **Einde van de beurt:** pas als elk team een antwoord heeft ingediend; er loopt geen klok. De tv toont daarna de tekeningen met de woorden.
@@ -169,7 +170,7 @@ De knop "Stand" toont op de tv de eindstand als lijst.
 
 - **🏅 Prijsjes op tv**: de app reikt zelf awards uit, één kaart tegelijk met tromgeroffel. Per soort ronde het beste team (bijvoorbeeld Beste tekenaars, Muziekkenners), en daarnaast Snelle jongens (vaakst als eerste geantwoord), Durfallen (hoogste inzet bij de slotvraag), Jokermeesters, Spiekkoningen, Net niet (tweede plaats) en Volhouders (laatste plaats).
 - **📷 Fotoalbum op tv**: een diavoorstelling met alle teamfoto's en tekeningen van de avond. Leuk om op de achtergrond te laten lopen.
-- **📤 Uitslag delen**: maakt een plaatje van de eindstand met teamfoto's om in de familie-app te zetten. Spelers hebben dezelfde knop op hun telefoon.
+- **📤 Uitslag delen**: maakt een plaatje van de eindstand met teamfoto's om in de familie-app te zetten. Spelers hebben dezelfde knop op hun telefoon. Kan de telefoon niet delen (bijvoorbeeld via http op het thuisnetwerk), dan verschijnt het plaatje groot: lang indrukken om het te bewaren of te delen.
 
 Op het aanmeldscherm staat bij een volgende quiz een **Hall of fame** met de winnaars van eerdere jaren.
 
@@ -196,11 +197,13 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 ## Spiekmeldingen, pauze en noodknoppen
 
-**Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm en blijft die langer dan 3 seconden weg, dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Even de meldingenbalk omlaag trekken of een pop-up wegtikken binnen die 3 seconden geeft geen melding. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
+**Geluid via de tv of de bediening.** In de bediening bij 📊 Scores kies je "🔊 Quizgeluiden via: De tv / Deze bediening". Bij "Deze bediening" speelt de tv niets af en klinken tromgeroffel, belletjes, fanfare en muziekfragmenten op het toestel waarop je dat koos (tik daar één keer op het scherm om geluid toe te staan). Spotify kies je apart bij 🎧 Spotify.
+
+**Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm en blijft die langer weg dan de wachttijd (standaard 1 seconde, in te stellen in de bediening), dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Even de meldingenbalk omlaag trekken of een pop-up wegtikken binnen de wachttijd geeft geen melding. Valt de verbinding van een telefoon weg tijdens een vraag, dan telt dat ook als weg. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
 
 **Instellingen op de telefoon.** Bij het aanmelden staat op elke telefoon een korte uitleg van dit menu. Rechtsboven op elke telefoon staat een tandwiel ⚙️. Daar kan een speler de tekst groter maken (handig voor oudere spelers), hoog contrast aanzetten, trillen of 'scherm aan houden' uitzetten en de eigen naam wijzigen. Er staat ook een korte uitleg van het spel. Het menu openen telt niet als spieken.
 
-**Telefoon zonder verbinding.** Valt de wifi van een speler weg, dan krijgt die telefoon een rode balk "Verbinding kwijt" en zijn de knoppen uitgeschakeld tot hij terug is. Een team ziet na indienen een balk "✅ Ingediend!" in de eigen teamkleur (Android-telefoons trillen ook kort bij een nieuwe vraag en bij indienen).
+**Telefoon zonder verbinding.** Valt de wifi van een speler weg, dan krijgt die telefoon een rode balk "Verbinding kwijt" en zijn de knoppen uitgeschakeld tot hij terug is. Een team ziet na indienen een balk "✅ Ingediend!" in de eigen teamkleur (Android-telefoons trillen ook kort bij een nieuwe vraag en bij indienen; een iPhone met iOS 18 of nieuwer geeft een korte tik, want echt trillen kan een website op de iPhone niet).
 
 **Pauze.** De pauzeknop zet de quiz stil: timers stoppen, de tv en telefoons tonen een pauzescherm. Valt de server uit, dan blijft alles bewaard en staat de quiz na het herstarten op pauze. Telefoons sluiten vanzelf weer aan.
 

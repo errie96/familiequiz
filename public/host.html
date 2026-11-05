@@ -366,6 +366,35 @@
     socket.on("disconnect", () => $("tv-offline").classList.remove("hidden"));
     QuizFX.wantAwake(); // tv mag niet in slaap vallen
     socket.on("play_audio", () => allAudio().forEach((a) => { a.currentTime = 0; a.play().catch(() => {}); }));
+
+    // ---- Waar klinkt het geluid? Op de tv (standaard) of op de bediening (instelling van de quizmaster) ----
+    // Bij "bediening": de tv speelt niets af, maar stuurt elk geluidje en elk audiofragment door.
+    let soundOut = "tv";
+    QuizFX.setSoundRoute((name, args) => {
+      if (soundOut !== "bediening") return true;
+      socket.emit("tv_sound", { name, args });
+      return false;
+    });
+    const mediaSrc = (a) => { const u = a.currentSrc || a.src || ""; try { const x = new URL(u, location.href); return x.origin === location.origin ? x.pathname : x.href; } catch (e) { return u; } };
+    const relayPlay = (a) => socket.emit("tv_sound", { name: "media_play", src: mediaSrc(a), at: a.currentTime || 0 });
+    document.addEventListener("play", (e) => {
+      const a = e.target;
+      if (!(a instanceof HTMLAudioElement)) return;
+      a.muted = soundOut === "bediening";
+      if (soundOut === "bediening") relayPlay(a);
+    }, true);
+    document.addEventListener("pause", (e) => {
+      if (e.target instanceof HTMLAudioElement && soundOut === "bediening") socket.emit("tv_sound", { name: "media_pause" });
+    }, true);
+    function setSoundOut(where) {
+      if (where === soundOut) return;
+      soundOut = where === "bediening" ? "bediening" : "tv";
+      allAudio().forEach((a) => {
+        a.muted = soundOut === "bediening";
+        if (soundOut === "bediening" && !a.paused) relayPlay(a); // midden in een fragment omgezet: bediening neemt het over
+      });
+      if (soundOut === "tv") socket.emit("tv_sound", { name: "media_pause" });
+    }
     socket.on("pause_audio", () => allAudio().forEach((a) => a.pause()));
 
     // ---------- Spiekmeldingen: blijven staan tot de speler weer kijkt ----------
@@ -630,6 +659,13 @@
       if (s.status === "ready") {
         $("draw-title").textContent = `✏️ Tekenen · beurt ${s.turn} van ${s.total}`;
         body.append(el("p", "tv-sub", s.total ? QuizFX.t("teken.klaar") : "Er zijn geen teams met minstens twee spelers: deze ronde wordt overgeslagen."));
+        // Wie gaat er tekenen? Zo kan de tekenaar zich klaarmaken voordat de quizmaster de beurt start
+        const drawers = (s.teams || []).filter((t) => t.drawer);
+        if (drawers.length) {
+          const g = el("div", "team-cards"); g.style.cssText = "justify-content:center; margin:3vh 0;";
+          drawers.forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, (TEAMSTYLE[t.name] || {}).photo, "clamp(70px, 8vw, 150px)", (TEAMSTYLE[t.name] || {}).color), el("div", "", t.name), el("div", "tv-sub", `✏️ ${t.drawer}`)); g.append(c); });
+          body.append(el("h2", "", "Deze beurt tekenen:"), g, el("p", "tv-sub", "Tekenaars: pak je telefoon erbij. Je woord verschijnt zodra de quizmaster start."));
+        }
       } else if (s.status === "drawing") {
         // (wordt hierboven afgehandeld)
       } else if (s.status === "judging" || s.status === "result") {
@@ -1146,6 +1182,7 @@
       const inQuiz = state.phase === "PLAY";
       TEAMSTYLE = state.teamStyle || {};
       cheatSoundOn = state.cheatSound !== false;
+      setSoundOut(state.soundOut);
       renderPositions(state.positions);
       chipStep = step ? step.id : state.phase;
       QuizFX.applyTheme(state.theme);
