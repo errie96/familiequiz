@@ -17,7 +17,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install dependencies
-        run: npm install
-      - name: Run tests
+      - name: Install dependencies (vaste versies uit package-lock.json)
+        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Syntax van alle code (js en html)
+        run: npm run syntax
+      - name: Tests (eenheid, scores en complete scenario's)
         run: npm test

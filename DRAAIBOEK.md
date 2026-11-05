@@ -92,9 +92,10 @@ Vorig jaar is er iets op een bord geschreven; de teams schrijven op wat ze nog w
 Zoals Hitster. Alle teams beginnen met dezelfde twee startkaarten (jaartal, titel en artiest zichtbaar). Eerst één oefenliedje (telt niet mee; de kaart komt niet in de tijdlijn). De liedjes komen in willekeurige volgorde. De ronde stopt zodra een team 10 kaarten in de tijdlijn heeft (instelbaar).
 
 - **Quizmaster:** bij elk liedje start de bediening het nummer vanzelf via Spotify, op het gekozen apparaat. Houd de bediening open. Bij de vraag staan knoppen "Opnieuw afspelen" en "Muziek stoppen". Zonder Spotify kan het ook met een geluidsbestand, of je speelt het zelf af.
-- **Telefoon:** de basistelefoon tikt op de plek in de tijdlijn waar het liedje hoort en kan optioneel het exacte jaartal invullen. Teamgenoten zien de tijdlijn maar kunnen niet plaatsen.
+- **Telefoon:** de basistelefoon tikt op de plek in de tijdlijn waar het liedje hoort en kan optioneel het jaartal, de titel en de artiest invullen. Teamgenoten zien de tijdlijn maar kunnen niet plaatsen.
 - **Onthullen:** als alle teams geplaatst hebben, ziet elk team op de eigen telefoon het jaartal, de titel en of de kaart goed lag. De tv toont het antwoord niet. Een goed gelegde kaart komt in de tijdlijn van dat team; een fout gelegde kaart vervalt. Heeft een team 10 kaarten, dan meldt de tv dat de muziekronde voorbij is (zonder teamnaam) en worden de overige liedjes overgeslagen.
-- **Punten:** 1 per goed gelegde kaart, plus 1 bonus voor een exact goed jaartal, gemeten tegen het aantal gespeelde liedjes.
+- **Punten (per liedje, aan te passen bij Instellingen):** 5 voor een goed gelegde kaart; jaartal met speling: exact 5, 1 jaar ernaast 3, 2 of 3 jaar ernaast 1; bonus 2 voor de goede titel en 2 voor de goede artiest. Alles wordt omgerekend naar de punten van de ronde.
+- **Titel en artiest goedkeuren:** na het onthullen staat in de bediening per team wat er is ingevuld, met een voorstel van de app (kleine tikfouten, hoofdletters en toevoegingen als "feat." tellen gewoon goed). Tik op ✔/✘ om het voorstel aan te passen; de spelers zien daarna op hun telefoon of titel en artiest goed waren.
 
 ### Ronde 5: Prijzen van vroeger en nu
 
@@ -195,7 +196,7 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 ## Spiekmeldingen, pauze en noodknoppen
 
-**Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm, dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
+**Spiekmeldingen.** Verlaat een speler tijdens een vraag de quiz-app of vergrendelt die het scherm en blijft die langer dan 3 seconden weg, dan verschijnt links onderin de tv een kleine melding: "Naam (Team): scherm vergrendeld of app verlaten". Bij de quizmaster piept de telefoon en staat dezelfde melding bovenin. De melding blijft staan tot de speler weer naar de quiz kijkt. Even de meldingenbalk omlaag trekken of een pop-up wegtikken binnen die 3 seconden geeft geen melding. Tikken op de melding in de bediening verbergt hem. Bij tekenen en 30 Seconds is er geen controle.
 
 **Instellingen op de telefoon.** Bij het aanmelden staat op elke telefoon een korte uitleg van dit menu. Rechtsboven op elke telefoon staat een tandwiel ⚙️. Daar kan een speler de tekst groter maken (handig voor oudere spelers), hoog contrast aanzetten, trillen of 'scherm aan houden' uitzetten en de eigen naam wijzigen. Er staat ook een korte uitleg van het spel. Het menu openen telt niet als spieken.
 
@@ -205,7 +206,15 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Indeling van de bediening.** Bovenaan staan altijd de vaste knoppen: de grote knop, vorige, pauze, posities op tv en het teamoverzicht. Alles wat je vooraf instelt staat onder **⚙️ Instellingen** (op een laptop altijd rechts in beeld). **🧭 Voorbereiding** loopt vóór de start stap voor stap door alles wat geregeld moet zijn: tv, vragenlijst, rondevolgorde, teams, Spotify, Hitster-muziek, thema en spelregels, en een eindcontrole. Dit menu opent vanzelf bij een nieuwe quiz en kan altijd opnieuw. **🚨** springt direct naar de noodknoppen. Werkt op telefoon, tablet en laptop.
 
+**Handig tijdens het spel.** Op een laptop werken sneltoetsen: spatie = grote knop, ← = vorige stap, P = pauze, M = muziek stoppen. Onder het stap-paneel staat *⏭ Hierna* met de volgende vraag, het antwoord en het weetje, zodat je alvast kunt vertellen. Discussie over een antwoord? In *📊 Scores* kun je per team punten corrigeren (−5, −1, +1, +5); met ↶ draai je de laatste correctie terug. Bij logo's en foto blur staat achter elk antwoord hoeveel het lijkt op het goede antwoord (groen vanaf 80%).
+
+**Emoji-reacties.** Bij uitlegschermen, *Dit was ronde* en in de pauze kunnen spelers emoji's naar de tv sturen; die zweven over het scherm. Tijdens vragen kan het niet.
+
 **Bediening tijdens het spel.** De grote knop en de rij teams blijven bovenaan staan als je naar beneden scrolt. In die rij zie je per team: ✓ heeft geantwoord, ⏳ nog bezig, 📵 basistelefoon offline, 🕵️ aantal keer weggekeken. Ingrijpende acties (vorige stap, vraag laten vervallen of goed rekenen, overslaan, springen, reset) vragen eerst om bevestiging. De noodknoppen staan apart in een rood omkaderd blok.
+
+**Startklaar.** Vóór de start controleert de app de quiz. Bij een echte fout (bijvoorbeeld een ronde zonder vragen) staat de startknop uit met de reden erbij; met "⚠️ Toch starten" kan het alsnog. In 🧭 Voorbereiding staat "✅ Quiz is startklaar" of welke fouten en waarschuwingen er zijn.
+
+**Wegvallende telefoon tijdens een vraag.** Valt de basistelefoon van een team weg en gaat de vraag intussen dicht, dan mag alleen dat team na terugkomst nog antwoorden. Andere teams kunnen niets meer wijzigen.
 
 **Telefoons.** Na indienen verschijnt "✅ Ingediend!". Valt de wifi weg, dan blijft het antwoord bewaard en gaat het na het herverbinden vanzelf alsnog, zolang de vraag nog openstaat.
 
@@ -229,7 +238,7 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 ## Thema, rondevolgorde en scores
 
-**Teamkleuren.** Elk team krijgt bij het aanmelden automatisch een eigen kleur. Die kleur komt overal terug: rond de teamfoto, in de bolletjes "wie heeft geantwoord" (die oplichten zodra een team indient), in de balken na elke ronde, in de ranglijst en bovenin op de telefoons.
+**Teamkleuren.** Elk team kiest bij het aanmelden zelf een kleur (al gekozen kleuren zijn niet meer beschikbaar). Het telefoonscherm van het team kleurt daarna subtiel mee. Die kleur komt overal terug: rond de teamfoto, in de bolletjes "wie heeft geantwoord" (die oplichten zodra een team indient), in de balken na elke ronde, in de ranglijst en bovenin op de telefoons.
 
 **Thema.** In de bediening (blokje Thema) kies je Standaard, Winter, Kerst, Oud & nieuw, Zomer of Halloween. Het thema verandert de kleuren en decoratie op de tv en alle telefoons, met bijvoorbeeld vallende sneeuw bij Winter en Kerst. Dat kan altijd, ook tijdens de quiz.
 
@@ -260,6 +269,7 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 - [ ] Een extra muziekronde testen met Spotify verbonden (de officiële playlists zijn al gekoppeld; controleer in blok 🎶 of ze werken).
 - [ ] Oefenvragen per ronde nalopen (kolom Oefen? in de Excel).
 - [ ] Oefenquiz met testteams doorlopen met beide quizmasters (tv + bediening), daarna testteams verwijderen.
+- [ ] Zonder internet spelen? Vooraf `npm install` (met internet) en `npm run offline-check`; op de avond `start-lokaal` dubbelklikken, telefoons op de wifi van de laptop met mobiele data uit. Muziek dan alleen met eigen audiobestanden.
 - [ ] Online: een lange toegangscode instellen (HOST_PIN, bijv. drie woorden met streepjes).
 - [ ] Na de quiz: in het blok 🛟 een zip van alles downloaden en bewaren.
 - [ ] Generale repetitie met een paar echte telefoons (iPhone en Android), tv en bediening; ook een teamfoto maken.

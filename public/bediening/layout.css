@@ -1,0 +1,37 @@
+/* Bediening – indeling: vaste kopbalk, menu met instellingen, stap-voor-stap voorbereiding, telefoon/tablet/laptop */
+#topbar { position: sticky; top: 0; z-index: 40; background: #0f172a; display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
+#topbar h1 { flex: 1; }
+#topbar .tb-btn { margin: 0; width: auto; padding: 10px 14px; font-size: 15px; border-radius: 10px; }
+#menu { display: none; }
+#menu.open { display: block; position: fixed; inset: 0; z-index: 70; background: #0f172a; overflow-y: auto; padding: 14px; }
+#menu-head { display: flex; align-items: center; gap: 8px; position: sticky; top: -14px; background: #0f172a; padding: 10px 0; z-index: 2; }
+#menu-index { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-bottom: 10px; }
+#menu-index button { margin: 0; font-size: 14px; padding: 10px; text-align: left; }
+#main-controls { top: var(--topbar-h, 58px); }
+#main-col #prep-panel { display: none; } /* de checklist staat in de voorbereiding (🧭) */
+#wizard { position: fixed; inset: 0; z-index: 80; background: #0f172a; overflow-y: auto; padding: 16px; display: none; }
+#wizard.open { display: block; }
+#wz-steps { display: flex; gap: 4px; margin: 8px 0 14px; }
+#wz-steps span { flex: 1; height: 6px; border-radius: 3px; background: #334155; }
+#wz-steps span.done { background: #22c55e; } #wz-steps span.now { background: #2563eb; }
+#wz-nav { position: sticky; bottom: -16px; background: #0f172a; display: flex; gap: 8px; padding: 12px 0; margin-top: 12px; }
+#wz-nav button { margin: 0; }
+#wz-body details > summary { pointer-events: none; }
+/* Tablet: menu als paneel aan de zijkant */
+@media (min-width: 700px) {
+  #menu.open { left: auto; width: 520px; box-shadow: -10px 0 30px rgba(0,0,0,0.5); }
+  #wizard .wz-inner { max-width: 760px; margin: 0 auto; }
+}
+/* Laptop: bediening links, menu altijd zichtbaar rechts */
+@media (min-width: 1100px) {
+  body.wide .card { display: grid; grid-template-columns: minmax(0, 1fr) 460px; column-gap: 20px; align-items: start; max-width: 1500px !important; margin: 0 auto; }
+  body.wide #topbar { grid-column: 1 / span 2; }
+  body.wide #main-col { grid-column: 1; grid-row: 2; }
+  body.wide #menu { display: block; position: sticky; top: var(--topbar-h, 58px); max-height: calc(100vh - var(--topbar-h, 58px)); overflow-y: auto; grid-column: 2; grid-row: 2; padding: 0 0 20px; }
+  body.wide #menu-close, body.wide #tb-menu { display: none; }
+  body.wide #menu.open { position: sticky; width: auto; box-shadow: none; }
+}
+
+/* sneltoetsen-hint alleen op een laptop of groot scherm */
+#kbd-hint { display: none; }
+@media (min-width: 1000px) and (hover: hover) { #kbd-hint { display: block; } }

@@ -8,11 +8,17 @@
     "fresh": "node server.js --fresh",
     "vendor": "node scripts/download-vendor.js",
     "test": "node --test",
-    "update-hitster": "node scripts/update-hitster.js"
+    "update-hitster": "node scripts/update-hitster.js",
+    "syntax": "node scripts/check-syntax.js",
+    "check": "npm run syntax && npm test",
+    "start:fresh": "node server.js --fresh",
+    "offline-check": "node scripts/offline-check.js",
+    "pakket": "node scripts/make-offline-package.js",
+    "lokaal": "node scripts/offline-check.js && node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "express": "4.21.2",
+    "socket.io": "4.8.1"
   },
   "engines": {
     "node": ">=18"

@@ -27,8 +27,16 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
   - *📤 Uitslag delen*: een mooi plaatje van de eindstand met teamfoto's, te delen via WhatsApp e.d. (of te downloaden). Spelers kunnen dit ook zelf vanaf hun telefoon.
 - **Hall of fame**: op het aanmeldscherm staan de winnaars van eerdere quizzen (uit de quizgeschiedenis; oefenquizzen met testteams tellen niet mee).
 - **Stand blijft geheim**: bij *Dit was ronde …* staan alleen de teams (geen punten, geen volgorde). Met *🏅 Posities op tv* zet de quizmaster de tussenstand op de tv: alleen posities, nooit punten. Bij de prijzenronde komen de bedragen niet op de tv (die zie je bij het nakijken).
+- **Hitster-punten**: per liedje 5 voor de goede plek, jaartal met speling (exact 5, 1 jaar ernaast 3, 2-3 jaar 1) en bonus voor titel (2) en artiest (2). De app doet een voorstel (tikfouten, hoofdletters en *feat.* tellen goed), de quizmaster keurt in de bediening goed of af. Alles is aan te passen bij Instellingen (0 = niet vragen).
+- **Emoji-reacties**: bij uitlegschermen, *Dit was ronde* en in de pauze staat op de telefoons een balk met 😂 😱 👏 🎉 ❤️ 🔥 🤯 💩; de emoji's zweven over de tv (met een stipje in de teamkleur). Niet tijdens vragen, en per telefoon beperkt tegen spammen.
+- **Bediening extra's**: sneltoetsen op de laptop (spatie = grote knop, ← = vorige stap, P = pauze, M = muziek stoppen), een blok *⏭ Hierna* met de volgende vraag, het antwoord en het weetje, punten corrigeren (−5/−1/+1/+5 per team in *📊 Scores*, ongedaan te maken met ↶) en bij logo's/foto blur een gelijkenis-percentage per antwoord.
+- **Awards**: nieuw zijn *Grootste comeback*, *Snelste foute antwoord* en *Jokerpech*.
+- **Tv-cursor**: verborgen, maar zichtbaar zodra je de muis beweegt (na 2 seconden weer weg).
+- **QR-adres**: virtuele netwerkkaarten (Docker, WSL, VirtualBox, VMware, Tailscale, ZeroTier, VPN) worden overgeslagen; het echte wifi-adres (192.168.x.x) krijgt voorrang.
+- **Teamkleur kiezen**: bij het aanmelden kiest elk team een vrije kleur; de telefoon van het team kleurt subtiel mee.
 - **Tekenronde**: de tekeningen verschijnen live op de tv; bij de uitslag met woord, geraden antwoord en ✔/✘.
 - **Foto blur**: het fotokader op de tv neemt de verhouding van de foto over.
+- **Spiekmelding met wachttijd**: pas als een telefoon tijdens een vraag langer dan 3 seconden weg is (meldingenbalk of pop-up telt dus niet). Aan te passen met de omgevingsvariabele `CHEAT_GRACE_MS` (in milliseconden; `0` = meteen melden).
 - **Spiekgeluid**: in de bediening (Instellingen) apart uit te zetten op de tv en op het eigen bediening-toestel; de meldingen zelf blijven zichtbaar.
 - **Bediening**: vaste knoppen bovenaan (grote knop, vorige, pauze, posities, teamoverzicht); alle instellingen onder *⚙️ Instellingen* (op een laptop altijd rechts); *🚨* naar de noodknoppen. Werkt op telefoon, tablet en laptop.
 - **Voorbereiding (🧭)**: vóór de start een stap-voor-stap menu (tv, vragenlijst, rondes, teams, Spotify, Hitster, thema en spelregels, eindcontrole) met daarna de checklist (tv verbonden, aantal teams, rondevolgorde, Spotify en afspeelapparaat, Hitster-playlists, vragenlijst, foto's en logo's, toegangscode, thema). De rondevolgorde ligt na de start vast; extra rondes toevoegen kan wel.
@@ -60,7 +68,7 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
     npm install
     npm start          # hervat een eventuele vorige quiz (staat dan op pauze)
     npm run fresh      # begint altijd schoon
-    npm run vendor     # eenmalig, met internet: QR- en confetti-script lokaal opslaan
+    npm run vendor     # optioneel: mooiere confetti lokaal opslaan (QR-code en confetti werken ook zonder)
 
 | Scherm | Adres | Voor wie |
 |---|---|---|
@@ -150,4 +158,37 @@ springen naar een ronde, +10 seconden, team of speler hernoemen/verplaatsen/verw
 - Rode balk met hoe lang de verbinding al weg is; na terugkeer de melding "Weer verbonden, je zit nog in je team".
 - Antwoorden worden eerst op de telefoon bewaard. Komt er geen bevestiging, dan worden ze na het herverbinden stil alsnog verstuurd, zolang dezelfde vraag nog openstaat (anders volgt een melding dat het te laat was).
 - Hoort een telefoon niet meer bij een team (quiz gereset of team verwijderd), dan krijgt hij een duidelijke uitleg en kan hij zich opnieuw aanmelden.
+
+## Tests en kwaliteit
+
+- `npm run check` = syntaxcontrole van alle code (ook de scripts in de HTML-pagina's) én alle tests. GitHub Actions draait dit bij elke push.
+- `npm test` bevat naast de losse onderdelen:
+  - **complete scenario's** (`test/integration-*.test.js`): aanmelden, testvraag, teamfoto, joker en een echte vraag met punten; telefoons die wegvallen en terugkomen; een herstart van de server midden in een vraag; een reset met een oude reservekopie (de oude stand mag nooit terugkomen); een complete quiz met drie testteams tot en met de ontknoping en de awards;
+  - **geheimhouding**: tv en telefoons krijgen tijdens het spel nergens punten te zien, *Dit was ronde* zonder punten/volgorde, prijzenronde zonder bedragen op de tv;
+  - **scorematrix** (`test/scoring.test.js`): per vraagtype goed/fout/geen antwoord, maximum, vervallen vraag, iedereen goed, joker, gelijke stand, slotvraag.
+- Het testharnas (`test-helpers/`) start de echte server met nep-netwerk, zodat alles zonder browser getest wordt.
+
+**Startklaar-controle**: vóór de start controleert de server de quiz. *Fouten* (bijv. een ronde zonder vragen, te weinig tekenwoorden of liedjes, een kapotte slotvraag) blokkeren de startknop; met *⚠️ Toch starten* kan het alsnog. *Waarschuwingen* (bijv. ontbrekende foto's) en *informatie* (wat er geladen is) staan in de 🧭 Voorbereiding.
+
+**Late kans bij wegvallende verbinding**: valt de basistelefoon van een team weg tijdens een open meerkeuzevraag en sluit de vraag intussen, dan mag alléén dat team na terugkomst nog antwoorden. De vraag gaat niet voor iedereen opnieuw open, en een team dat verbonden bleef maar niet antwoordde krijgt geen extra kans.
+
+## Zonder internet spelen (lokaal op een laptop)
+
+De quiz draait volledig op de laptop; telefoons en tv verbinden via de wifi met de laptop. Internet is niet nodig.
+
+**Eén keer vooraf, met internet**
+1. Node.js installeren (nodejs.org) en in de projectmap `npm install` draaien. Zet het `package-lock.json` dat daarbij ontstaat in GitHub: dan worden overal exact dezelfde versies gebruikt (GitHub Actions gebruikt dan `npm ci`). De versies van Express en Socket.IO staan bovendien vast in `package.json` (en via `.npmrc` blijven nieuwe pakketten ook vast staan).
+2. `npm run offline-check`: controleert Node.js, de pakketten, de vragenlijst, alle foto's/logo's en audiobestanden, en toont het adres voor de telefoons.
+3. Muziek zonder internet: zet mp3-bestanden in `public/media/` en vul in de vragenlijst bij R4 Muziek de kolom *Audio* in. Spotify, iTunes, de Hitster-playlists en extra muziekrondes werken alleen met internet.
+4. Op een andere laptop spelen? `npm run pakket` maakt `familiequiz-offline.zip` met alles erin (ook de pakketten). Daar alleen Node.js installeren en uitpakken.
+
+**Op de avond**
+- Dubbelklik `start-lokaal.bat` (Windows) of `start-lokaal.command` (Mac), of draai `npm run lokaal`. De controle draait eerst, daarna start de server en opent de bediening.
+- Laptop en telefoons op hetzelfde wifi-netwerk (een router zonder internet of een hotspot van de laptop is prima). Zet op de telefoons de **mobiele data uit**, anders kiezen ze soms 4G/5G en vinden ze de laptop niet.
+- De QR-code op de tv maakt de server zelf (geen internet nodig) en wijst naar het adres van de laptop, bijv. `http://192.168.1.23:3000`. Lettertype en confetti zitten ook in de app.
+- De bediening ziet zelf of er internet is (🌐 *geen internet* rechtsboven) en waarschuwt in de startklaar-controle voor muziek zonder audiobestand.
+
+## Code-indeling bediening
+
+`public/bediening.html` bevat alleen nog de opmaak. De code staat in `public/bediening/`: `core.js` (verbinding, inloggen, spiekmeldingen), `controls.js` (vaste knoppen), `backups.js`, `prep.js` (checklist, teamoverzicht), `hitster.js`, `panel.js` (stap-paneel), `teams.js`, `quizfile.js`, `spotify.js`, `settings.js` (scores, thema, rondeplan), `main.js` (verwerken van elke nieuwe stand) en `layout.js`/`layout.css` (kopbalk, menu, voorbereiding). Het zijn gewone scripts in een vaste volgorde. `test/ui-smoke.test.js` laadt bediening, tv en telefoon in een nep-browser en haalt alle standen van een complete quiz erdoorheen; een JavaScript-fout in een van de schermen laat de test falen.
 

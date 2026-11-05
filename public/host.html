@@ -16,13 +16,18 @@
       s.onerror = () => { const c = document.createElement("script"); c.src = cdn; document.head.appendChild(c); };
       document.head.appendChild(s);
     }
-    loadLib("vendor/qrcode.min.js", "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js");
     loadLib("vendor/confetti.browser.min.js", "https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js");
   </script>
   <style>
     /* Gemaakt voor een tv: alles schaalt mee met de breedte van het scherm */
     html, body { height: 100%; }
     body.tv { display: flex; flex-direction: column; justify-content: flex-start; height: 100vh; padding: 0; overflow: hidden; cursor: none; }
+    body.tv.show-cursor { cursor: default; } /* zichtbaar zodra de muis beweegt, na 2 seconden weer weg */
+    /* Emoji-reacties van spelers: zweven van onder naar boven */
+    #reactions { position: fixed; inset: 0; pointer-events: none; z-index: 75; overflow: hidden; }
+    .reaction { position: absolute; bottom: -12vh; font-size: clamp(36px, 5vw, 100px); animation: float-up 4.2s ease-out forwards; text-align: center; }
+    .reaction small { display: block; width: 0.5em; height: 0.5em; border-radius: 50%; margin: 0 auto; }
+    @keyframes float-up { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 12% { opacity: 1; transform: translate(0, -12vh) scale(1.1); } 100% { transform: translate(var(--drift, 0), -105vh) scale(1); opacity: 0; } }
     #audio-banner { margin-left: auto; background: #f59e0b; color: #0f172a; font-weight: bold; font-size: clamp(11px, 1.2vw, 22px); padding: 0.3em 1em; border-radius: 999px; }
     #tv-alerts { position: fixed; left: 1.5vw; bottom: 1vw; display: flex; flex-wrap: wrap; gap: 0.5vw; z-index: 45; max-width: 70vw; }
     .tv-alert { background: #dc2626; color: #fff; font-weight: bold; font-size: clamp(11px, 1.15vw, 22px); padding: 0.3em 0.9em; border-radius: 999px; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
@@ -156,6 +161,7 @@
   <div id="tv-timerbar" class="hidden"><div id="tv-timerfill"></div></div>
   <div id="tv-offline" class="hidden">⚠️ Verbinding met de quiz kwijt, opnieuw verbinden…</div>
   <div id="reveal-spot" class="hidden"></div>
+  <div id="reactions"></div>
   <div id="positions-overlay" class="hidden"><h1 class="tv-title" style="color:#fbbf24;">📊 Tussenstand</h1><p class="tv-sub">Alleen de posities, de punten blijven geheim!</p><div id="positions-list"></div></div>
   <div id="round-curtain"><div class="rc-no"></div><div class="rc-title"></div></div>
 
@@ -940,22 +946,43 @@
       {
         QuizFX.showWinners(list, $("winner-banner"), $("winner-name-text"));
         $("winner-photos").replaceChildren(...list.filter((p) => p.rank === 1).map((p) => QuizFX.avatar(p.name, p.photo, "clamp(140px, 16vw, 340px)", p.color)));
-        if (fresh) { QuizFX.fanfare(); QuizFX.launchConfetti(); }
+        if (fresh) { (QuizFX.triumph || QuizFX.fanfare)(); QuizFX.launchConfetti(); }
       }
     }
 
     // ---------- Automatisch passend maken op elk schermformaat ----------
     // Past de inhoud niet in het beschikbare vlak, dan wordt het hele scherm (de actieve view) kleiner geschaald.
     let fitTimer = null;
+    // ---------- Muiscursor: alleen zichtbaar als de muis beweegt ----------
+    let cursorTimer = null;
+    document.addEventListener("mousemove", () => {
+      document.body.classList.add("show-cursor");
+      clearTimeout(cursorTimer);
+      cursorTimer = setTimeout(() => document.body.classList.remove("show-cursor"), 2000);
+    });
+    // ---------- Emoji-reacties van de spelers ----------
+    socket.on("reaction", (r) => {
+      const layer = $("reactions");
+      if (!layer || layer.childElementCount > 40) return; // niet te druk
+      const d = el("div", "reaction", r.emoji);
+      d.style.left = `${5 + Math.random() * 88}vw`;
+      d.style.setProperty("--drift", `${(Math.random() - 0.5) * 16}vw`);
+      if (r.color) { const dot = el("small"); dot.style.background = r.color; d.append(dot); }
+      layer.append(d);
+      setTimeout(() => d.remove(), 4300);
+    });
     // ---------- Tussenstand: alleen posities ----------
     let posKey = null;
-    function renderPositions(list) {
+    function renderPositions(pos) {
       const box = $("positions-overlay");
-      box.classList.toggle("hidden", !list);
-      if (!list) { posKey = null; return; }
-      const key = JSON.stringify(list);
+      box.classList.toggle("hidden", !pos);
+      if (!pos) { posKey = null; stopRace(); return; }
+      const key = JSON.stringify(pos);
       if (key === posKey) return;
       posKey = key;
+      if (pos.mode === "race") return startRace(pos);
+      stopRace();
+      const list = pos.list || [];
       $("positions-list").replaceChildren(...list.map((p, i) => {
         const row = el("div", "pos-row");
         row.style.animationDelay = `${i * 0.25}s`;
@@ -963,6 +990,50 @@
         row.append(el("span", "pos-rank", p.rank === 1 ? "🥇 1e" : p.rank === 2 ? "🥈 2e" : p.rank === 3 ? "🥉 3e" : `${p.rank}e`), QuizFX.avatar(p.name, p.photo, "1.6em", p.color), el("span", "", p.name));
         return row;
       }));
+    }
+    // ---------- Balkenrace: per gespeelde ronde schuiven de balken op en halen teams elkaar in ----------
+    // Geen getallen: de balken zijn verhoudingen ten opzichte van de koploper.
+    let raceTimer = null;
+    function stopRace() { clearInterval(raceTimer); raceTimer = null; }
+    function startRace(pos) {
+      stopRace();
+      const box = $("positions-list");
+      const n = pos.series.length, rowH = 9; // vh per rij
+      box.replaceChildren();
+      const label = el("div", "tv-sub"); label.style.cssText = "text-align:center; font-weight:bold; color:#fbbf24; margin-bottom:1vh;";
+      const stage = el("div"); stage.style.cssText = `position:relative; height:${n * rowH}vh; width:100%;`;
+      box.append(label, stage);
+      const rows = pos.series.map((t) => {
+        const row = el("div");
+        row.style.cssText = `position:absolute; left:0; right:0; height:${rowH - 1.5}vh; display:flex; align-items:center; gap:1vw; transition: top 0.9s cubic-bezier(.4,1.4,.5,1);`;
+        const who = el("div"); who.style.cssText = "display:flex; align-items:center; gap:0.6vw; width:22vw; font-size:clamp(16px,2vw,40px); font-weight:bold; white-space:nowrap; overflow:hidden;";
+        who.append(QuizFX.avatar(t.name, t.photo, "1.5em", t.color), t.name);
+        const track = el("div"); track.style.cssText = "flex:1; height:70%; background:#1e293b; border-radius:999px; overflow:hidden;";
+        const bar = el("div", "bar"); bar.style.cssText = `height:100%; width:0%; background:${t.color || "#38bdf8"}; border-radius:999px; transition: width 0.9s ease-out;`;
+        track.append(bar);
+        const medal = el("div"); medal.style.cssText = "width:3em; font-size:clamp(18px,2.4vw,48px); text-align:center;";
+        row.append(who, track, medal);
+        stage.append(row);
+        return { t, row, bar, medal };
+      });
+      const steps = Math.max(1, pos.rounds.length);
+      let k = 0;
+      const show = () => {
+        const i = Math.min(k, steps - 1);
+        label.textContent = pos.rounds.length ? pos.rounds[i] : "Nog geen ronde gespeeld";
+        const vals = rows.map((r) => ({ r, v: r.t.values[i] || 0 }));
+        vals.sort((a, b) => b.v - a.v);
+        vals.forEach(({ r, v }, place) => {
+          r.row.style.top = `${place * rowH}vh`;
+          r.bar.style.width = `${Math.max(2, v)}%`;
+          r.medal.textContent = i === steps - 1 ? (place === 0 ? "🥇" : place === 1 ? "🥈" : place === 2 ? "🥉" : "") : "";
+        });
+        if (QuizFX.tick && k < steps) QuizFX.tick();
+        k++;
+        if (k > steps) { stopRace(); if (QuizFX.fanfare) QuizFX.fanfare(); }
+      };
+      raceTimer = setInterval(show, 1600);
+      setTimeout(show, 150);
     }
     // ---------- Pauze: diavoorstelling met de teamfoto's ----------
     // Teamfoto's en pauzefoto's door elkaar; een nieuwe pauzefoto komt meteen groot in beeld
@@ -1079,7 +1150,8 @@
         $("tv-timer").classList.toggle("low", low);
         bigTimer(info, $("draw-bigtimer"));
         bigTimer(info, $("th-bigtimer"));
-        if (low && lastSecs !== info.secs) QuizFX.tick();
+        if (low && lastSecs !== info.secs && info.secs > 0) QuizFX.tick(); // tikken in de laatste 5 seconden
+        if (info.secs === 0 && lastSecs > 0 && QuizFX.buzzer) QuizFX.buzzer(); // tijd is op
         lastSecs = info.secs;
       });
 
@@ -1187,8 +1259,11 @@
     // ---------- QR-code ----------
     fetch("/api/join-url").then((r) => r.json()).then((d) => {
       $("join-url").textContent = d.url;
-      const make = () => { if (window.QRCode) new QRCode($("qrcode"), { text: d.url, width: 260, height: 260 }); else setTimeout(make, 400); };
-      make();
+      // de QR-code maakt de server zelf (werkt ook zonder internet)
+      const img = document.createElement("img");
+      img.src = "/qr.svg?t=" + Date.now(); img.alt = "QR-code"; img.width = 260; img.height = 260;
+      img.style.cssText = "display:block; width:clamp(160px, 22vw, 420px); height:auto; image-rendering:pixelated;";
+      $("qrcode").replaceChildren(img);
     }).catch(() => {});
   </script>
 </body>

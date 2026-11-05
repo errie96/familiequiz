@@ -37,6 +37,17 @@
     .seg button.on { background: #2563eb; }
     .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #334155; }
     .toggle-row input { width: 26px; height: 26px; flex: none; }
+    /* Teamkleur: rand bovenaan en een zachte gloed in de achtergrond */
+    body.teamed { background: radial-gradient(ellipse at top, color-mix(in srgb, var(--team) 28%, #0f172a) 0%, #0f172a 55%) fixed; }
+    body.teamed .card { border-top: 6px solid var(--team); }
+    body.teamed .btn-primary { box-shadow: 0 0 0 2px color-mix(in srgb, var(--team) 60%, transparent); }
+    body.teamed #settings-btn { background: var(--team); }
+    body.contrast.teamed { background: #000; }
+    /* Emoji-reacties: knoppenbalk onderaan (alleen bij uitlegschermen, tussen de rondes en in de pauze) */
+    #react-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 44; display: flex; justify-content: center; gap: 6px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); background: rgba(15,23,42,0.92); backdrop-filter: blur(6px); }
+    #react-bar button { width: auto; margin: 0; padding: 6px 8px; font-size: 26px; background: transparent; border: none; transition: transform 0.15s; }
+    #react-bar button:active, #react-bar button.sent { transform: scale(1.35); }
+    body.reacting { padding-bottom: 70px; }
     #offline-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; background: #dc2626; color: #fff; font-weight: bold; text-align: center; padding: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
     body.offline #view button, body.offline #view input, body.offline #team-panel button { pointer-events: none; opacity: 0.45; }
     #submitted-flag { border-radius: 12px; padding: 14px; margin-bottom: 12px; text-align: center; font-weight: bold; font-size: 20px; color: #fff; animation: sub-in 0.4s ease-out; }
@@ -87,6 +98,7 @@
       <p class="note" id="set-conn" style="margin-top:12px;"></p>
     </div>
   </div>
+  <div id="react-bar" class="hidden"></div>
   <div id="offline-bar" class="hidden">📡 Verbinding kwijt, even geduld… (antwoorden kan pas als hij terug is)</div>
   <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
 
@@ -118,6 +130,8 @@
             Samen kiezen jullie straks welke telefoon de <b>basistelefoon</b> is: daarmee dien je de antwoorden in.
             Voorlopig is dat deze telefoon. Teamgenoten sluiten aan met hun eigen telefoon.
           </p>
+          <p style="text-align:center; margin:10px 0 6px;">Kies jullie teamkleur:</p>
+          <div id="color-pick" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:12px;"></div>
           <button class="btn-primary" id="btn-create">Maak team aan</button>
         </div>
         <div id="join-existing" class="hidden">
@@ -236,15 +250,11 @@
     applyPrefs();
 
     // ---------------- Wake Lock ----------------
-    let wakeLock = null;
-    async function requestWakeLock() {
-      if (!prefs.awake) { if (wakeLock) { try { await wakeLock.release(); } catch (e) { /* niets */ } wakeLock = null; } return; }
-      try {
-        if ("wakeLock" in navigator && !wakeLock) {
-          wakeLock = await navigator.wakeLock.request("screen");
-          wakeLock.addEventListener("release", () => { wakeLock = null; });
-        }
-      } catch (err) {}
+    // Via QuizFX: Wake Lock waar het kan (https), anders de video-reserve. Belangrijk bij lokaal spelen op
+    // http://192.168..., want daar bestaat Wake Lock niet en zou een iPhone na 30 seconden op slot gaan.
+    function requestWakeLock() {
+      if (prefs.awake) QuizFX.wantAwake();
+      else QuizFX.releaseAwake();
     }
 
     // ---------------- Spiekdetectie ----------------
@@ -264,7 +274,7 @@
     }
     document.addEventListener("visibilitychange", async () => {
       if (document.hidden) notifyLeftApp("locked");
-      else { notifyBack(); await requestWakeLock(); }
+      else { notifyBack(); requestWakeLock(); }
     });
     window.addEventListener("pagehide", () => notifyLeftApp("app_switch"));
     window.addEventListener("blur", () => notifyLeftApp("app_switch"));
@@ -400,8 +410,24 @@
     $("tab-new").addEventListener("click", () => selectTab("new"));
     $("tab-join").addEventListener("click", () => selectTab("join"));
     // Ook vanuit het tabblad "Nieuw team" kijken of het maximum aantal teams al bereikt is
+    // Teamkleur kiezen: rondjes in de kleuren die nog vrij zijn
+    let chosenColor = null;
+    function renderColors(colors) {
+      const box = $("color-pick");
+      if (!colors || !colors.length) return box.replaceChildren();
+      if (!chosenColor || !colors.some((x) => x.c === chosenColor && x.free)) chosenColor = (colors.find((x) => x.free) || {}).c || null;
+      box.replaceChildren(...colors.map((x) => {
+        const b = el("button");
+        b.type = "button"; b.title = x.free ? "Kies deze kleur" : "Al gekozen door een ander team";
+        b.style.cssText = `width:44px; height:44px; border-radius:50%; padding:0; margin:0; background:${x.c}; border:${x.c === chosenColor ? "4px solid #fff" : "4px solid transparent"}; box-shadow:${x.c === chosenColor ? "0 0 0 3px " + x.c : "none"}; opacity:${x.free ? 1 : 0.2};`;
+        b.disabled = !x.free;
+        b.onclick = () => { chosenColor = x.c; renderColors(colors); };
+        return b;
+      }));
+    }
     function refreshTeamsAlways() {
       socket.emit("list_teams", null, (res) => {
+        renderColors(res && res.colors);
         teamsFull = !!(res && res.full);
         $("tab-new").disabled = teamsFull;
         $("tab-new").textContent = teamsFull ? "Nieuw team (vol)" : "Nieuw team";
@@ -439,7 +465,7 @@
       const teamName = $("team-name").value.trim();
       if (!teamName) return showJoinError("Vul een teamnaam in.");
       if (!myName()) return showJoinError("Vul eerst je eigen naam in.");
-      socket.emit("create_team", { teamName, label: myName() }, onJoined);
+      socket.emit("create_team", { teamName, label: myName(), color: chosenColor || undefined }, onJoined);
     }
     function joinTeam(teamId) {
       if (!myName()) return showJoinError("Vul eerst je eigen naam in.");
@@ -730,8 +756,17 @@
         if (v.status === "revealed") {
           box.append(bigEl(`${v.song.year}`));
           if (v.result) box.append(el("p", "bigtxt " + (v.result.ok ? "good" : "bad"), v.result.ok ? "✔ Goed! De kaart is toegevoegd aan jullie tijdlijn." : "✘ Helaas, de kaart is niet toegevoegd."));
-          if (v.result && v.result.exact) box.append(el("p", "bigtxt good", "⭐ Exact jaartal goed: bonuspunten!"));
+          // jaartal met speling: exact, of er net naast (zonder punten te noemen: die blijven geheim)
+          if (v.result && v.result.diff === 0) box.append(el("p", "bigtxt good", "⭐ Exact jaartal goed!"));
+          else if (v.result && v.result.diff !== null && v.result.diff !== undefined && v.result.diff <= 3) box.append(el("p", "bigtxt good", `👍 Bijna! Je zat er ${v.result.diff} jaar naast: dat levert ook nog wat op.`));
+          else if (v.result && v.result.exact) box.append(el("p", "bigtxt good", "⭐ Exact jaartal goed!"));
           else box.append(el("p", "note", "Jullie hebben niet geplaatst."));
+          // bonus: titel en artiest (zonder punten te noemen)
+          if (v.guess && (v.guess.title || v.guess.artist)) {
+            const b = v.bonus || {};
+            if (v.guess.title) box.append(el("p", "bigtxt " + (b.title ? "good" : "bad"), `🎵 Titel "${v.guess.title}": ${b.title ? "✔ goed!" : "✘ niet goed"}`));
+            if (v.guess.artist) box.append(el("p", "bigtxt " + (b.artist ? "good" : "bad"), `🎤 Artiest "${v.guess.artist}": ${b.artist ? "✔ goed!" : "✘ niet goed"}`));
+          }
         } else if (v.placed !== null) {
           box.append(el("p", "note good", "✅ Geplaatst! Wachten tot iedereen klaar is..."));
         } else if (v.isBase) {
@@ -765,11 +800,15 @@
         yi.classList.toggle("hidden", !canPlace);
         if (v.yearGuess) yi.value = v.yearGuess;
         if (canPlace) box.append(yi);
+        // bonus: titel en artiest raden (de quizmaster keurt goed)
+        const ti = el("input"); ti.type = "text"; ti.maxLength = 80; ti.placeholder = "Titel (optioneel, bonus)";
+        const ai = el("input"); ai.type = "text"; ai.maxLength = 80; ai.placeholder = "Artiest (optioneel, bonus)";
+        if (canPlace && v.askTitleArtist) box.append(ti, ai);
         const send = submitBtn("Kaart plaatsen 📤", () => {
           if (sel === null) return;
           send.disabled = true;
           const year = parseInt(yi.value, 10);
-          act("place_card", { stepId: v.id, slot: sel, year: Number.isInteger(year) ? year : undefined }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
+          act("place_card", { stepId: v.id, slot: sel, year: Number.isInteger(year) ? year : undefined, title: ti.value.trim() || undefined, artist: ai.value.trim() || undefined }, (res) => { send.disabled = false; if (!res || !res.ok) alert(ERR[res && res.reason] || "Plaatsen is niet gelukt."); });
         });
         function paint() {
           slots.forEach((s, i) => s.classList.toggle("sel", sel === i));
@@ -1124,7 +1163,23 @@
       flag.style.background = (me && me.color) || "#16a34a";
       if (sub && !lastSubmitted) buzz([40, 50, 40]);
       lastSubmitted = sub;
+      // Trillen zodra je (weer) kunt antwoorden, bijv. als een vraag opengaat of een late kans krijgt
+      const openNow = ["open", "question", "wager", "drawing", "writing"].includes(v.status) && !sub && !v.answered;
+      const openKey = openNow ? `${v.id}|${v.status}` : null;
+      if (openKey && openKey !== lastOpenKey && v.id === lastQuestionId && lastOpenKey !== null) buzz(90);
+      lastOpenKey = openKey;
+      // Trillen als de tijd begint te lopen
+      const timerKey = v.timer && v.timer.running ? v.id : null;
+      if (timerKey && timerKey !== lastTimerKey) buzz([60, 40, 60]);
+      lastTimerKey = timerKey;
+      // Jouw beurt (tekenen of uitleggen bij 30 Seconds): lang trillen
+      const myTurn = (v.type === "draw" && v.role === "drawer" && ["ready", "drawing"].includes(v.status)) || (v.type === "thirty" && v.role === "explainer" && ["ready", "running"].includes(v.status));
+      const turnKey = myTurn ? `${v.id}|${v.turn}` : null;
+      if (turnKey && turnKey !== lastTurnKey) buzz([120, 60, 120, 60, 250]);
+      lastTurnKey = turnKey;
     }
+    let lastTurnKey = null;
+    let lastOpenKey = null, lastTimerKey = null;
     let mounted = { key: null, update: null };
     function viewKey(v) {
       switch (v.type) {
@@ -1163,10 +1218,28 @@
     ];
     let prevPaused = false;
 
+    // ---------------- Emoji-reacties naar de tv ----------------
+    const REACTIONS = ["😂", "😱", "👏", "🎉", "❤️", "🔥", "🤯", "💩"];
+    (() => {
+      const bar = $("react-bar");
+      REACTIONS.forEach((e) => {
+        const b = el("button", "", e);
+        b.type = "button";
+        b.onclick = () => { socket.emit("react", { emoji: e }); b.classList.add("sent"); setTimeout(() => b.classList.remove("sent"), 200); };
+        bar.append(b);
+      });
+    })();
+    function updateReactBar(state) {
+      const v = state.view || {};
+      const on = !!deviceId && state.phase === "PLAY" && (state.paused || v.type === "info" || v.type === "roundresult");
+      $("react-bar").classList.toggle("hidden", !on);
+      document.body.classList.toggle("reacting", on);
+    }
     let latestState = null;
     let toastTimer = null;
     socket.on("state_update", (state) => {
       latestState = state;
+      updateReactBar(state);
       if (resumeOnNextState && state.view) { resumeOnNextState = false; resumePending(state); }
       else if (socket.connected && state.view && pending.some((p) => p.viewId !== state.view.id)) { pending = pending.filter((p) => p.viewId === state.view.id); savePending(); }
       if (!deviceId || !state.me) return;
@@ -1213,6 +1286,8 @@
       $("round-badge").textContent = state.roundName || "Familiequiz";
       $("team-badge").textContent = me.teamName;
       $("team-badge").style.background = me.color || "#2563eb";
+      // het scherm kleurt subtiel mee in de teamkleur
+      if (me.color) { document.documentElement.style.setProperty("--team", me.color); document.body.classList.add("teamed"); }
       feedback(v);
       $("team-panel").classList.toggle("hidden", !["lobby", "info", "roundresult"].includes(v.type));
       mount(v);

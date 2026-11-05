@@ -66,6 +66,25 @@ window.QuizFX = (function () {
     osc.start(); osc.stop(c.currentTime + 0.12);
   }
   // Vrolijke "ding" bij een goed antwoord en een "whoosh" bij een nieuwe ronde
+  // Eindsignaal als de tijd op is, en een triomfantelijk slotakkoord voor de winnaar
+  function buzzer() {
+    const c = audio(); if (!c) return;
+    const osc = c.createOscillator(), gain = c.createGain();
+    osc.type = "sawtooth"; osc.frequency.setValueAtTime(220, c.currentTime); osc.frequency.linearRampToValueAtTime(140, c.currentTime + 0.6);
+    gain.gain.setValueAtTime(0.18, c.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.65);
+    osc.connect(gain); gain.connect(c.destination); osc.start(); osc.stop(c.currentTime + 0.66);
+  }
+  function triumph() {
+    const c = audio(); if (!c) return;
+    fanfare();
+    const t0 = c.currentTime + 0.8;
+    [523.25, 659.25, 783.99, 1046.5].forEach((f) => { // groot slotakkoord (C-groot)
+      const osc = c.createOscillator(), gain = c.createGain();
+      osc.type = "triangle"; osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.0001, t0); gain.gain.exponentialRampToValueAtTime(0.12, t0 + 0.05); gain.gain.exponentialRampToValueAtTime(0.001, t0 + 2.2);
+      osc.connect(gain); gain.connect(c.destination); osc.start(t0); osc.stop(t0 + 2.3);
+    });
+  }
   function ding() {
     const c = audio(); if (!c) return;
     [880, 1320].forEach((f, i) => {
@@ -83,8 +102,30 @@ window.QuizFX = (function () {
     src.buffer = buf; filt.type = "bandpass"; filt.frequency.setValueAtTime(400, c.currentTime); filt.frequency.exponentialRampToValueAtTime(2400, c.currentTime + 0.6);
     gain.gain.value = 0.25; src.connect(filt); filt.connect(gain); gain.connect(c.destination); src.start();
   }
+  // Eigen confetti (zonder internet of extra bibliotheek): gekleurde snippers die over het scherm dwarrelen
+  function simpleConfetti(ms = 7000) {
+    const c = document.createElement("canvas");
+    c.style.cssText = "position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:90;";
+    document.body.appendChild(c);
+    const g = c.getContext("2d");
+    const fit = () => { c.width = window.innerWidth; c.height = window.innerHeight; };
+    fit();
+    const colors = ["#f43f5e", "#fbbf24", "#22c55e", "#3b82f6", "#a855f7", "#f97316", "#ffffff"];
+    const parts = [];
+    const spawn = (n) => { for (let i = 0; i < n; i++) parts.push({ x: Math.random() * c.width, y: -20 - Math.random() * c.height * 0.3, vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 4, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3, w: 6 + Math.random() * 8, h: 4 + Math.random() * 6, col: colors[Math.floor(Math.random() * colors.length)] }); };
+    const end = Date.now() + ms;
+    spawn(160);
+    const tick = () => {
+      g.clearRect(0, 0, c.width, c.height);
+      if (Date.now() < end && parts.length < 400) spawn(6);
+      parts.forEach((p) => { p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.r += p.vr; g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.col; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore(); });
+      for (let i = parts.length - 1; i >= 0; i--) if (parts[i].y > c.height + 30) parts.splice(i, 1);
+      if (Date.now() < end + 4000 && parts.length) requestAnimationFrame(tick); else c.remove();
+    };
+    requestAnimationFrame(tick);
+  }
   function launchConfetti() {
-    if (typeof confetti !== "function") return;
+    if (typeof confetti !== "function") return simpleConfetti();
     const end = Date.now() + 7000;
     const interval = setInterval(() => {
       if (Date.now() >= end) return clearInterval(interval);
@@ -365,13 +406,16 @@ window.QuizFX = (function () {
   const setTexts = (t) => { if (t) TEXTS = t; };
   const t = (key, vars) => String(TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] !== undefined ? vars[k] : m));
 
-  // Scherm wakker houden (tv en bediening). Wake Lock werkt via https of localhost; anders als reserve een
-  // onzichtbaar, stil "filmpje" dat de browser wakker houdt. Opnieuw aanvragen zodra het scherm weer zichtbaar is.
-  let wakeLock = null, wakeVideo = null;
+  // Scherm wakker houden (tv, bediening en telefoons). Wake Lock werkt alleen via https of localhost; op het
+  // lokale wifi-adres (http://192.168...) dus niet. Dan als reserve een onzichtbaar, stil "filmpje" dat de browser
+  // wakker houdt. Opnieuw aanvragen zodra het scherm weer zichtbaar is, en bij elke tik (video mag pas na een tik).
+  let wakeLock = null, wakeVideo = null, wakeTick = null, wakeListeners = false;
   async function keepAwake() {
+    if (!keepAwake.wanted) return;
     try {
       if ("wakeLock" in navigator) {
         if (!wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); }
+        if (!keepAwake.wanted) releaseAwake(); // intussen uitgezet
         return;
       }
     } catch (e) { /* niet toegestaan: reserve hieronder */ }
@@ -379,22 +423,32 @@ window.QuizFX = (function () {
       if (!wakeVideo) {
         const c = document.createElement("canvas"); c.width = c.height = 2;
         const g = c.getContext("2d");
-        setInterval(() => { g.fillStyle = Date.now() % 2000 < 1000 ? "#000" : "#010101"; g.fillRect(0, 0, 2, 2); }, 1000);
+        wakeTick = setInterval(() => { g.fillStyle = Date.now() % 2000 < 1000 ? "#000" : "#010101"; g.fillRect(0, 0, 2, 2); }, 1000);
         wakeVideo = document.createElement("video");
-        wakeVideo.muted = true; wakeVideo.playsInline = true; wakeVideo.setAttribute("playsinline", "");
+        wakeVideo.muted = true; wakeVideo.playsInline = true; wakeVideo.setAttribute("playsinline", ""); wakeVideo.setAttribute("muted", "");
         wakeVideo.style.cssText = "position:fixed; width:1px; height:1px; opacity:0.01; pointer-events:none; bottom:0; right:0;";
         if (c.captureStream) wakeVideo.srcObject = c.captureStream(1);
         document.body.appendChild(wakeVideo);
       }
-      await wakeVideo.play();
-    } catch (e) { /* lukt niet zonder klik: bij de volgende klik opnieuw */ }
+      if (wakeVideo.paused) await wakeVideo.play();
+    } catch (e) { /* lukt niet zonder tik: bij de volgende tik opnieuw */ }
   }
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && (wakeLock === null && (keepAwake.wanted))) keepAwake(); });
+  function releaseAwake() {
+    keepAwake.wanted = false;
+    if (wakeLock) { const l = wakeLock; wakeLock = null; l.release().catch(() => {}); }
+    if (wakeVideo) { try { wakeVideo.pause(); wakeVideo.srcObject = null; wakeVideo.remove(); } catch (e) { /* niets */ } wakeVideo = null; }
+    if (wakeTick) { clearInterval(wakeTick); wakeTick = null; }
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && keepAwake.wanted) keepAwake(); });
+  // Mag vaak aangeroepen worden: de luisteraars voor "opnieuw bij een tik" worden maar één keer toegevoegd
   function wantAwake() {
     keepAwake.wanted = true;
     keepAwake();
-    const again = () => keepAwake();
+    if (wakeListeners) return;
+    wakeListeners = true;
+    const again = () => { if (keepAwake.wanted) keepAwake(); };
     document.addEventListener("click", again, { passive: true });
+    document.addEventListener("touchend", again, { passive: true });
     document.addEventListener("keydown", again);
   }
 
@@ -478,7 +532,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { ding, whoosh, resultImage, shareImage, wantAwake, compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

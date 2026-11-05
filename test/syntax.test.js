@@ -18,7 +18,11 @@ test('server and browser inline scripts have valid JavaScript syntax', () => {
       .map((match) => match[1])
       .filter((source) => source.trim());
 
-    assert.ok(scripts.length > 0, file + ' should contain an inline script');
+    // de bediening laadt haar code uit losse bestanden (public/bediening/*.js)
+    if (file === 'public/bediening.html') {
+      for (const f of fs.readdirSync(path.join(root, 'public', 'bediening')).filter((x) => x.endsWith('.js'))) scripts.push(fs.readFileSync(path.join(root, 'public', 'bediening', f), 'utf8'));
+    }
+    assert.ok(scripts.length > 0, file + ' should contain scripts');
     scripts.forEach((source, index) => {
       assert.doesNotThrow(() => new vm.Script(source, { filename: file + '#script-' + index }));
     });
