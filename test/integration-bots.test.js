@@ -13,15 +13,21 @@ test('complete quiz met robots: alle stappen, ontknoping, awards en geen quizges
   host.send('host_main'); // start
   assert.equal(remote().phase, 'PLAY');
   const kinds = new Set();
+  const momentum = [];
   for (let i = 0; i < 4000 && remote().phase === 'PLAY'; i++) {
     await sleep(15); // robots de tijd geven om te antwoorden
     const r = remote();
     kinds.add(r.step.kind);
+    const tvStep = tvState() && tvState().step;
+    if (tvStep && tvStep.kind === 'roundresult') momentum.push(tvStep.momentum);
     if (r.controls.main.enabled) host.send('host_main');
     else if (r.controls.force) host.send('host_force');
   }
   assert.equal(remote().phase, 'END');
   for (const k of ['teamphoto', 'joker', 'mc', 'logo', 'memory', 'song', 'price', 'draw', 'thirty', 'roundresult', 'final']) assert.ok(kinds.has(k), `stap ${k} is langsgekomen`);
+  // momentum-meldingen na de rondes: altijd een lijst, hooguit twee, en minstens één ronde met een melding
+  assert.ok(momentum.length && momentum.every((m) => Array.isArray(m) && m.length <= 2), 'momentum bij elke rondeuitslag');
+  assert.ok(momentum.some((m) => m.length > 0), 'minstens één momentum-melding');
   // ontknoping: plek voor plek tot het einde
   for (let i = 0; i < 20 && remote().end.reveal !== 'done'; i++) host.send('host_main');
   assert.equal(remote().end.reveal, 'done');

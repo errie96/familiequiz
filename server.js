@@ -21,6 +21,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const { createLogger } = require('./lib/logger');
 const { generateCode, sameCode, createGuard, createSessions, createRateLimiter, REMOTE_ONLY, LOGGED } = require('./lib/security');
 const { createBackups } = require('./lib/backup');
+const { momentumMessages } = require('./lib/momentum');
 const LOG = createLogger(path.join(DATA_DIR, 'logs'));
 
 // Toegangscode voor bediening.html (HOST_PIN). Mag lang zijn, ook met letters en streepjes.
@@ -62,6 +63,23 @@ function loadPausePhotos() {
 }
 loadPausePhotos();
 const pausePhotoUrl = (p) => `/pauzefoto/${p.file}`;
+// Foto's op ware grootte voor het album: de tv en telefoons krijgen een kleine versie (snel), en de telefoon stuurt
+// daarna het origineel apart via een gewone HTTP-upload (niet via Socket.IO). Bewaard in data/fotos/origineel/;
+// alleen op te halen via de foto-zip in de bediening (met token), nooit publiek.
+const ORIG_DIR = path.join(PHOTO_DIR, 'origineel');
+const MAX_ORIGINAL_BYTES = 15 * 1024 * 1024;
+const originalUploads = new Map(); // sleutel -> { file, expires }: eenmalig, 10 minuten geldig
+function originalUploadKey(relFile) {
+  const now = Date.now();
+  for (const [k, v] of originalUploads) if (v.expires < now) originalUploads.delete(k);
+  const key = crypto.randomBytes(16).toString('hex');
+  originalUploads.set(key, { file: relFile, expires: now + 10 * 60 * 1000 });
+  return key;
+}
+const teamOriginalFile = (teamId) => `teamfotos/${String(teamId).replace(/[^\w-]/g, '')}.jpg`;
+const pauseOriginalFile = (p) => `pauze/${p.file}`;
+function readOriginal(rel) { try { return fs.readFileSync(path.join(ORIG_DIR, rel)); } catch (e) { return null; } }
+function removeOriginal(rel) { try { fs.unlinkSync(path.join(ORIG_DIR, rel)); } catch (e) { /* er was er geen */ } }
 const FRESH = process.argv.includes('--fresh') || process.env.FRESH === '1';
 
 const MAX_TEAM_NAME = 24;
@@ -145,8 +163,9 @@ app.get('/download/fotos.zip', (req, res) => {
   const { zip } = require('./lib/zip');
   const files = {};
   const slug = (s) => String(s).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'team';
-  for (const [teamId, p] of Object.entries(teamPhotos)) files[`teamfotos/${slug(teams[teamId] ? teams[teamId].name : teamId)}.jpg`] = Buffer.from(p.dataUrl.split(',')[1], 'base64');
-  for (const p of pausePhotos) { try { files[`pauzefotos/${p.file.replace('/', '_')}`] = fs.readFileSync(path.join(PHOTO_DIR, p.file)); } catch (e) { /* weg */ } }
+  // Origineel (ware grootte) als dat binnen is, anders de kleine tv-versie
+  for (const [teamId, p] of Object.entries(teamPhotos)) files[`teamfotos/${slug(teams[teamId] ? teams[teamId].name : teamId)}.jpg`] = readOriginal(teamOriginalFile(teamId)) || Buffer.from(p.dataUrl.split(',')[1], 'base64');
+  for (const p of pausePhotos) { try { files[`pauzefotos/${p.file.replace('/', '_')}`] = readOriginal(pauseOriginalFile(p)) || fs.readFileSync(path.join(PHOTO_DIR, p.file)); } catch (e) { /* weg */ } }
   if (!Object.keys(files).length) return res.status(404).type('text').send("Nog geen foto's");
   res.set('Content-Disposition', `attachment; filename="familiequiz-fotos-${new Date().toISOString().slice(0, 10)}.zip"`).type('application/zip').send(zip(files));
 });
@@ -156,6 +175,31 @@ app.get('/teamfoto/:teamId', (req, res) => {
   if (!photo) return res.status(404).end();
   const buf = Buffer.from(photo.dataUrl.split(',')[1], 'base64');
   res.set('Cache-Control', 'public, max-age=31536000, immutable').type('image/jpeg').send(buf);
+});
+
+// Origineel van een team- of pauzefoto (ware grootte), met de eenmalige sleutel uit het socket-antwoord
+app.post('/origineel/:key', (req, res) => {
+  const key = String(req.params.key || '');
+  const job = /^[a-f0-9]{32}$/.test(key) ? originalUploads.get(key) : null;
+  if (!job || job.expires < Date.now()) return res.status(403).type('text').send('Geen geldige uploadsleutel');
+  originalUploads.delete(key); // eenmalig
+  if (Number(req.headers && req.headers['content-length']) > MAX_ORIGINAL_BYTES) return res.status(413).type('text').send('Foto te groot');
+  const chunks = [];
+  let size = 0;
+  req.on('data', (c) => { size += c.length; if (size <= MAX_ORIGINAL_BYTES) chunks.push(c); });
+  req.on('error', () => { /* verbinding weg: dan blijft de kleine versie in het album */ });
+  req.on('end', () => {
+    if (size > MAX_ORIGINAL_BYTES) return res.status(413).type('text').send('Foto te groot');
+    const buf = Buffer.concat(chunks);
+    if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) return res.status(400).type('text').send('Geen JPEG');
+    try {
+      const full = path.join(ORIG_DIR, job.file);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, buf);
+    } catch (e) { return res.status(500).type('text').send('Opslaan mislukt'); }
+    LOG.info('foto_origineel', { bestand: job.file, kb: Math.round(buf.length / 1024) });
+    res.status(204).end();
+  });
 });
 
 // ---------------------------------------------------------------
@@ -176,6 +220,7 @@ const DEFAULT_SETTINGS = {
   maxTeams: 0,               // maximaal aantal teams (0 = nog niet ingesteld); de host vult dit vooraf in
   finalMaxWager: 100,        // slotvraag: maximale inzet (teams kennen hun stand niet)
   tvCheatSound: true,        // alarmgeluid op de tv bij een spiekmelding
+  momentum: true,            // na elke ronde korte meldingen op de tv ("X stijgt 2 plaatsen!"), zonder punten
   theme: 'standaard',        // uiterlijk: standaard, winter, kerst, oudennieuw, zomer, halloween
   roundPlan: null,           // volgorde, aan/uit en "in 2 delen" per ronde (wordt in de bediening ingesteld)
   memorySeconds: 120,
@@ -192,6 +237,7 @@ function sanitizeSettings(input, base) {
   };
   if (typeof src.timerEnabled === 'boolean') out.timerEnabled = src.timerEnabled;
   if (typeof src.tvCheatSound === 'boolean') out.tvCheatSound = src.tvCheatSound;
+  if (typeof src.momentum === 'boolean') out.momentum = src.momentum;
   int('roundPoints', 10, 1000);
   int('defaultTime', 5, 300);
   int('memorySeconds', 20, 900);
@@ -453,6 +499,7 @@ function loadPhotos() {
   for (const [teamId, p] of Object.entries(photos)) if (teams[teamId] && p && validPhoto(p.dataUrl)) teamPhotos[teamId] = { dataUrl: p.dataUrl, v: Number(p.v) || Date.now() };
 }
 function setTeamPhoto(teamId, dataUrl) {
+  removeOriginal(teamOriginalFile(teamId)); // oud origineel weg; een nieuwe foto stuurt zijn eigen origineel
   if (dataUrl) teamPhotos[teamId] = { dataUrl, v: Date.now() };
   else delete teamPhotos[teamId];
   savePhotos();
@@ -946,6 +993,21 @@ function positionsPayload(mode) {
     series: all.map((t, i) => ({ name: t.name, color: t.color || null, photo: photoUrl(t.teamId), values: cum[i].map((v) => Math.round((v / top) * 1000) / 10) }))
   };
 }
+// Momentum na een ronde ("X stijgt 2 plaatsen!"): vergelijk de stand vóór en na deze ronde, zonder punten te tonen
+function momentumFor(round) {
+  if (settings.momentum === false || !round) return [];
+  const all = Object.values(teams);
+  const first = steps.find((x) => x.round === round.id);
+  if (!first || all.length < 2) return [];
+  const playedBefore = rounds.filter((r) => { const last = steps.filter((x) => x.round === r.id).pop(); return r.id !== round.id && last && last.index < first.index; });
+  const total = (t, list) => list.reduce((sum, r) => sum + roundScore(t, r) * jokerFactor(t, r), 0);
+  return momentumMessages({
+    names: all.map((t) => t.name),
+    before: playedBefore.length ? all.map((t) => total(t, playedBefore)) : null,
+    after: all.map((t) => total(t, [...playedBefore, round])),
+    roundPoints: settings.roundPoints
+  });
+}
 // Mogen spelers nu emoji's sturen? Bij uitlegschermen, 'Dit was ronde…' en tijdens de pauze
 function reactionsAllowed() {
   if (phase !== 'PLAY') return false;
@@ -958,7 +1020,7 @@ function upNext() {
   for (let i = stepIndex + 1; i < Math.min(steps.length, stepIndex + 8); i++) {
     const st = steps[i];
     const round = roundById[st.round];
-    const where = round ? `Ronde ${round.no}: ${round.title}` : st.round === 'test' ? 'Testvragen' : '';
+    const where = round ? `Ronde ${round.no}: ${round.title}` : st.round === 'test' ? 'Testvragen' : st.round === 'briefing' ? 'Uitleg van de rondes' : '';
     if (st.kind === 'mc' || st.kind === 'final') return { where, what: st.question || st.category || 'Meerkeuzevraag', extra: st.explanation || null, answer: Array.isArray(st.options) ? st.options[st.answer] : null };
     if (st.kind === 'logo') return { where, what: `${st.variant === 'blur' ? 'Foto' : 'Logo'}: ${st.name}`, extra: st.explanation || null };
     if (st.kind === 'price') return { where, what: `Prijs: ${st.name}`, extra: null };
@@ -1793,6 +1855,7 @@ function publicStep(step) {
       // Geen punten en geen volgorde: alle teams op alfabet. Punten zien we pas bij de ontknoping.
       const next = rounds.find((r) => r.no === round.no + 1);
       return { ...base, title: `Dit was ronde ${round.no}: ${round.title}`, next: next ? `${next.emoji || ''} ${next.title}`.trim() : null,
+        momentum: momentumFor(round),
         teams: Object.values(teams).sort(byName).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), color: t.color || null })) };
     }
     case 'teamphoto':
@@ -2045,7 +2108,7 @@ function broadcastState() {
   const common = {
     phase, paused, showStandings, review: reviewPayload, teamStyle: teamStyle(),
     header: {
-      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'teamphoto' ? 'Teamfoto' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
+      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.round === 'briefing' ? 'Uitleg van de rondes' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'teamphoto' ? 'Teamfoto' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
       progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
     },
     standings: phase === 'END' ? ranking() : null,
@@ -2858,7 +2921,7 @@ function onConnection(socket) {
     if (phase !== 'PLAY' || paused || !now || now.kind !== 'teamphoto') return reply({ ok: false, message: 'De teamfoto maken we samen op het teamfotomoment, na de testvragen.' });
     if (dataUrl !== null && !validPhoto(dataUrl)) return reply({ ok: false, message: 'De foto is ongeldig of te groot. Kies een kleinere foto.' });
     setTeamPhoto(team.teamId, dataUrl);
-    reply({ ok: true });
+    reply(dataUrl ? { ok: true, original: originalUploadKey(teamOriginalFile(team.teamId)) } : { ok: true });
     sync();
   });
   // Emoji-reacties van spelers naar de tv: alleen bij uitlegschermen, tussen de rondes en tijdens de pauze
@@ -2889,9 +2952,10 @@ function onConnection(socket) {
       fs.mkdirSync(path.join(PHOTO_DIR, day), { recursive: true });
       fs.writeFileSync(path.join(PHOTO_DIR, day, file), Buffer.from(dataUrl.split(',')[1], 'base64'));
     } catch (e) { return reply({ ok: false, message: 'Opslaan is niet gelukt.' }); }
-    pausePhotos.push({ file: `${day}/${file}`, team: team.name, label: device.label, at: Date.now() });
+    const entry = { file: `${day}/${file}`, team: team.name, label: device.label, at: Date.now() };
+    pausePhotos.push(entry);
     LOG.info('pauzefoto', { team: team.name, speler: device.label });
-    reply({ ok: true });
+    reply({ ok: true, original: originalUploadKey(pauseOriginalFile(entry)) });
     sync();
   });
   socket.on('teamphoto_skip', (_, cb) => {
@@ -3351,6 +3415,12 @@ function onConnection(socket) {
     settings.tvCheatSound = !!tv;
     sync();
   });
+  // Momentum-meldingen op de tv aan/uit (altijd te wijzigen)
+  socket.on('set_momentum', ({ on } = {}) => {
+    if (!isRemote(socket)) return;
+    settings.momentum = !!on;
+    sync();
+  });
   // Testteams (robots) om de quiz te oefenen zonder echte telefoons
   socket.on('add_bots', ({ n } = {}) => {
     if (!isRemote(socket)) return;
@@ -3499,6 +3569,7 @@ if (process.env.QUIZ_TEST === '1') {
     get steps() { return steps; }, get rounds() { return rounds; }, get teams() { return teams; }, get devices() { return devices; },
     get songs() { return songs; }, get phase() { return phase; }, get stepIndex() { return stepIndex; }, get roundById() { return roundById; },
     settings, ss, cur, roundScore, roundRaw, scoreOf, ranking, totalBeforeFinal, finalDelta, tiebreakBonus, jokerFactor, awards,
+    momentumFor: (r) => momentumFor(r), originalUploads, ORIG_DIR,
     priceAwards, logoAwards, mcAward, songAward, looksLike, pickLanAddress, upNext: () => upNext(), saveNow, readiness: () => readiness()
   };
 }

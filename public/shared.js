@@ -469,6 +469,33 @@ window.QuizFX = (function () {
     if (dataUrl.length > maxChars) throw new Error("De foto is nog te groot. Kies een kleinere foto.");
     return dataUrl;
   }
+  // Foto op ware grootte voor het album: opnieuw opgeslagen als JPEG (90%), zodat de rotatie klopt en de
+  // locatiegegevens (GPS in EXIF) er niet in zitten. Maximaal 4096 px: groter lukt een iPhone-canvas niet.
+  async function fullPhoto(file) {
+    const image = await createImageBitmap(file);
+    try {
+      for (const maxSide of [4096, 3072, 2048]) {
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.9));
+        canvas.width = canvas.height = 0; // geheugen vrijgeven
+        if (blob && blob.size > 0 && blob.size < 15 * 1024 * 1024) return blob;
+      }
+    } finally { if (image.close) image.close(); }
+    throw new Error("Foto op ware grootte lukte niet");
+  }
+  // Stuur het origineel na (op de achtergrond). Mislukt het, dan blijft de kleine versie in het album staan.
+  async function uploadOriginal(file, key) {
+    if (!file || !key) return false;
+    try {
+      const blob = await fullPhoto(file);
+      const r = await fetch(`/origineel/${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob });
+      return r.ok;
+    } catch (e) { return false; }
+  }
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
   function avatar(name, photo, size, color) {
     const a = document.createElement(photo ? "img" : "span");
@@ -532,7 +559,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

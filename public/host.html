@@ -153,7 +153,13 @@
     /* Ontknoping */
     #end-step-hint { text-align: center; color: #94a3b8; font-size: clamp(16px, 2vw, 36px); margin-top: 2vh; }
     .review-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(18vw, 1fr)); gap: 1vw; margin-top: 1.5vh; }
-  </style>
+      /* Momentum-meldingen na een ronde */
+    .momentum { display:flex; flex-direction:column; align-items:center; gap:1.6vh; margin:1vh 0 3vh; }
+    .momentum-line { display:inline-flex; align-items:center; gap:1.2vw; padding:1.2vh 2.4vw; border-radius:999px; background:rgba(250,204,21,0.14); border:2px solid rgba(250,204,21,0.55); font-size:clamp(20px,2.6vw,52px); font-weight:bold; opacity:0; transform:translateY(2vh) scale(0.9); animation:momentumIn 0.6s cubic-bezier(.2,1.4,.4,1) forwards; }
+    .momentum-emoji { font-size:1.3em; }
+    @keyframes momentumIn { to { opacity:1; transform:none; } }
+    @media (prefers-reduced-motion: reduce) { .momentum-line { animation:none; opacity:1; transform:none; } }
+</style>
 </head>
 <body class="tv">
 
@@ -736,7 +742,26 @@
       const grid = el("div", "team-cards");
       grid.style.cssText = "justify-content:center; margin:4vh 0;";
       (s.teams || []).forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", t.color), el("div", "", t.name)); grid.append(c); });
-      body.append(grid, el("p", "tv-sub", "👏 Goed gespeeld! De punten blijven geheim tot de ontknoping."));
+      body.append(grid);
+      // Momentum: één voor één in beeld, met een klein geluidje (geen punten, alleen beweging)
+      const mom = s.momentum || [];
+      if (mom.length) {
+        // Alleen de eerste keer animeren; bij een latere update van hetzelfde scherm staan ze er meteen
+        const key = s.id + mom.map((m) => m.text).join("|");
+        const fresh = renderRoundResult.lastMomentum !== key;
+        renderRoundResult.lastMomentum = key;
+        const box = el("div", "momentum");
+        mom.forEach((m, i) => {
+          const line = el("div", "momentum-line");
+          if (fresh) line.style.animationDelay = `${0.8 + i * 1.6}s`;
+          else { line.style.animation = "none"; line.style.opacity = "1"; line.style.transform = "none"; }
+          line.append(el("span", "momentum-emoji", m.emoji), el("span", "", m.text));
+          box.append(line);
+        });
+        body.append(box);
+        if (fresh) mom.forEach((_, i) => setTimeout(() => { try { QuizFX.whoosh(); } catch (e) { /* geen geluid */ } }, 800 + i * 1600));
+      }
+      body.append(el("p", "tv-sub", "👏 Goed gespeeld! De punten blijven geheim tot de ontknoping."));
       if (s.next) body.append(el("p", "tv-sub", `Hierna: ${s.next}`));
     }
 

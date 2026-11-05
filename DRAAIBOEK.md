@@ -4,7 +4,7 @@ Bijgewerkt: 3 november 2026
 
 ## In het kort
 
-De familiequiz begint met drie testvragen, daarna een teamfoto, en bestaat verder uit een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand de totaalstand (tenzij de quizmaster de tussenstand aanzet); de uitslag komt pas aan het einde.
+De familiequiz begint met drie testvragen, daarna een teamfoto en de uitleg van alle rondes, en bestaat verder uit een joker, acht rondes, een slotvraag met inzet en eventueel een beslissingsvraag. Elke ronde is evenveel waard: standaard 100 punten. Tijdens het spel ziet niemand de totaalstand (tenzij de quizmaster de tussenstand aanzet); de uitslag komt pas aan het einde.
 
 Er zijn drie schermen, alle drie in de browser:
 
@@ -42,10 +42,10 @@ Alle vragen en opdrachten staan in **vragenlijst.xlsx**, met een tabblad per ron
 De volgorde ligt vast. Elk scherm hieronder komt na een druk op de grote knop van de bediening.
 
 1. **Welkomstpagina en lobby.** Eerst de welkomstpagina; na een druk op de knop het aanmeldscherm met de QR-code en de aangemelde teams. De quizmaster start met "Start de quiz" zodra alle teams binnen zijn.
-2. **Rondeoverzicht en uitleg per ronde.** Eerst alle rondes op een rij, daarna per ronde een uitlegscherm.
-3. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
-4. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
-5. **Teamfoto.** Na de testvragen (als duidelijk is dat alles werkt) maakt elke basistelefoon de teamfoto: de groene knop opent direct de camera, "Uit galerij" kiest een bestaande foto, "Overslaan" kan ook. De tv toont alle teams met een groen vinkje zodra de foto binnen is. De grote knop wordt pas "Volgende" als alle teams klaar zijn; met "Toch doorgaan" ga je eerder verder. Daarvoor en daarna kan een team de foto niet aanpassen (de quizmaster kan er in de bediening een verwijderen).
+2. **Infoscherm: Eerst even testen.** Uitleg dat er drie testvragen komen die niet meetellen.
+3. **Drie testvragen.** Makkelijke meerkeuzevragen. Zo zien jullie of elke basistelefoon kan antwoorden en of de spiekmeldingen werken.
+4. **Teamfoto.** Na de testvragen (als duidelijk is dat alles werkt) maakt elke basistelefoon de teamfoto: de groene knop opent direct de camera (een bestaande foto uit de galerij kiezen kan niet), "Overslaan" kan ook. De tv toont alle teams met een groen vinkje zodra de foto binnen is. De grote knop wordt pas "Volgende" als alle teams klaar zijn; met "Toch doorgaan" ga je eerder verder. Daarvoor en daarna kan een team de foto niet aanpassen (de quizmaster kan er in de bediening een verwijderen).
+5. **Rondeoverzicht en uitleg per ronde.** Eerst alle rondes op een rij, daarna per ronde een uitlegscherm. Zo weet iedereen wat er komt vóór de joker gekozen wordt.
 6. **Infoscherm: Hier begint de echte quiz.** Vanaf nu telt alles mee.
 7. **Joker.** Elk team kiest op de basistelefoon de ronde waarin het verwacht het best te scoren. Die ronde telt aan het eind dubbel. De tv laat zien op welke ronde elk team de joker zet. Je kunt pas verder als iedereen gekozen heeft.
 8. **Ronde 1 tot en met 8.** Elke ronde begint met een tussenpagina: "Nu gaan we door naar…", tromgeroffel, en dan springt de rondenaam in beeld met uitleg, "Hier kun je 100 punten verdienen" en 🎯 hoe je die punten verdient (bijv. bij Hitster: de helft voor de goede plek in de tijdlijn, de helft voor het exacte jaartal). Daarna volgt een oefenronde die niet meetelt, het scherm "Nu begint het echt!" en dan de echte vragen. Bij ronde 1 komt er ook een tussenpagina voor elke nieuwe categorie. Volgorde en aantal rondes stel je vooraf in de bediening in.
@@ -248,11 +248,13 @@ De punten per ronde, de blur-, prijs- en logopunten, de maximale inzet en de tij
 
 **Scores voor de quizmasters.** Alleen in het blokje Scores zien de quizmasters tijdens het spel de stand per ronde, met de joker erbij. Bij Teams staan geen punten.
 
+**Momentum-meldingen.** Bij "Dit was ronde…" verschijnen op de tv één of twee korte meldingen, zoals "🚀 BalloerBatsers stijgt 2 plaatsen!", "👑 … neemt de leiding over!" of "🔥 Het is superspannend aan de top!". Nooit punten, wel wie stijgt en wie bovenaan staat. Uit te zetten in de bediening bij 📊 Scores (📣 Momentum-meldingen op de tv), ook tijdens de quiz.
+
 **De stand blijft geheim.** Bij "Dit was ronde…" staan alleen de teams (met foto), zonder punten en zonder volgorde. Wil je tussendoor spanning? Met **🏅 Posities op tv** in de bediening zet je de tussenstand op de tv: alleen wie op welke plek staat, nooit de punten. Nogmaals tikken haalt hem weg. Bij de prijzenronde komen de bedragen niet op de tv; die zie je bij het nakijken.
 
 **Spiekgeluid.** Onder Instellingen kun je het alarmgeluid bij spiekmeldingen apart uitzetten op de tv en op je eigen bediening. De melding zelf blijft zichtbaar.
 
-**Pauze.** Tijdens de pauze loopt op de tv een diavoorstelling met alle teamfoto's. Iedereen kan op de telefoon een **pauzefoto** maken: die verschijnt meteen groot op de tv en wordt bewaard (map data/fotos/). Na de quiz download je in de bediening alle foto's van de avond (teamfoto's en pauzefoto's) als zip, bijvoorbeeld om in de familie-app te delen.
+**Pauze.** Tijdens de pauze loopt op de tv een diavoorstelling met alle teamfoto's. Iedereen kan op de telefoon een **pauzefoto** maken: die verschijnt meteen groot op de tv en wordt bewaard (map data/fotos/). Na de quiz download je in de bediening alle foto's van de avond (teamfoto's en pauzefoto's) als zip, bijvoorbeeld om in de familie-app te delen. De tv toont een kleine versie, maar in de zip staan de foto's op ware grootte (tot 4096 pixels, zonder locatiegegevens): de telefoon stuurt het origineel na het maken op de achtergrond na. Lukt dat niet (wifi weg), dan staat de kleine versie in de zip.
 
 **Oefenen met testteams.** In het blok Teams voegt "+3 testteams" robots toe (🤖 Robot Appel, Peer, …). Ze maken geen foto, kiezen een joker en geven zelf antwoorden: willekeurig en ongeveer de helft goed. Zo kunnen de quizmasters samen de hele quiz doorlopen, inclusief beoordelen, de muziekronde en de ontknoping, zonder telefoons. Toevoegen kan alleen vóór de start; een oefenquiz met testteams komt niet in de quizgeschiedenis. Verwijder de testteams (of gebruik Reset) voordat de echte quiz begint.
 

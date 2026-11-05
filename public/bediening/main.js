@@ -100,6 +100,7 @@ socket.on("state_update", (state) => {
   fillYcCategories(state);
   $("pl-fill").disabled = state.phase !== "LOBBY" || plFillBusy;
   if (document.activeElement !== $("s-sound-tv")) $("s-sound-tv").checked = state.settings.tvCheatSound !== false;
+  if (document.activeElement !== $("s-momentum")) $("s-momentum").checked = state.settings.momentum !== false;
   renderPrep(state);
   const hasBots = state.teams.some((t) => t.bot);
   $("bots-add").disabled = state.phase !== "LOBBY";
@@ -111,7 +112,7 @@ socket.on("state_update", (state) => {
   if (sel.dataset.key !== gotoKey) { // alleen opnieuw opbouwen als de rondes veranderen (anders springt je keuze terug)
     sel.dataset.key = gotoKey;
     sel.replaceChildren(new Option("Kies een ronde…", ""));
-    sel.append(new Option("Teamfoto (begin)", "teamphoto"), new Option("Testvragen", "test_intro"));
+    sel.append(new Option("Testvragen (begin)", "test_intro"), new Option("Teamfoto", "teamphoto"), new Option("Uitleg van de rondes", "rounds_overview"));
     state.rounds.forEach((r) => sel.append(new Option(`Ronde ${r.no}: ${r.title}`, r.introId)));
     sel.append(new Option("Joker", "joker"), new Option("Slotvraag", "final"));
   }

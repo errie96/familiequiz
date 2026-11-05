@@ -474,25 +474,18 @@
     $("btn-create").addEventListener("click", createTeam);
     $("team-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createTeam(); });
 
-    // ---------------- Foto kiezen: camera (direct openen) of galerij ----------------
-    // capture="user" opent op iPhone en Android meteen de (voor)camera; de tweede knop kiest uit de galerij.
+    // ---------------- Foto maken: alleen de camera (geen bestaande foto uit de galerij) ----------------
+    // capture="user" opent op iPhone en Android meteen de voorcamera; omdraaien kan in de camera zelf.
     function photoPicker(onFile, labels) {
-      const mk = (camera) => {
-        const input = el("input"); input.type = "file"; input.accept = "image/*"; input.className = "hidden";
-        if (camera) input.setAttribute("capture", "user");
-        input.onchange = () => { const f = input.files && input.files[0]; input.value = ""; if (f) onFile(f); };
-        return input;
-      };
-      const camInput = mk(true), galInput = mk(false);
+      const camInput = el("input"); camInput.type = "file"; camInput.accept = "image/*"; camInput.className = "hidden";
+      camInput.setAttribute("capture", "user");
+      camInput.onchange = () => { const f = camInput.files && camInput.files[0]; camInput.value = ""; if (f) onFile(f); };
       const cam = el("button", "btn-primary", (labels && labels.camera) || "📸 Maak een foto");
       cam.style.background = "#22c55e"; cam.style.margin = "0";
       cam.onclick = () => camInput.click();
-      const gal = el("button", "btn-option", "🖼️ Uit galerij");
-      gal.style.cssText = "text-align:center; margin:0; flex:0 0 auto; width:auto;";
-      gal.onclick = () => galInput.click();
       const row = el("div", "row2"); row.style.margin = "8px 0";
-      row.append(cam, gal, camInput, galInput);
-      return { row, cam, gal, setBusy(b) { cam.disabled = b; gal.disabled = b; } };
+      row.append(cam, camInput);
+      return { row, cam, setBusy(b) { cam.disabled = b; } };
     }
 
     // ---------------- Teamkaart ----------------
@@ -568,6 +561,7 @@
         socket.emit("set_team_photo", { dataUrl }, (res) => {
           picker.setBusy(false);
           status(res && res.ok ? "✅ Teamfoto opgeslagen, hij staat nu op het grote scherm." : (res && res.message) || "Opslaan is niet gelukt.");
+          if (res && res.ok) QuizFX.uploadOriginal(file, res.original); // ware grootte voor het album, op de achtergrond
         });
       } catch (error) { picker.setBusy(false); status(error.message || "Foto kon niet worden verwerkt."); }
     }
@@ -581,6 +575,7 @@
         socket.emit("pause_photo", { dataUrl }, (res) => {
           pausePicker.setBusy(false);
           msg(res && res.ok ? "✅ Staat op het grote scherm! Nog een?" : (res && res.message) || "Dat lukte niet.");
+          if (res && res.ok) QuizFX.uploadOriginal(file, res.original); // ware grootte voor het album, op de achtergrond
         });
       } catch (e) { pausePicker.setBusy(false); msg(e.message || "Foto kon niet worden verwerkt."); }
     }, { camera: "📸 Pauzefoto maken" });
@@ -1024,7 +1019,7 @@
           skip.onclick = () => { if (confirm("Doorgaan zonder teamfoto? Je kunt later in het teamblok alsnog een foto maken.")) act("teamphoto_skip", null, () => {}); };
           box.append(skip);
         }
-        status.textContent = v.photo ? "✅ Teamfoto staat op het grote scherm. Niet tevreden? Maak hem opnieuw." : v.skipped ? "Jullie gaan zonder foto verder." : "Tik op de groene knop: de camera gaat meteen open. Of kies een foto uit je galerij.";
+        status.textContent = v.photo ? "✅ Teamfoto staat op het grote scherm. Niet tevreden? Maak hem opnieuw." : v.skipped ? "Jullie gaan zonder foto verder." : "Tik op de groene knop: de camera gaat meteen open.";
         box.append(status);
         return noop;
       },
