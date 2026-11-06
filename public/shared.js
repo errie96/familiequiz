@@ -529,7 +529,8 @@ window.QuizFX = (function () {
     const p = Array.isArray(pattern) ? pattern : [pattern || 60];
     if (!isIOS) {
       if (typeof navigator.vibrate !== "function") return "no-api";
-      try { return navigator.vibrate(p) ? "ok" : "blocked"; } catch (e) { return "error"; }
+      // Eén puls als getal doorgeven (zoals de meeste testsites); alleen echte patronen als lijst
+      try { return navigator.vibrate(p.length === 1 ? p[0] : p) ? "ok" : "blocked"; } catch (e) { return "error"; }
     }
     let t = 0;
     p.forEach((ms, i) => { if (i % 2 === 0) { if (t === 0) iosTap(); else setTimeout(iosTap, t); } t += ms; });

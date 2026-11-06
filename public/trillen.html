@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Familiequiz – trillen testen</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 16px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p { color: #94a3b8; margin: 0 0 14px; font-size: 14px; }
+    button { display: block; width: 100%; margin: 8px 0; padding: 16px; font-size: 18px; font-weight: bold; border: 0; border-radius: 12px; background: #2563eb; color: #fff; }
+    #log { margin-top: 16px; background: #1e293b; border-radius: 10px; padding: 12px; font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>📳 Trillen testen</h1>
+  <p>Zet Niet storen uit. Tik op elke knop en onthoud welke trillen. Maak daarna een screenshot van het logboek onderaan.</p>
+  <button data-t="1000">1. Eén seconde (getal)</button>
+  <button data-t="[1000]">2. Eén seconde (lijst)</button>
+  <button data-t="200">3. Kort, 0,2 seconde</button>
+  <button data-t="[200,150,200,150,200]">4. Patroon: drie keer kort</button>
+  <button data-t="60">5. Heel kort, 60 ms (zoals in de quiz)</button>
+  <div id="log"></div>
+  <script>
+    const log = (t) => { document.getElementById("log").textContent += t + "\n"; };
+    log("Browser: " + navigator.userAgent);
+    log("Vibration API: " + (typeof navigator.vibrate === "function" ? "ja" : "nee") + " · veilige verbinding: " + (window.isSecureContext ? "ja" : "nee") + " · zichtbaar: " + document.visibilityState);
+    document.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+      const arg = JSON.parse(b.dataset.t);
+      let r;
+      try { r = navigator.vibrate(arg); } catch (e) { r = "fout: " + e.message; }
+      const act = navigator.userActivation ? (navigator.userActivation.isActive ? "actief" : "niet actief") : "?";
+      log(b.textContent.split(".")[0] + ": vibrate(" + JSON.stringify(arg) + ") gaf " + r + " · tik: " + act);
+    }));
+  </script>
+</body>
+</html>

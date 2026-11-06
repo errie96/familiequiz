@@ -218,7 +218,7 @@
     $("set-vibrate").addEventListener("change", () => { prefs.vibrate = $("set-vibrate").checked; savePrefs(); if (prefs.vibrate) buzz(60); });
     // Testknop: trilt meteen (na een tik mag dat altijd) en zegt wat er gebeurde
     $("set-vibrate-test").addEventListener("click", () => {
-      const r = QuizFX.haptic([200, 100, 200]);
+      const r = QuizFX.haptic(400);
       const i = QuizFX.hapticInfo();
       const msg = {
         ok: "Trilt hij niet? Dan staat trillen uit in de telefoon: kijk bij Instellingen → Geluid en trillen (trillen bij aanraken / intensiteit) en zet Niet storen en Stil uit.",
@@ -229,7 +229,7 @@
           ? `Deze iPhone heeft iOS ${i.iosVersion}. Een korte tik kan pas vanaf iOS 18; echt trillen kan een website op een iPhone niet.`
           : "Voel je geen tik? Zet dan Instellingen → Geluiden en voelfeedback → Systeemhaptiek aan. Echt trillen kan een website op een iPhone niet, alleen een korte tik."
       }[r];
-      $("set-vibrate-result").textContent = `${r === "ok" ? "Trilsignaal verstuurd. " : ""}${msg || ""} (${i.browser}${i.iosVersion ? ", iOS " + i.iosVersion : ""})`;
+      $("set-vibrate-result").textContent = `${r === "ok" ? "Trilsignaal verstuurd. " : ""}${msg || ""} (${i.browser}${i.iosVersion ? ", iOS " + i.iosVersion : ""}) Meer testen: ${location.origin}/trillen.html`;
     });
     // Het instellingenmenu telt niet als spieken: de speler blijft in de app
     $("settings-btn").addEventListener("click", () => { renderSettingsInfo(); $("settings-panel").classList.remove("hidden"); });
