@@ -529,13 +529,26 @@ window.QuizFX = (function () {
     const p = Array.isArray(pattern) ? pattern : [pattern || 60];
     if (!isIOS) {
       if (typeof navigator.vibrate !== "function") return "no-api";
-      // Eén puls als getal doorgeven (zoals de meeste testsites); alleen echte patronen als lijst
-      try { return navigator.vibrate(p.length === 1 ? p[0] : p) ? "ok" : "blocked"; } catch (e) { return "error"; }
+      // Sommige telefoons (o.a. Pixel) spelen korte web-trillingen niet af, een lange wel. Daarom per puls een lange
+      // trilling starten en die na de gewenste tijd zelf stoppen. Op andere telefoons voelt dat precies hetzelfde.
+      try {
+        let t = 0, ok = true;
+        p.forEach((ms, i) => {
+          if (i % 2 === 0) {
+            const on = Math.max(30, Math.min(1500, ms));
+            const start = () => { const r = navigator.vibrate(5000); setTimeout(() => navigator.vibrate(0), on); return r; };
+            if (t === 0) ok = start(); else setTimeout(start, t);
+          }
+          t += ms;
+        });
+        return ok ? "ok" : "blocked";
+      } catch (e) { return "error"; }
     }
     let t = 0;
     p.forEach((ms, i) => { if (i % 2 === 0) { if (t === 0) iosTap(); else setTimeout(iosTap, t); } t += ms; });
     return "ios";
   }
+  document.addEventListener("visibilitychange", () => { if (document.hidden && !isIOS) try { navigator.vibrate(0); } catch (e) { /* niets */ } });
   // Uitleg voor de testknop: wat kan deze telefoon?
   function hapticInfo() {
     const ua = navigator.userAgent;

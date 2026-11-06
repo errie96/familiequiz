@@ -23,6 +23,9 @@
   <button data-t="5000">6. Lang: vijf seconden in één keer</button>
   <button id="loop" style="background:#16a34a;">7. Doorlopend: elke seconde opnieuw, 5 seconden</button>
   <button id="double" style="background:#16a34a;">8. Twee keer kort na elkaar (opwarmen)</button>
+  <button id="ls300" style="background:#9333ea;">9. Lang starten, na 0,3 s stoppen</button>
+  <button id="ls150" style="background:#9333ea;">10. Lang starten, na 0,15 s stoppen</button>
+  <button id="ls3x" style="background:#9333ea;">11. Drie korte tikken (zoals de quiz nu doet)</button>
   <button id="stop" style="background:#dc2626;">⏹ Stop</button>
   <div id="log"></div>
   <script>
@@ -38,6 +41,10 @@
       const once = () => { const r = navigator.vibrate(1000); log("7: doorlopend, keer " + (++n) + ": " + r); if (n >= 5) { clearInterval(loopTimer); loopTimer = null; } };
       once(); loopTimer = setInterval(once, 1000);
     };
+    const longStop = (ms, tag) => { const r = navigator.vibrate(5000); setTimeout(() => navigator.vibrate(0), ms); log(tag + ": lang gestart (" + r + "), stop na " + ms + " ms"); };
+    document.getElementById("ls300").onclick = () => { stop(); longStop(300, "9"); };
+    document.getElementById("ls150").onclick = () => { stop(); longStop(150, "10"); };
+    document.getElementById("ls3x").onclick = () => { stop(); [0, 300, 600].forEach((t) => setTimeout(() => longStop(150, "11"), t)); };
     document.getElementById("double").onclick = () => {
       stop();
       const r1 = navigator.vibrate(300);
