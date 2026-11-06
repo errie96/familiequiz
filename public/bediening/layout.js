@@ -66,7 +66,14 @@
     { title: "8. Klaar om te beginnen", intro: "Overzicht van alles hierboven. Alles groen? Sluit dit menu en tik op de grote knop om het aanmeldscherm op de tv te zetten. Alles is later nog aan te passen via ⚙️ Instellingen.", panels: ["prep-panel"], last: true }
   ];
   let step = 0, borrowed = [];
-  function giveBack() { borrowed.forEach(({ node, parent, next }) => parent.insertBefore(node, next)); borrowed = []; }
+  // Blokken terugzetten op hun eigen plek. In omgekeerde volgorde: staan twee geleende blokken in het menu direct
+  // na elkaar (zoals Geluid en Instellingen), dan moet het tweede eerst terug, anders bestaat het ankerpunt nog niet.
+  function giveBack() {
+    borrowed.slice().reverse().forEach(({ node, parent, next }) => {
+      if (next && next.parentNode === parent) parent.insertBefore(node, next); else parent.appendChild(node);
+    });
+    borrowed = [];
+  }
   function render() {
     giveBack();
     const st = STEPS[step];
