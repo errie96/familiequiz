@@ -2222,7 +2222,7 @@ function broadcastState() {
     ...common,
     cheatSound: settings.tvCheatSound !== false,
     soundOut: settings.soundOut || 'tv',
-    pausePhotos: phase === 'PLAY' && paused ? pausePhotos.slice(-40).map((p) => ({ url: pausePhotoUrl(p), team: p.team, label: p.label, at: p.at })) : null,
+    pausePhotos: phase === 'PLAY' && paused ? pausePhotos.slice(-80).map((p) => ({ url: pausePhotoUrl(p), team: p.team, label: p.label, at: p.at })) : null,
     positions: phase === 'PLAY' && showPositions ? positionsPayload(showPositions) : null,
     end: common.end && reveal === 'done' && endView === 'album' ? { ...common.end, album: album() } : common.end, // tekeningen alleen naar de tv
     step: step ? publicStep(step) : null,
@@ -3311,6 +3311,7 @@ function onConnection(socket) {
     const team = device && teams[device.teamId];
     const clean = cleanText(name, MAX_LABEL);
     if (!team) return reply({ ok: false, message: 'Je zit niet (meer) in een team.' });
+    if (phase !== 'LOBBY') return reply({ ok: false, message: 'Je naam kan niet meer veranderen nu de quiz is begonnen. Vraag het de quizmaster.' });
     if (!clean) return reply({ ok: false, message: 'Vul een naam in.' });
     if (labelTaken(team, clean, device.deviceId)) return reply({ ok: false, message: `In jullie team heet al iemand ${clean}.` });
     device.label = clean;

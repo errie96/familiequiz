@@ -17,7 +17,7 @@
   const menu = document.createElement("aside");
   menu.id = "menu";
   menu.innerHTML = '<div id="menu-head"><h2 style="margin:0; flex:1; font-size:20px;">⚙️ Instellingen en beheer</h2><button id="menu-close" class="btn-option" style="width:auto; margin:0;">✕ Sluiten</button></div><div id="menu-index"></div>';
-  const MENU_IDS = ["teams-panel", "plan-panel", "settings-panel", "spotify-panel", "playlists-panel", "quiz-panel", "theme-panel", "scores-panel", "history-panel", "backup-panel", "emergency-panel", "btn-reset"];
+  const MENU_IDS = ["teams-panel", "plan-panel", "live-panel", "settings-panel", "spotify-panel", "playlists-panel", "quiz-panel", "theme-panel", "scores-panel", "history-panel", "backup-panel", "emergency-panel", "btn-reset"];
   const nodes = [...card.children];
   card.append(main, menu);
   nodes.forEach((n) => { if (n === header) return; if (MENU_IDS.includes(n.id)) return; main.append(n); });
@@ -62,7 +62,7 @@
     { title: "4. Teams", intro: "Stel het maximale aantal teams in. Wil je eerst oefenen? Voeg testteams toe (en verwijder ze daarna weer).", panels: ["teams-panel"] },
     { title: "5. Spotify", intro: "Verbind met Spotify, kies het apparaat bij de speakers en tik op Test. Nodig voor de muziekrondes.", panels: ["spotify-panel"] },
     { title: "6. Hitster-muziek", intro: "Controleer de Hitster-playlists per editie. Optioneel: lijsten bijwerken, aanvullen en jaartallen controleren.", panels: ["playlists-panel"] },
-    { title: "7. Thema en spelregels", intro: "Kies een thema en controleer de punten, tijden en het spiekgeluid.", panels: ["theme-panel", "settings-panel"], done: "theme" },
+    { title: "7. Thema, geluid en spelregels", intro: "Kies een thema, waar het geluid klinkt, en controleer de punten en tijden.", panels: ["theme-panel", "live-panel", "settings-panel"], done: "theme" },
     { title: "8. Klaar om te beginnen", intro: "Overzicht van alles hierboven. Alles groen? Sluit dit menu en tik op de grote knop om het aanmeldscherm op de tv te zetten. Alles is later nog aan te passen via ⚙️ Instellingen.", panels: ["prep-panel"], last: true }
   ];
   let step = 0, borrowed = [];

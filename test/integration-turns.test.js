@@ -17,7 +17,10 @@ test('tekenen: tekenaar staat vast vóór de start, het woord komt pas bij de st
   const a2 = await phone(app, 'a2', { join: tid('Alfa'), label: 'Arie' });
   await phone(app, 'b1', { team: 'Beta', label: 'Bas' });
   await phone(app, 'b2', { join: tid('Beta'), label: 'Bea' });
+  assert.equal((await a2.call('rename_self', { name: 'Ariejan' })).ok, true, 'vóór de start mag een speler zijn naam wijzigen');
   host.send('host_main'); // start de quiz
+  const r = await a2.call('rename_self', { name: 'Stiekem' });
+  assert.equal(r.ok, false, 'na de start niet meer');
   const draw = T.steps.find((x) => x.kind === 'draw');
   host.send('goto_step', { stepId: draw.id });
   assert.equal(T.ss(draw).status, 'ready');

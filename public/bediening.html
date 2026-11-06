@@ -64,7 +64,6 @@
     <div id="cheat-alerts" style="margin-top:10px;"></div>
     <details id="prep-panel" class="hidden" open style="border:2px solid #2563eb;">
       <summary>✅ Voorbereiding vóór de start <span id="prep-badge" class="muted"></span></summary>
-      <p class="muted" style="font-size:13px; margin:4px 0;">Doe dit voordat je de quiz start. Tik op een regel om naar het juiste blok te gaan. Tijdens de quiz ligt de rondevolgorde vast; extra rondes toevoegen kan wel.</p>
       <div id="prep-list"></div>
     </details>
     <div id="warnings" class="hidden" style="background:#78350f; border-radius:8px; padding:10px; margin-top:10px; font-size:13px;"></div>
@@ -124,25 +123,17 @@
     </div>
 
     <details id="scores-panel">
-      <summary>📊 Scores (alleen zichtbaar voor de quizmasters)</summary>
-      <div class="setting"><label for="s-sound-tv"><b>🔔 Spiekgeluid op de tv</b><br><span class="muted">Alarmgeluid op het grote scherm bij een spiekmelding. De melding zelf blijft zichtbaar.</span></label><input type="checkbox" id="s-sound-tv"></div>
-      <div class="setting"><label for="s-sound-out"><b>🔊 Quizgeluiden via</b><br><span class="muted">Tromgeroffel, belletjes, fanfare en muziekfragmenten. Kies "Deze bediening" als de tv zelf geen (goed) geluid heeft. Spotify kies je apart bij 🎧 Spotify.</span></label><select id="s-sound-out"><option value="tv">De tv</option><option value="bediening">Deze bediening</option></select></div>
-      <div class="setting"><label for="s-cheat-grace"><b>⏱️ Wachttijd spiekmelding</b><br><span class="muted">Zo lang mag een telefoon tijdens een vraag weg zijn voordat er een melding komt. Kort = sneller, maar ook bij even de meldingenbalk omlaag trekken.</span></label><select id="s-cheat-grace"><option value="0">Meteen</option><option value="1">1 seconde</option><option value="2">2 seconden</option><option value="3">3 seconden</option><option value="5">5 seconden</option></select></div>
-      <div class="setting"><label for="s-momentum"><b>📣 Momentum-meldingen op de tv</b><br><span class="muted">Na elke ronde korte meldingen zoals "… stijgt 2 plaatsen!" of "… neemt de leiding over!". Nooit punten, wel wie stijgt of bovenaan staat.</span></label><input type="checkbox" id="s-momentum"></div>
-      <div class="setting"><label for="s-sound-me"><b>🔔 Spiekgeluid op deze bediening</b><br><span class="muted">Piep en trillen op dit toestel. Geldt alleen voor dit toestel.</span></label><input type="checkbox" id="s-sound-me"></div>
-      <p class="muted" style="margin:4px 0 8px;">Deze tabel zien alleen de quizmasters. 🃏 = joker.</p>
+      <summary>📊 Scores</summary>
       <div id="scores-table" style="overflow:auto; font-size:13px;"></div>
     </details>
 
     <details id="history-panel">
       <summary>🗂️ Quizgeschiedenis <span id="history-count" class="muted"></span></summary>
-      <p class="muted" style="margin:4px 0 8px;">Afgeronde quizzen met eindstand en punten per ronde. De laatste 50 quizzen worden bewaard, ook als je een nieuwe quiz start.</p>
       <div id="history-list"></div>
     </details>
 
     <details id="theme-panel">
       <summary>🎨 Thema <span id="theme-badge" class="muted"></span></summary>
-      <p class="muted" style="margin:4px 0 8px;">Verandert de kleuren en decoratie op de tv en alle telefoons. Kan altijd, ook tijdens de quiz.</p>
       <div id="theme-list" class="row" style="flex-wrap:wrap;"></div>
     </details>
 
@@ -172,7 +163,6 @@
       </div>
       <input type="file" id="quiz-file" accept=".xlsx" class="hidden">
       <p id="quiz-msg" class="muted"></p>
-      <p class="muted" style="font-size:12px;">Er zijn twee losse bestanden: <b>vragenlijst.xlsx</b> (de vragen) en <b>Hitster-bibliotheek.xlsx</b> (nummers voor extra muziekrondes). Upload hier gewoon het bestand: de bediening herkent zelf welk van de twee het is. Of vervang het bestand op de server en tik op Opnieuw inlezen. Kan tot de start. Foto's, logo's en audio staan in <b>public/media/</b>. Na de start kan dit niet meer.</p>
     </details>
 
     <details id="spotify-panel">
@@ -189,24 +179,13 @@
         </div>
         <button id="sp-disconnect" class="btn-option" style="text-align:center; font-size:13px;">Ontkoppelen</button>
       </div>
-      <p class="muted" style="font-size:12px; margin-top:8px;">
-        De bediening start bij elke muziekvraag zelf het liedje. Kies <b>Deze browser</b> als deze bediening op een laptop draait (die je op de speakers aansluit),
-        of een ander Spotify-apparaat: bijvoorbeeld je telefoon met de Spotify-app open, of een speaker. Houd deze pagina open tijdens de muziekronde.<br>
-        Eenmalig nodig: Spotify Premium, deze Redirect-URI in je Spotify-app (developer dashboard): <b id="sp-redirect"></b>, en het account onder <i>User Management</i>.
-        Spotify staat inloggen alleen toe via <b>http://127.0.0.1:3000</b> (op de laptop waar de server draait) of via https (Render); niet via het netwerkadres (192.168…).
-      </p>
+      <p class="muted" style="font-size:12px; margin-top:8px;">Redirect-URI: <b id="sp-redirect"></b></p>
     </details>
 
     <details id="playlists-panel">
       <summary>🎶 Hitster-playlists per editie <span id="pl-badge" class="muted"></span></summary>
-      <p class="muted" style="margin:4px 0 8px; font-size:13px;">
-        Een extra muziekronde pakt eerst de nummers uit de officiële Hitster-playlist van die editie op Spotify (Spotify moet hier verbonden zijn).
-        Lukt dat niet, of komt er binnen 20 seconden niets, dan schakelt de ronde vanzelf over op de Hitster-Excel. Zijn die ook op, dan wordt vrij op Spotify gezocht.
-        Het jaartal wordt gecontroleerd: bij een remaster of verzamelalbum zoekt de bediening het jaar van de eerste uitgave op.
-      </p>
       <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:10px;">
         <b>🔄 Hitster-lijsten bijwerken</b>
-        <p class="muted" style="font-size:12px; margin:4px 0;">Haalt per tabblad de nieuwste liedjeslijst op via de links in het tabblad <b>Bronnen</b> van Hitster-bibliotheek.xlsx. Eigen aanvullingen en zelf aangepaste jaartallen blijven staan. Kan alleen vóór de start.</p>
         <div class="row">
           <button id="lib-update" class="btn-primary">🔄 Lijsten bijwerken</button>
           <a id="lib-download" class="btn-option" style="text-align:center; text-decoration:none; display:block;" download="Hitster-bibliotheek.xlsx">⬇️ Download Excel</a>
@@ -215,7 +194,6 @@
       </div>
       <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:10px;">
         <b>✔ Jaartallen controleren</b>
-        <p class="muted" style="font-size:12px; margin:4px 0;">Zoekt voor elk nummer met <i>Jaar check = Ja</i> via Spotify het jaar van de eerste uitgave op en zet dat in de Hitster-Excel (alleen een vroeger jaar wordt overgenomen). Gecontroleerde nummers krijgen een lege Jaar check. Spotify moet verbonden zijn; alles controleren duurt ongeveer 15 tot 20 minuten. Je kunt tussendoor stoppen en later verder: wat klaar is, blijft bewaard.</p>
         <div class="row">
           <select id="yc-cat" style="flex:1;"><option value="all">Alle categorieën</option></select>
           <button id="yc-start" class="btn-primary" style="flex:1;">▶️ Start</button>
@@ -226,7 +204,6 @@
       </div>
       <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:10px;">
         <b>➕ Lijsten aanvullen uit de Hitster-playlists</b>
-        <p class="muted" style="font-size:12px; margin:4px 0;">Haalt per editie de officiële playlist van het Hitster-account op Spotify op en voegt nummers die nog niet in het tabblad staan toe (Jaar check = Ja). Handig voor lijsten die op de website onvolledig zijn, zoals Original. Kan alleen vóór de start.</p>
         <button id="pl-fill" class="btn-primary">➕ Aanvullen</button>
         <div id="pl-fill-report" class="muted" style="font-size:12px; margin-top:6px;"></div>
       </div>
@@ -234,7 +211,15 @@
       <p id="pl-status" class="muted" style="font-size:13px; min-height:1.2em;"></p>
       <div id="pl-rows"></div>
       <button id="pl-save" class="btn-option" style="text-align:center;">💾 Links opslaan</button>
-      <p class="muted" style="font-size:12px;">Klopt een gevonden playlist niet? Zoek hem in Spotify (account <b>HITSTER</b>), kies Delen → Link kopiëren en plak die hier. Leeg = geen playlist.</p>
+    </details>
+
+    <details id="live-panel">
+      <summary>🔔 Geluid en meldingen</summary>
+      <div class="setting"><label for="s-sound-out">🔊 Geluid via</label><select id="s-sound-out"><option value="tv">Tv</option><option value="bediening">Deze bediening</option></select></div>
+      <div class="setting"><label for="s-sound-tv">🔔 Spiekgeluid op tv</label><input type="checkbox" id="s-sound-tv"></div>
+      <div class="setting"><label for="s-sound-me">🔔 Spiekgeluid hier</label><input type="checkbox" id="s-sound-me"></div>
+      <div class="setting"><label for="s-cheat-grace">⏱️ Wachttijd spiekmelding</label><select id="s-cheat-grace"><option value="0">Meteen</option><option value="1">1 s</option><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option></select></div>
+      <div class="setting"><label for="s-momentum">📣 Momentum-meldingen</label><input type="checkbox" id="s-momentum"></div>
     </details>
 
     <details id="settings-panel">
@@ -259,11 +244,11 @@
     <details id="teams-panel" open>
       <summary>👥 Teams (<span id="team-count">0</span>)</summary>
       <div class="setting" style="border:none;">
-        <label for="max-teams"><b>Maximaal aantal teams</b><br><span class="muted">Vul dit in vóór het aanmeldscherm; daarna kan niemand meer een extra team maken.</span></label>
+        <label for="max-teams"><b>Maximaal aantal teams</b></label>
         <span style="display:flex; gap:6px;"><input type="number" id="max-teams" min="1" max="50" style="width:70px;"><button id="max-teams-save" class="btn-option btn-small">Opslaan</button></span>
       </div>
       <div class="setting" style="border:none;">
-        <label><b>🤖 Oefenen met testteams</b><br><span class="muted">Robots die zelf (willekeurig, soms goed) antwoorden, zodat je de hele quiz kunt doorlopen zonder telefoons. Toevoegen alleen vóór de start; een oefenquiz komt niet in de geschiedenis. Verwijder ze vóór de echte quiz (of gebruik Reset).</span></label>
+        <label><b>🤖 Oefenen met testteams</b></label>
         <span style="display:flex; gap:6px; flex-wrap:wrap;"><button id="bots-add" class="btn-option btn-small">+3 testteams</button><button id="bots-remove" class="btn-option btn-small">Verwijder testteams</button></span>
       </div>
       <div id="team-list"></div>
@@ -282,12 +267,10 @@
       <button id="btn-unvoid" class="btn-option" style="text-align:center;">↩️ Weer normaal laten tellen</button>
       <button id="btn-dismiss-alerts" class="btn-option" style="text-align:center;">🧹 Alle spiekmeldingen wissen</button>
       <button id="btn-logout-all" class="btn-option" style="text-align:center;">🔐 Alle bediening-toestellen uitloggen</button>
-      <p class="muted" style="font-size:12px;">Uitloggen: daarna moet elke bediening (ook deze) de toegangscode opnieuw invoeren. Gebruik dit als iemand de code heeft afgekeken.</p>
     </details>
 
     <details id="backup-panel">
       <summary>🛟 Reservekopieën en logboek</summary>
-      <p class="muted" style="font-size:13px;">Elke 5 minuten (als er iets veranderd is) en bij start, einde, uploads en vóór een reset wordt automatisch een kopie gemaakt van de stand, de geschiedenis, de teamfoto's, de playlists, de vragenlijst en de Hitster-bibliotheek. Download af en toe een kopie: op het gratis Render-plan verdwijnen bestanden bij een herstart.</p>
       <div class="row">
         <button id="bk-now" class="btn-option" style="text-align:center;">📸 Nu een kopie maken</button>
         <a id="bk-download" class="btn-primary" style="display:block; text-align:center; text-decoration:none; padding:14px; margin:8px 0; border-radius:8px;">⬇️ Alles downloaden (zip)</a>

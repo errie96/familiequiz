@@ -159,6 +159,20 @@
     .momentum-emoji { font-size:1.3em; }
     @keyframes momentumIn { to { opacity:1; transform:none; } }
     @media (prefers-reduced-motion: reduce) { .momentum-line { animation:none; opacity:1; transform:none; } }
+    /* Pauze: fotomuur */
+    #v-pause.has-photos .huge { display: none; }
+    #v-pause.has-photos .tv-title { font-size: clamp(26px, 3.4vw, 64px); margin: 0; }
+    #v-pause.has-photos > .tv-sub { display: none; }
+    .pause-wall { display: grid; gap: 1.4vw; margin: 0 auto; width: 100%; }
+    .pw-tile { background: #fff; padding: 0.5vw 0.5vw 0; border-radius: 0.6vw; box-shadow: 0 8px 28px rgba(0,0,0,0.55); transform: rotate(var(--tilt, 0deg)); transition: opacity 0.6s, transform 0.6s; animation: pwIn 0.7s ease-out both; }
+    .pw-tile img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.3vw; display: block; background: #e5e7eb; }
+    .pw-cap { color: #111827; font-weight: bold; font-size: clamp(11px, 1.1vw, 24px); padding: 0.4vw 0.2vw; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pw-tile.new { outline: 0.4vw solid #fbbf24; animation: pwNew 0.9s ease-out both; }
+    .pw-tile.out { opacity: 0; transform: scale(0.85) rotate(var(--tilt, 0deg)); }
+    .pw-hint { font-size: clamp(14px, 1.4vw, 28px) !important; margin-top: 2vh; }
+    @keyframes pwIn { from { opacity: 0; transform: translateY(2vh) rotate(var(--tilt, 0deg)); } }
+    @keyframes pwNew { 0% { opacity: 0; transform: scale(1.4) rotate(var(--tilt, 0deg)); } 60% { opacity: 1; transform: scale(0.95) rotate(var(--tilt, 0deg)); } }
+    @media (prefers-reduced-motion: reduce) { .pw-tile, .pw-tile.new { animation: none; } }
 </style>
 </head>
 <body class="tv">
@@ -1100,29 +1114,50 @@
     // Teamfoto's en pauzefoto's door elkaar; een nieuwe pauzefoto komt meteen groot in beeld
     let pauseTimer = null, pauseIdx = 0, pauseKey = null, pauseSeen = 0, pauseList = [];
     function stopPauseShow() { clearInterval(pauseTimer); pauseTimer = null; pauseKey = null; }
-    function pauseSlide(item, isNew) {
-      const box = $("pause-show");
-      if (item.kind === "team") box.replaceChildren(QuizFX.avatar(item.name, item.photo, "clamp(150px, 22vw, 440px)", item.color), el("div", "spot-name", item.name));
-      else {
-        const img = el("img"); img.src = item.photo; img.alt = "";
-        img.style.cssText = "max-height:46vh; max-width:70vw; border-radius:1.5vw; box-shadow:0 10px 40px rgba(0,0,0,0.6); border:0.5vw solid #fff;";
-        box.replaceChildren(img, el("div", "spot-name", `${isNew ? "📸 Nieuw! " : "📸 "}${item.name}${item.label ? " · " + item.label : ""}`));
-      }
-      box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop");
+    // Pauze: een fotomuur met zoveel mogelijk foto's tegelijk (nieuwste eerst). Zijn er meer foto's dan plekken,
+    // dan wisselt er om de paar seconden één foto, zodat ze allemaal voorbijkomen.
+    let pauseShown = [];
+    function pauseTile(item, isNew) {
+      const t = el("div", "pw-tile" + (isNew ? " new" : ""));
+      t.style.setProperty("--tilt", `${(Math.random() * 4 - 2).toFixed(1)}deg`);
+      const img = el("img"); img.src = item.photo; img.alt = ""; img.loading = "eager";
+      t.append(img, el("div", "pw-cap", `${isNew ? "📸 Nieuw! " : ""}${item.name}${item.label ? " · " + item.label : ""}`));
+      return t;
+    }
+    function pauseSlots(n) { return n <= 4 ? { cols: Math.max(1, n), slots: n } : n <= 8 ? { cols: 4, slots: n } : { cols: 6, slots: 12 }; }
+    function pauseSlide() { // één tegel wisselen voor een foto die nu niet in beeld is
+      const wall = $("pause-show").querySelector(".pause-wall");
+      if (!wall || pauseList.length <= pauseShown.length) return;
+      const hidden = pauseList.filter((x) => !pauseShown.includes(x));
+      const next = hidden[pauseIdx++ % hidden.length];
+      const slot = Math.floor(Math.random() * pauseShown.length);
+      const old = wall.children[slot];
+      if (!old) return;
+      old.classList.add("out");
+      setTimeout(() => { if (old.parentNode === wall) { wall.replaceChild(pauseTile(next, false), old); pauseShown[slot] = next; } }, 600);
     }
     function startPauseShow(style, photos) {
-      const teamsList = Object.entries(style).filter(([, v]) => v.photo).map(([name, v]) => ({ kind: "team", name, ...v }));
-      const pics = photos.map((p) => ({ kind: "pause", name: p.team, label: p.label, photo: p.url }));
+      const teamsList = Object.entries(style).filter(([, v]) => v.photo).map(([name, v]) => ({ kind: "team", name: `Team ${name}`, photo: v.photo }));
+      const pics = photos.map((p) => ({ kind: "pause", name: p.team, label: p.label, photo: p.url })).reverse(); // nieuwste eerst
       const key = teamsList.map((x) => x.name + x.photo).join("|") + "#" + pics.length;
       if (key === pauseKey) return;
-      const fresh = pics.length > pauseSeen && pauseKey !== null ? pics[pics.length - 1] : null;
+      const fresh = pics.length > pauseSeen && pauseKey !== null;
       pauseSeen = pics.length;
       stopPauseShow();
       pauseKey = key;
-      pauseList = [...teamsList, ...pics];
+      pauseList = [...pics, ...teamsList];
+      $("v-pause").classList.toggle("has-photos", pauseList.length > 0);
       if (!pauseList.length) { $("pause-show").replaceChildren(el("p", "tv-sub", "📸 Maak een pauzefoto met je telefoon: hij verschijnt hier!")); return; }
-      if (fresh) pauseSlide(fresh, true); else pauseSlide(pauseList[pauseIdx++ % pauseList.length], false);
-      pauseTimer = setInterval(() => pauseSlide(pauseList[pauseIdx++ % pauseList.length], false), 4500);
+      const { cols, slots } = pauseSlots(pauseList.length);
+      pauseShown = pauseList.slice(0, slots);
+      const wall = el("div", "pause-wall");
+      wall.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+      wall.style.maxWidth = cols <= 2 ? "60vw" : cols <= 4 ? "92vw" : "96vw";
+      pauseShown.forEach((item, i) => wall.append(pauseTile(item, fresh && i === 0)));
+      const more = pauseList.length - slots;
+      $("pause-show").replaceChildren(wall, el("p", "tv-sub pw-hint", `📸 ${pics.length} pauzefoto${pics.length === 1 ? "" : "'s"}${more > 0 ? ` · de rest wisselt vanzelf` : ""} · maak er zelf ook een met je telefoon!`));
+      if (fresh && QuizFX.ding) QuizFX.ding();
+      if (more > 0) pauseTimer = setInterval(pauseSlide, 3500);
     }
     // ---------- Rondeovergang ----------
     let lastRoundHeader = null;

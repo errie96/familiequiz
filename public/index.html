@@ -65,39 +65,23 @@
         <h2 style="margin:0;">⚙️ Instellingen</h2>
         <button id="settings-close" class="btn-option" style="width:auto; margin:0; padding:8px 14px;">✕ Sluiten</button>
       </div>
-      <p class="note" style="margin-top:4px;">Deze instellingen gelden alleen voor deze telefoon.</p>
-
-      <h3>🔠 Tekstgrootte</h3>
+      <h3>🔠 Tekst</h3>
       <div class="seg" id="set-size">
-        <button data-v="0" style="font-size:15px;">A<br><small>Normaal</small></button>
-        <button data-v="1" style="font-size:19px;">A<br><small>Groot</small></button>
-        <button data-v="2" style="font-size:23px;">A<br><small>Extra groot</small></button>
+        <button data-v="0" style="font-size:15px;">A</button>
+        <button data-v="1" style="font-size:19px;">A</button>
+        <button data-v="2" style="font-size:23px;">A</button>
       </div>
 
-      <h3>👁️ Weergave en meldingen</h3>
-      <label class="toggle-row"><span><b>Hoog contrast</b><br><span class="note">Zwart-wit met duidelijke randen, makkelijker te lezen.</span></span><input type="checkbox" id="set-contrast"></label>
-      <label class="toggle-row"><span><b>Trillen</b><br><span class="note">Kort trillen bij een nieuwe vraag en na indienen. iPhone: alleen een korte tik (iOS 18 of nieuwer, met "Systeemhaptiek" aan).</span></span><input type="checkbox" id="set-vibrate"></label>
+      <label class="toggle-row"><span><b>Hoog contrast</b></span><input type="checkbox" id="set-contrast"></label>
+      <label class="toggle-row"><span><b>Trillen</b></span><input type="checkbox" id="set-vibrate"></label>
       <button type="button" id="set-vibrate-test" class="btn-option" style="text-align:center;">📳 Test trillen</button>
       <p id="set-vibrate-result" class="note"></p>
-      <label class="toggle-row"><span><b>Scherm aan houden</b><br><span class="note">Voorkomt dat de telefoon in slaap valt tijdens de quiz. Uitzetten spaart batterij.</span></span><input type="checkbox" id="set-awake"></label>
 
       <div id="set-me" class="hidden">
         <h3>🙋 Mijn naam</h3>
         <div class="row2"><input type="text" id="set-name" maxlength="16" style="margin:0;"><button id="set-name-save" class="btn-primary" style="width:auto; margin:0; padding:10px 16px;">Opslaan</button></div>
         <p id="set-name-msg" class="note" style="margin-top:6px;"></p>
-        <h3>👥 Mijn team</h3>
-        <p class="note" id="set-team-info"></p>
       </div>
-
-      <h3>❓ Hoe werkt het?</h3>
-      <div class="note" style="line-height:1.5;">
-        • Elk team heeft één <b>basistelefoon</b>: alleen die geeft de antwoorden. De andere telefoons kijken mee.<br>
-        • Kijk naar het <b>grote scherm</b> voor de vragen, foto's en de uitslag.<br>
-        • Blijf in deze app tijdens een vraag: wegklikken wordt gemeld als <b>spieken</b>.<br>
-        • Valt de verbinding weg? Gewoon wachten, de app maakt zelf opnieuw verbinding.<br>
-        • Lege batterij van de basistelefoon? Vraag de quizmaster een andere telefoon basis te maken.
-      </div>
-      <p class="note" id="set-conn" style="margin-top:12px;"></p>
     </div>
   </div>
   <div id="react-bar" class="hidden"></div>
@@ -218,7 +202,8 @@
 
     // ---------------- Instellingen van deze telefoon ----------------
     const PREF_KEY = "fq_prefs";
-    const prefs = Object.assign({ size: 0, contrast: false, vibrate: true, awake: true }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } })());
+    const prefs = Object.assign({ size: 0, contrast: false, vibrate: true }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } })());
+    prefs.awake = true; // scherm altijd aan houden tijdens de quiz (geen instelling meer)
     function applyPrefs() {
       document.body.classList.toggle("size-1", prefs.size === 1);
       document.body.classList.toggle("size-2", prefs.size === 2);
@@ -226,7 +211,6 @@
       $("set-size").querySelectorAll("button").forEach((b) => b.classList.toggle("on", Number(b.dataset.v) === prefs.size));
       $("set-contrast").checked = !!prefs.contrast;
       $("set-vibrate").checked = !!prefs.vibrate;
-      $("set-awake").checked = !!prefs.awake;
     }
     function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* privémodus */ } applyPrefs(); }
     $("set-size").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { prefs.size = Number(b.dataset.v); savePrefs(); }));
@@ -247,19 +231,16 @@
       }[r];
       $("set-vibrate-result").textContent = `${r === "ok" ? "Trilsignaal verstuurd. " : ""}${msg || ""} (${i.browser}${i.iosVersion ? ", iOS " + i.iosVersion : ""})`;
     });
-    $("set-awake").addEventListener("change", () => { prefs.awake = $("set-awake").checked; savePrefs(); requestWakeLock(); });
     // Het instellingenmenu telt niet als spieken: de speler blijft in de app
     $("settings-btn").addEventListener("click", () => { renderSettingsInfo(); $("settings-panel").classList.remove("hidden"); });
     $("settings-close").addEventListener("click", () => $("settings-panel").classList.add("hidden"));
     $("settings-panel").addEventListener("click", (e) => { if (e.target === $("settings-panel")) $("settings-panel").classList.add("hidden"); });
     function renderSettingsInfo() {
       const inTeam = typeof me !== "undefined" && me;
-      $("set-me").classList.toggle("hidden", !inTeam);
-      if (inTeam) {
-        if (document.activeElement !== $("set-name")) $("set-name").value = me.label || "";
-        $("set-team-info").textContent = `Je zit in team ${me.teamName}. Ander team? Gebruik "Team verlaten" onderaan het teamblok.`;
-      }
-      $("set-conn").textContent = socket.connected ? "🟢 Verbonden met de quiz" : "🔴 Geen verbinding, even geduld…";
+      // Naam wijzigen kan alleen vóór de start van de quiz
+      const canRename = inTeam && (!latestState || latestState.phase === "LOBBY");
+      $("set-me").classList.toggle("hidden", !canRename);
+      if (canRename && document.activeElement !== $("set-name")) $("set-name").value = me.label || "";
     }
     $("set-name-save").addEventListener("click", () => {
       socket.emit("rename_self", { name: $("set-name").value }, (res) => { $("set-name-msg").textContent = res && res.ok ? "✅ Naam aangepast." : (res && res.message) || "Dat lukte niet."; });
@@ -634,18 +615,8 @@
     const BUILD = {
       lobby(box) {
         box.append(el("h2", "", QuizFX.t("tel.wachten.titel")), el("p", "note", QuizFX.t("tel.wachten.tekst")));
-        // Korte uitleg van de instellingen voor de spelers
-        const tip = el("div");
-        tip.style.cssText = "background:#1e293b; border-radius:12px; padding:12px 14px; margin-top:14px; text-align:left; line-height:1.5;";
-        tip.append(el("b", "", "⚙️ Handig om te weten"));
-        const ul = el("div", "note");
-        ul.innerHTML = "Rechtsboven zit een tandwiel ⚙️. Daar kun je:<br>• de <b>tekst groter</b> maken (Groot of Extra groot),<br>• <b>hoog contrast</b> aanzetten (beter leesbaar),<br>• <b>trillen</b> en <b>scherm aan houden</b> aan- of uitzetten,<br>• je <b>naam</b> aanpassen en lezen <b>hoe het spel werkt</b>.<br>Het menu openen telt niet als spieken.";
-        tip.append(ul);
-        const open = el("button", "btn-option", "⚙️ Instellingen openen");
-        open.style.cssText = "text-align:center; margin-top:8px;";
-        open.onclick = () => $("settings-btn").click();
-        tip.append(open);
-        box.append(tip);
+        // Kort: waar de instellingen zitten
+        box.append(el("p", "note", "⚙️ Rechtsboven: tekst groter, contrast, trillen en je naam."));
       },
       info(box, v) {
         const d = el("div"); d.style.textAlign = "center";
