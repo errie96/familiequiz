@@ -20,12 +20,30 @@
   <button data-t="200">3. Kort, 0,2 seconde</button>
   <button data-t="[200,150,200,150,200]">4. Patroon: drie keer kort</button>
   <button data-t="60">5. Heel kort, 60 ms (zoals in de quiz)</button>
+  <button data-t="5000">6. Lang: vijf seconden in één keer</button>
+  <button id="loop" style="background:#16a34a;">7. Doorlopend: elke seconde opnieuw, 5 seconden</button>
+  <button id="double" style="background:#16a34a;">8. Twee keer kort na elkaar (opwarmen)</button>
+  <button id="stop" style="background:#dc2626;">⏹ Stop</button>
   <div id="log"></div>
   <script>
     const log = (t) => { document.getElementById("log").textContent += t + "\n"; };
     log("Browser: " + navigator.userAgent);
     log("Vibration API: " + (typeof navigator.vibrate === "function" ? "ja" : "nee") + " · veilige verbinding: " + (window.isSecureContext ? "ja" : "nee") + " · zichtbaar: " + document.visibilityState);
-    document.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    let loopTimer = null;
+    const stop = () => { clearInterval(loopTimer); loopTimer = null; navigator.vibrate(0); };
+    document.getElementById("stop").onclick = () => { stop(); log("⏹ gestopt"); };
+    document.getElementById("loop").onclick = () => {
+      stop();
+      let n = 0;
+      const once = () => { const r = navigator.vibrate(1000); log("7: doorlopend, keer " + (++n) + ": " + r); if (n >= 5) { clearInterval(loopTimer); loopTimer = null; } };
+      once(); loopTimer = setInterval(once, 1000);
+    };
+    document.getElementById("double").onclick = () => {
+      stop();
+      const r1 = navigator.vibrate(300);
+      setTimeout(() => { const r2 = navigator.vibrate(300); log("8: twee keer: " + r1 + " / " + r2); }, 80);
+    };
+    document.querySelectorAll("button[data-t]").forEach((b) => b.addEventListener("click", () => {
       const arg = JSON.parse(b.dataset.t);
       let r;
       try { r = navigator.vibrate(arg); } catch (e) { r = "fout: " + e.message; }
