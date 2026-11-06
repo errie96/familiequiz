@@ -529,20 +529,9 @@ window.QuizFX = (function () {
     const p = Array.isArray(pattern) ? pattern : [pattern || 60];
     if (!isIOS) {
       if (typeof navigator.vibrate !== "function") return "no-api";
-      // Sommige telefoons (o.a. Pixel) spelen korte web-trillingen niet af, een lange wel. Daarom per puls een lange
-      // trilling starten en die na de gewenste tijd zelf stoppen. Op andere telefoons voelt dat precies hetzelfde.
-      try {
-        let t = 0, ok = true;
-        p.forEach((ms, i) => {
-          if (i % 2 === 0) {
-            const on = Math.max(30, Math.min(1500, ms));
-            const start = () => { const r = navigator.vibrate(5000); setTimeout(() => navigator.vibrate(0), on); return r; };
-            if (t === 0) ok = start(); else setTimeout(start, t);
-          }
-          t += ms;
-        });
-        return ok ? "ok" : "blocked";
-      } catch (e) { return "error"; }
+      // Gewone trilling (één puls als getal). De truc "lang starten en zelf stoppen" is uitgezet: op een Pixel
+      // stopt navigator.vibrate(0) de trilling niet, waardoor hij vijf seconden doortrilde.
+      try { return navigator.vibrate(p.length === 1 ? p[0] : p) ? "ok" : "blocked"; } catch (e) { return "error"; }
     }
     let t = 0;
     p.forEach((ms, i) => { if (i % 2 === 0) { if (t === 0) iosTap(); else setTimeout(iosTap, t); } t += ms; });

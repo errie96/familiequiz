@@ -26,29 +26,52 @@
   <button id="ls300" style="background:#9333ea;">9. Lang starten, na 0,3 s stoppen</button>
   <button id="ls150" style="background:#9333ea;">10. Lang starten, na 0,15 s stoppen</button>
   <button id="ls3x" style="background:#9333ea;">11. Drie korte tikken (zoals de quiz nu doet)</button>
-  <button id="stop" style="background:#dc2626;">⏹ Stop</button>
+  <h1 style="margin-top:18px;">Stoppen testen (Android)</h1>
+  <p>Elke knop start een lange trilling en probeert die na 0,3 s op een andere manier te stoppen. Welke stopt echt?</p>
+  <button class="stopway" data-way="leeg" style="background:#0891b2;">12. Stoppen met een lege lijst</button>
+  <button class="stopway" data-way="een" style="background:#0891b2;">13. Stoppen met een trilling van 1 ms</button>
+  <button class="stopway" data-way="nul-lijst" style="background:#0891b2;">14. Stoppen met [0]</button>
+  <button class="stopway" data-way="pauze" style="background:#0891b2;">15. Stoppen met [1, 10000] (1 ms aan, lange pauze)</button>
+  <h1 style="margin-top:18px;">iPhone</h1>
+  <button id="iostap" style="background:#ea580c;">16. iPhone-tik (schakelaar-truc)</button>
+  <button id="iostap3" style="background:#ea580c;">17. iPhone: drie tikken</button>
+  <button id="stop" style="background:#dc2626;">⏹ Stop (alle manieren)</button>
   <div id="log"></div>
   <script>
     const log = (t) => { document.getElementById("log").textContent += t + "\n"; };
     log("Browser: " + navigator.userAgent);
     log("Vibration API: " + (typeof navigator.vibrate === "function" ? "ja" : "nee") + " · veilige verbinding: " + (window.isSecureContext ? "ja" : "nee") + " · zichtbaar: " + document.visibilityState);
     let loopTimer = null;
-    const stop = () => { clearInterval(loopTimer); loopTimer = null; navigator.vibrate(0); };
+    const vib = (x) => { try { return navigator.vibrate ? navigator.vibrate(x) : "geen API"; } catch (e) { return "fout"; } };
+    const stop = () => { clearInterval(loopTimer); loopTimer = null; vib(0); vib([]); vib(1); };
+    const STOPS = { leeg: [], een: 1, "nul-lijst": [0], pauze: [1, 10000] };
+    document.querySelectorAll(".stopway").forEach((b) => b.onclick = () => {
+      const way = b.dataset.way;
+      const r = vib(5000);
+      setTimeout(() => { const r2 = vib(STOPS[way]); log(b.textContent.split(".")[0] + ": lang (" + r + "), stop met " + JSON.stringify(STOPS[way]) + " (" + r2 + ")"); }, 300);
+    });
+    function iosTap() {
+      const label = document.createElement("label"); label.style.display = "none";
+      const sw = document.createElement("input"); sw.type = "checkbox"; sw.setAttribute("switch", "");
+      label.appendChild(sw); document.head.appendChild(label); label.click(); document.head.removeChild(label);
+    }
+    document.getElementById("iostap").onclick = () => { iosTap(); log("16: iPhone-tik verstuurd"); };
+    document.getElementById("iostap3").onclick = () => { iosTap(); setTimeout(iosTap, 150); setTimeout(iosTap, 300); log("17: drie iPhone-tikken verstuurd (2 en 3 zonder eigen tik)"); };
     document.getElementById("stop").onclick = () => { stop(); log("⏹ gestopt"); };
     document.getElementById("loop").onclick = () => {
       stop();
       let n = 0;
-      const once = () => { const r = navigator.vibrate(1000); log("7: doorlopend, keer " + (++n) + ": " + r); if (n >= 5) { clearInterval(loopTimer); loopTimer = null; } };
+      const once = () => { const r = vib(1000); log("7: doorlopend, keer " + (++n) + ": " + r); if (n >= 5) { clearInterval(loopTimer); loopTimer = null; } };
       once(); loopTimer = setInterval(once, 1000);
     };
-    const longStop = (ms, tag) => { const r = navigator.vibrate(5000); setTimeout(() => navigator.vibrate(0), ms); log(tag + ": lang gestart (" + r + "), stop na " + ms + " ms"); };
+    const longStop = (ms, tag) => { const r = vib(5000); setTimeout(() => vib(0), ms); log(tag + ": lang gestart (" + r + "), stop na " + ms + " ms"); };
     document.getElementById("ls300").onclick = () => { stop(); longStop(300, "9"); };
     document.getElementById("ls150").onclick = () => { stop(); longStop(150, "10"); };
     document.getElementById("ls3x").onclick = () => { stop(); [0, 300, 600].forEach((t) => setTimeout(() => longStop(150, "11"), t)); };
     document.getElementById("double").onclick = () => {
       stop();
-      const r1 = navigator.vibrate(300);
-      setTimeout(() => { const r2 = navigator.vibrate(300); log("8: twee keer: " + r1 + " / " + r2); }, 80);
+      const r1 = vib(300);
+      setTimeout(() => { const r2 = vib(300); log("8: twee keer: " + r1 + " / " + r2); }, 80);
     };
     document.querySelectorAll("button[data-t]").forEach((b) => b.addEventListener("click", () => {
       const arg = JSON.parse(b.dataset.t);
