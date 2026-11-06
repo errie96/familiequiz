@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Tril- & Haptic Testlab</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #3b82f6;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --purple: #8b5cf6;
+      --red: #ef4444;
+      --text: #f8fafc;
+      --subtext: #94a3b8;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+      line-height: 1.4;
+      padding-bottom: 60px;
+    }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    h2 { font-size: 16px; margin: 20px 0 8px; color: var(--subtext); text-transform: uppercase; letter-spacing: 0.05em; }
+    p { margin: 0 0 12px; color: var(--subtext); font-size: 14px; }
+    
+    .status-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .status-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .status-row:last-child { margin-bottom: 0; }
+    .badge {
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-no { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      transition: opacity 0.1s, transform 0.1s;
+    }
+    button:active {
+      transform: scale(0.98);
+      opacity: 0.85;
+    }
+    button span.sub {
+      font-size: 12px;
+      font-weight: normal;
+      opacity: 0.8;
+    }
+    button.green { background: var(--green); }
+    button.purple { background: var(--purple); }
+    button.amber { background: var(--amber); }
+    button.red { background: var(--red); }
+    
+    #log-container {
+      margin-top: 24px;
+    }
+    #log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    #log {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px;
+      font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .clear-btn {
+      background: transparent;
+      color: var(--subtext);
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>📳 Haptic & Tril Testlab</h1>
+  <p>Diagnose voor Android (lange trilling vs. korte tik) en iOS Safari (Taptic Engine).</p>
+
+  <div class="status-card">
+    <div class="status-row">
+      <span>Platform:</span>
+      <strong id="plat-info">Detecteren...</strong>
+    </div>
+    <div class="status-row">
+      <span>Vibration API (navigator.vibrate):</span>
+      <span id="vib-support" class="badge">...</span>
+    </div>
+    <div class="status-row">
+      <span>Veilige context (HTTPS):</span>
+      <span id="sec-context" class="badge">...</span>
+    </div>
+  </div>
+
+  <h2>1. Android: Korte tik vs. Lange trilling</h2>
+  <div class="btn-grid">
+    <button onclick="testVibSingle(30, 'Enkele puls 30ms')">
+      <span>30 ms (Micro-tik)</span>
+      <span class="sub">Direct</span>
+    </button>
+    <button onclick="testVibSingle(70, 'Enkele puls 70ms')">
+      <span>70 ms (Standaard tik)</span>
+      <span class="sub">Direct</span>
+    </button>
+    <button onclick="testVibPatternArray([60, 100, 60], 'Array [60, 100, 60]')">
+      <span>Array [60, 100, 60]</span>
+      <span class="sub">Vaak 1 lange trilling op Android!</span>
+    </button>
+    <button class="green" onclick="testVibChained([50, 50], 120, 'Handmatige setTimeout dubbelklik')">
+      <span>2x Tik via setTimeout</span>
+      <span class="sub">Omzeilt Android array-bug</span>
+    </button>
+    <button class="purple" onclick="testVibChained([40, 40, 40], 100, 'Handmatige setTimeout 3x tik')">
+      <span>3x Tik via setTimeout</span>
+      <span class="sub">Omzeilt Android array-bug</span>
+    </button>
+  </div>
+
+  <h2>2. iPhone (iOS Safari) Testmethodes</h2>
+  <div class="btn-grid">
+    <button class="amber" onclick="testIosSwitchMethod()">
+      <span>iOS Switch Toggle</span>
+      <span class="sub">Checkbox switch-attribuut</span>
+    </button>
+    <button class="amber" onclick="testIosDatePickerTrigger()">
+      <span>iOS Wheel/Picker Haptic</span>
+      <span class="sub">Datum/tijd selector trigger</span>
+    </button>
+    <button class="amber" onclick="testSubBassHaptic()">
+      <span>Akoestische Haptic (Sub-bass)</span>
+      <span class="sub">40Hz puls door speaker (werkt altijd!)</span>
+    </button>
+  </div>
+
+  <h2>3. Universele Hybride Knop (Quiz Buzzer Test)</h2>
+  <div class="btn-grid">
+    <button class="green" onclick="universalQuizBuzzerHaptic()">
+      <span>🔔 Simuleer Quiz Buzzer</span>
+      <span class="sub">Automatische Android + iOS combo</span>
+    </button>
+    <button class="red" onclick="cancelAllVibration()">
+      <span>⏹ Direct Stoppen</span>
+      <span class="sub">navigator.vibrate(0)</span>
+    </button>
+  </div>
+
+  <div id="log-container">
+    <div id="log-header">
+      <h2>Logboek</h2>
+      <button class="clear-btn" onclick="clearLog()">Wissen</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <!-- Verborgen elementen voor iOS tests -->
+  <label id="hidden-ios-label" style="position: absolute; left: -9999px; top: -9999px;">
+    <input type="checkbox" switch id="hidden-ios-switch">
+  </label>
+  <input type="datetime-local" id="hidden-ios-picker" style="position: absolute; left: -9999px; top: -9999px;">
+
+  <script>
+    const logBox = document.getElementById('log');
+    function log(msg) {
+      const now = new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
+      logBox.textContent = `[${now}] ${msg}
+` + logBox.textContent;
+    }
+    function clearLog() { logBox.textContent = ''; }
+
+    // Init & detectie
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const hasVibrate = typeof navigator !== 'undefined' && 'vibrate' in navigator;
+
+    document.getElementById('plat-info').textContent = isIOS ? 'iOS (iPhone / iPad)' : (isAndroid ? 'Android' : 'Desktop / Overig');
+    
+    const vibEl = document.getElementById('vib-support');
+    vibEl.textContent = hasVibrate ? 'Ondersteund' : 'Niet ondersteund';
+    vibEl.className = 'badge ' + (hasVibrate ? 'badge-ok' : 'badge-no');
+
+    const secEl = document.getElementById('sec-context');
+    secEl.textContent = window.isSecureContext ? 'Ja (HTTPS/lokaal)' : 'Nee (HTTP onveilig)';
+    secEl.className = 'badge ' + (window.isSecureContext ? 'badge-ok' : 'badge-no');
+
+    log("Gestart op: " + navigator.userAgent);
+    log(`Vibration API: ${hasVibrate} | Secure: ${window.isSecureContext}`);
+
+    // --- 1. ANDROID METHODES ---
+    function testVibSingle(ms, label) {
+      if (!hasVibrate) {
+        log(`[${label}] navigator.vibrate bestaat niet op dit toestel.`);
+        return;
+      }
+      navigator.vibrate(0);
+      const res = navigator.vibrate(ms);
+      log(`[${label}] vibrate(${ms}ms) -> return: ${res}`);
+    }
+
+    function testVibPatternArray(arr, label) {
+      if (!hasVibrate) {
+        log(`[${label}] navigator.vibrate bestaat niet.`);
+        return;
+      }
+      navigator.vibrate(0);
+      const res = navigator.vibrate(arr);
+      log(`[${label}] vibrate([${arr.join(', ')}]) -> return: ${res} (Let op: veel Android telefoons negeren pauzes en maken er 1 lange trilling van)`);
+    }
+
+    function testVibChained(pulses, delay, label) {
+      if (!hasVibrate) {
+        log(`[${label}] navigator.vibrate bestaat niet.`);
+        return;
+      }
+      navigator.vibrate(0);
+      pulses.forEach((duration, index) => {
+        setTimeout(() => {
+          navigator.vibrate(0);
+          navigator.vibrate(duration);
+        }, index * delay);
+      });
+      log(`[${label}] ${pulses.length} losse pulsen verzonden met ${delay}ms ertussen (omzeilt de Android driver bug).`);
+    }
+
+    function cancelAllVibration() {
+      if (hasVibrate) {
+        navigator.vibrate(0);
+        navigator.vibrate([]);
+      }
+      log("Alle trillingen geannuleerd via vibrate(0).");
+    }
+
+    // --- 2. iPHONE METHODES ---
+    function testIosSwitchMethod() {
+      try {
+        const sw = document.getElementById('hidden-ios-switch');
+        if (sw) {
+          sw.checked = !sw.checked;
+          // Trigger change & click
+          sw.dispatchEvent(new Event('change', { bubbles: true }));
+          sw.click();
+          log("[iOS Switch] Checkbox switch getoggeld (werkt alleen als iOS switch-haptics aan staan).");
+        }
+      } catch (e) {
+        log("[iOS Switch fout]: " + e.message);
+      }
+    }
+
+    function testIosDatePickerTrigger() {
+      try {
+        const picker = document.getElementById('hidden-ios-picker');
+        if (picker) {
+          picker.focus();
+          log("[iOS Picker] Focus op picker geactiveerd.");
+        }
+      } catch (e) {
+        log("[iOS Picker fout]: " + e.message);
+      }
+    }
+
+    // Web Audio Sub-bass resonantie fallback (de beste iPhone haptic simulator)
+    let audioCtx = null;
+    function testSubBassHaptic() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        // 45Hz sinusgolf veroorzaakt een mechanische resonantie in de iPhone speaker
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(45, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08); // 80ms snelle punch
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+        log("[Audio Haptic] 45Hz sub-bass punch verzonden (voelbaar via speaker op iPhone).");
+      } catch (e) {
+        log("[Audio Haptic fout]: " + e.message);
+      }
+    }
+
+    // --- 3. UNIVERSELE FUNCTIE VOOR DE QUIZ ---
+    function universalQuizBuzzerHaptic() {
+      log("🔔 Universele buzzer feedback gestart:");
+      
+      // A. Android / browsers met vibrate API
+      if (hasVibrate) {
+        try {
+          navigator.vibrate(0);
+          // Losse tik i.p.v. patroon om de lange-tril bug te voorkomen
+          navigator.vibrate(55);
+          log(" -> Android: 55ms korte tik getriggerd");
+        } catch (e) {
+          log(" -> Android vibrate error: " + e.message);
+        }
+      }
+
+      // B. iOS fallback
+      if (isIOS || !hasVibrate) {
+        testIosSwitchMethod();
+        testSubBassHaptic();
+        log(" -> iOS: Switch toggle + mechanische sub-bass kick getriggerd");
+      }
+    }
+  </script>
+</body>
+</html>
