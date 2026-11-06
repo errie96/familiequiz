@@ -55,6 +55,8 @@
     .row2 > * { flex: 1; }
     label.lbl { display: block; font-size: 13px; color: #94a3b8; margin: 6px 0 4px; }
     @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    #flash { position: fixed; inset: 0; z-index: 9998; pointer-events: none; opacity: 0; }
+    @keyframes flashOn { 0% { opacity: 0; } 25% { opacity: 0.55; } 100% { opacity: 0; } }
   </style>
 </head>
 <body>
@@ -73,9 +75,7 @@
       </div>
 
       <label class="toggle-row"><span><b>Hoog contrast</b></span><input type="checkbox" id="set-contrast"></label>
-      <label class="toggle-row"><span><b>Trillen</b></span><input type="checkbox" id="set-vibrate"></label>
-      <button type="button" id="set-vibrate-test" class="btn-option" style="text-align:center;">📳 Test trillen</button>
-      <p id="set-vibrate-result" class="note"></p>
+      <label class="toggle-row"><span><b>Oplichten bij een nieuwe vraag</b></span><input type="checkbox" id="set-vibrate"></label>
 
       <div id="set-me" class="hidden">
         <h3>🙋 Mijn naam</h3>
@@ -84,6 +84,7 @@
       </div>
     </div>
   </div>
+  <div id="flash" aria-hidden="true"></div>
   <div id="react-bar" class="hidden"></div>
   <div id="offline-bar" class="hidden">📡 Verbinding kwijt, even geduld… (antwoorden kan pas als hij terug is)</div>
   <div id="toast" class="hidden" style="position:fixed; top:10px; left:10px; right:10px; z-index:50; background:#0ea5e9; color:#fff; padding:12px 14px; border-radius:10px; font-weight:bold; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></div>
@@ -216,21 +217,6 @@
     $("set-size").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { prefs.size = Number(b.dataset.v); savePrefs(); }));
     $("set-contrast").addEventListener("change", () => { prefs.contrast = $("set-contrast").checked; savePrefs(); });
     $("set-vibrate").addEventListener("change", () => { prefs.vibrate = $("set-vibrate").checked; savePrefs(); if (prefs.vibrate) buzz(60); });
-    // Testknop: trilt meteen (na een tik mag dat altijd) en zegt wat er gebeurde
-    $("set-vibrate-test").addEventListener("click", () => {
-      const r = QuizFX.haptic(400);
-      const i = QuizFX.hapticInfo();
-      const msg = {
-        ok: "Trilt hij niet? Dan staat trillen uit in de telefoon: kijk bij Instellingen → Geluid en trillen (trillen bij aanraken / intensiteit) en zet Niet storen en Stil uit.",
-        blocked: `${i.browser} weigert het trillen. Probeer het in Chrome, of kijk of de batterijbesparing aan staat.`,
-        "no-api": `${i.browser} kan niet trillen vanuit een website. Gebruik Chrome of Samsung Internet.`,
-        error: "Trillen gaf een fout in deze browser.",
-        ios: i.iosVersion && i.iosVersion < 18
-          ? `Deze iPhone heeft iOS ${i.iosVersion}. Een korte tik kan pas vanaf iOS 18; echt trillen kan een website op een iPhone niet.`
-          : "Voel je geen tik? Zet dan Instellingen → Geluiden en voelfeedback → Systeemhaptiek aan. Echt trillen kan een website op een iPhone niet, alleen een korte tik."
-      }[r];
-      $("set-vibrate-result").textContent = `${r === "ok" ? "Trilsignaal verstuurd. " : ""}${msg || ""} (${i.browser}${i.iosVersion ? ", iOS " + i.iosVersion : ""}) Meer testen: ${location.origin}/trillen.html`;
-    });
     // Het instellingenmenu telt niet als spieken: de speler blijft in de app
     $("settings-btn").addEventListener("click", () => { renderSettingsInfo(); $("settings-panel").classList.remove("hidden"); });
     $("settings-close").addEventListener("click", () => $("settings-panel").classList.add("hidden"));
@@ -1147,7 +1133,25 @@
       ov.append(el("p", "note", "Houd het plaatje ingedrukt om het te bewaren of te delen."), img, save, close);
       document.body.append(ov);
     }
-    const buzz = (pattern) => { if (prefs.vibrate) QuizFX.haptic(pattern); }; // Android: trillen; iPhone (iOS 18+): korte tik
+    // Signaal bij een nieuwe vraag, na indienen e.d.: het scherm licht kort op in de teamkleur (werkt op elke telefoon,
+    // ook met Niet storen). Daarnaast een korte trilling op Android-telefoons die dat ondersteunen.
+    function flash(times) {
+      const f = $("flash");
+      if (!f) return;
+      f.style.background = (typeof me !== "undefined" && me && me.color) || "#fbbf24";
+      f.style.animation = "none"; void f.offsetWidth;
+      f.style.animation = `flashOn 0.45s ease-out ${Math.max(1, Math.min(3, times))}`;
+    }
+    // Tikje bij elke tik op een knop (iPhone: haptische tik via de schakelaar-truc; Android: korte trilling)
+    document.addEventListener("click", (e) => {
+      if (prefs.vibrate && e.isTrusted && e.target.closest && e.target.closest("button")) QuizFX.tapFeedback();
+    });
+    const buzz = (pattern) => {
+      if (!prefs.vibrate) return;
+      const p = Array.isArray(pattern) ? pattern : [pattern];
+      flash(Math.ceil(p.length / 2));
+      try { if (navigator.vibrate) navigator.vibrate(p.length === 1 ? p[0] : p); } catch (e) { /* geen trillen */ }
+    };
     function submittedNow(v) {
       switch (v.type) {
         case "mc": case "price": case "logo": return v.status === "open" && !!v.answered;
