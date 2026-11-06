@@ -509,28 +509,38 @@ window.QuizFX = (function () {
 
   // Trillen. Android: de Vibration API. iPhone kent die niet; sinds iOS 18 geeft Safari wel een korte "tik"
   // (haptische feedback) bij een schakelaar (<input switch>). Die truc gebruiken we als reserve: één tik per puls.
-  let hapticLabel = null;
+  // Zoals bekende voorbeelden: elke keer een nieuw, verborgen schakelaartje, aanklikken en weer weghalen.
   function iosTap() {
     try {
-      if (!hapticLabel) {
-        hapticLabel = document.createElement("label");
-        hapticLabel.setAttribute("aria-hidden", "true");
-        hapticLabel.style.cssText = "position:fixed; left:-9999px; top:0; width:1px; height:1px; overflow:hidden; opacity:0;";
-        const sw = document.createElement("input");
-        sw.type = "checkbox"; sw.setAttribute("switch", ""); sw.tabIndex = -1;
-        hapticLabel.appendChild(sw);
-        document.body.appendChild(hapticLabel);
-      }
-      hapticLabel.click();
+      const label = document.createElement("label");
+      label.setAttribute("aria-hidden", "true");
+      label.style.display = "none";
+      const sw = document.createElement("input");
+      sw.type = "checkbox"; sw.setAttribute("switch", "");
+      label.appendChild(sw);
+      document.head.appendChild(label);
+      label.click();
+      document.head.removeChild(label);
     } catch (e) { /* geen trillen mogelijk */ }
   }
   const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  // Geeft terug wat er gebeurde, zodat de testknop in het menu het kan laten zien
   function haptic(pattern) {
     const p = Array.isArray(pattern) ? pattern : [pattern || 60];
-    try { if (navigator.vibrate && !isIOS) { navigator.vibrate(p); return; } } catch (e) { /* reserve hieronder */ }
-    if (!isIOS) return;
+    if (!isIOS) {
+      if (typeof navigator.vibrate !== "function") return "no-api";
+      try { return navigator.vibrate(p) ? "ok" : "blocked"; } catch (e) { return "error"; }
+    }
     let t = 0;
-    p.forEach((ms, i) => { if (i % 2 === 0) setTimeout(iosTap, t); t += ms; });
+    p.forEach((ms, i) => { if (i % 2 === 0) { if (t === 0) iosTap(); else setTimeout(iosTap, t); } t += ms; });
+    return "ios";
+  }
+  // Uitleg voor de testknop: wat kan deze telefoon?
+  function hapticInfo() {
+    const ua = navigator.userAgent;
+    const ios = (/OS (\d+)_(\d+)/.exec(ua) || [])[1];
+    const browser = /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Firefox|FxiOS/.test(ua) ? "Firefox" : /EdgA|EdgiOS/.test(ua) ? "Edge" : /CriOS|Chrome/.test(ua) ? "Chrome" : /Safari/.test(ua) ? "Safari" : "onbekende browser";
+    return { isIOS, iosVersion: ios ? Number(ios) : null, browser, api: typeof navigator.vibrate === "function" };
   }
 
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
@@ -596,7 +606,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, haptic, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, haptic, hapticInfo, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

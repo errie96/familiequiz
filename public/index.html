@@ -77,6 +77,8 @@
       <h3>👁️ Weergave en meldingen</h3>
       <label class="toggle-row"><span><b>Hoog contrast</b><br><span class="note">Zwart-wit met duidelijke randen, makkelijker te lezen.</span></span><input type="checkbox" id="set-contrast"></label>
       <label class="toggle-row"><span><b>Trillen</b><br><span class="note">Kort trillen bij een nieuwe vraag en na indienen. iPhone: alleen een korte tik (iOS 18 of nieuwer, met "Systeemhaptiek" aan).</span></span><input type="checkbox" id="set-vibrate"></label>
+      <button type="button" id="set-vibrate-test" class="btn-option" style="text-align:center;">📳 Test trillen</button>
+      <p id="set-vibrate-result" class="note"></p>
       <label class="toggle-row"><span><b>Scherm aan houden</b><br><span class="note">Voorkomt dat de telefoon in slaap valt tijdens de quiz. Uitzetten spaart batterij.</span></span><input type="checkbox" id="set-awake"></label>
 
       <div id="set-me" class="hidden">
@@ -230,6 +232,21 @@
     $("set-size").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { prefs.size = Number(b.dataset.v); savePrefs(); }));
     $("set-contrast").addEventListener("change", () => { prefs.contrast = $("set-contrast").checked; savePrefs(); });
     $("set-vibrate").addEventListener("change", () => { prefs.vibrate = $("set-vibrate").checked; savePrefs(); if (prefs.vibrate) buzz(60); });
+    // Testknop: trilt meteen (na een tik mag dat altijd) en zegt wat er gebeurde
+    $("set-vibrate-test").addEventListener("click", () => {
+      const r = QuizFX.haptic([200, 100, 200]);
+      const i = QuizFX.hapticInfo();
+      const msg = {
+        ok: "Trilt hij niet? Dan staat trillen uit in de telefoon: kijk bij Instellingen → Geluid en trillen (trillen bij aanraken / intensiteit) en zet Niet storen en Stil uit.",
+        blocked: `${i.browser} weigert het trillen. Probeer het in Chrome, of kijk of de batterijbesparing aan staat.`,
+        "no-api": `${i.browser} kan niet trillen vanuit een website. Gebruik Chrome of Samsung Internet.`,
+        error: "Trillen gaf een fout in deze browser.",
+        ios: i.iosVersion && i.iosVersion < 18
+          ? `Deze iPhone heeft iOS ${i.iosVersion}. Een korte tik kan pas vanaf iOS 18; echt trillen kan een website op een iPhone niet.`
+          : "Voel je geen tik? Zet dan Instellingen → Geluiden en voelfeedback → Systeemhaptiek aan. Echt trillen kan een website op een iPhone niet, alleen een korte tik."
+      }[r];
+      $("set-vibrate-result").textContent = `${r === "ok" ? "Trilsignaal verstuurd. " : ""}${msg || ""} (${i.browser}${i.iosVersion ? ", iOS " + i.iosVersion : ""})`;
+    });
     $("set-awake").addEventListener("change", () => { prefs.awake = $("set-awake").checked; savePrefs(); requestWakeLock(); });
     // Het instellingenmenu telt niet als spieken: de speler blijft in de app
     $("settings-btn").addEventListener("click", () => { renderSettingsInfo(); $("settings-panel").classList.remove("hidden"); });
