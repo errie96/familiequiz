@@ -35,3 +35,23 @@
 /* sneltoetsen-hint alleen op een laptop of groot scherm */
 #kbd-hint { display: none; }
 @media (min-width: 1000px) and (hover: hover) { #kbd-hint { display: block; } }
+
+/* Menu: eerst alleen tegels, een tegel toont één blok */
+#menu > details, #menu > #btn-reset { display: none; }
+#menu > details.menu-active { display: block; }
+#menu[data-view="emergency-panel"] > #btn-reset { display: block; }
+#menu[data-view] #menu-index { display: none; }
+#menu-back { display: none; }
+#menu[data-view] #menu-back { display: inline-block; }
+#menu[data-view] #menu-title { font-size: 16px !important; color: #94a3b8; }
+/* Tijdens de quiz (ook op een laptop): geen vaste instellingen-kolom, alleen de bediening; ⚙️ opent het menu */
+@media (min-width: 1100px) {
+  body.wide.playing .card { grid-template-columns: minmax(0, 1fr); max-width: 980px !important; }
+  body.wide.playing #topbar { grid-column: 1; }
+  body.wide.playing #menu { display: none; }
+  body.wide.playing #menu.open { display: block; position: fixed; inset: 0 0 0 auto; width: 520px; max-height: none; z-index: 70; background: #0f172a; padding: 14px; box-shadow: -10px 0 30px rgba(0,0,0,0.5); overflow-y: auto; }
+  body.wide.playing #tb-menu, body.wide.playing #menu-close { display: inline-block; }
+}
+/* Waarschuwingen compact */
+#warnings details summary { cursor: pointer; font-weight: bold; }
+#warnings details div { margin-top: 6px; line-height: 1.5; }

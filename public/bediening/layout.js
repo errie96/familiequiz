@@ -16,7 +16,7 @@
   // --- menu: alle instellingen en beheer ---
   const menu = document.createElement("aside");
   menu.id = "menu";
-  menu.innerHTML = '<div id="menu-head"><h2 style="margin:0; flex:1; font-size:20px;">⚙️ Instellingen en beheer</h2><button id="menu-close" class="btn-option" style="width:auto; margin:0;">✕ Sluiten</button></div><div id="menu-index"></div>';
+  menu.innerHTML = '<div id="menu-head"><button id="menu-back" class="btn-option" style="width:auto; margin:0;">⬅️ Alles</button><h2 id="menu-title" style="margin:0; flex:1; font-size:20px;">⚙️ Instellingen en beheer</h2><button id="menu-close" class="btn-option" style="width:auto; margin:0;">✕ Sluiten</button></div><div id="menu-index"></div>';
   const MENU_IDS = ["teams-panel", "plan-panel", "live-panel", "settings-panel", "spotify-panel", "playlists-panel", "quiz-panel", "theme-panel", "scores-panel", "history-panel", "backup-panel", "emergency-panel", "btn-reset"];
   const nodes = [...card.children];
   card.append(main, menu);
@@ -30,13 +30,20 @@
     const sum = q(id).querySelector("summary");
     const b = document.createElement("button");
     b.className = "btn-option";
-    b.textContent = (sum ? sum.childNodes[0].textContent : id).trim();
-    b.onclick = () => { MENU_IDS.forEach((x) => { const d = q(x); if (d && d.tagName === "DETAILS" && x !== id) d.open = false; }); q(id).open = true; q(id).scrollIntoView({ behavior: "smooth", block: "start" }); };
+    b.textContent = (sum ? sum.childNodes[0].textContent : id).replace(/\(.*$/, "").trim(); // zonder tellers als "(0 van 2)"
+    b.onclick = () => showPanel(id);
     index.append(b);
   });
-  const openMenu = (id) => { menu.classList.add("open"); if (id && q(id)) { q(id).open = true; setTimeout(() => q(id).scrollIntoView({ behavior: "smooth", block: "start" }), 50); } };
+  // Het menu toont eerst alleen de tegels; een tegel opent alleen dat ene blok (met "⬅️ Alles" terug)
+  function showPanel(id) {
+    MENU_IDS.forEach((x) => { const d = q(x); if (d) d.classList.toggle("menu-active", x === id); });
+    if (id && q(id)) { menu.dataset.view = id; if (q(id).tagName === "DETAILS") q(id).open = true; menu.scrollTop = 0; }
+    else delete menu.dataset.view;
+  }
+  q("menu-back").onclick = () => showPanel(null);
+  const openMenu = (id) => { menu.classList.add("open"); showPanel(id || null); };
   q("tb-menu").onclick = () => openMenu();
-  q("menu-close").onclick = () => menu.classList.remove("open");
+  q("menu-close").onclick = () => { menu.classList.remove("open"); showPanel(null); };
   q("tb-sos").onclick = () => openMenu("emergency-panel");
   // hoogte van de kopbalk doorgeven, zodat de grote knop er netjes onder blijft staan
   const setTop = () => document.documentElement.style.setProperty("--topbar-h", header.offsetHeight + "px");
@@ -107,6 +114,8 @@
   let autoOpened = false;
   socket.on("state_update", (state) => {
     q("tb-wizard").classList.toggle("hidden", state.phase !== "LOBBY");
+    // Tijdens de quiz alleen de bediening zelf; instellingen via ⚙️ (ook op een groot scherm niet meer vast in beeld)
+    document.body.classList.toggle("playing", state.phase !== "LOBBY");
     if (wizard.classList.contains("open")) renderExtra();
     if (state.phase !== "LOBBY" && wizard.classList.contains("open")) close();
     const seen = Number(localStorage.getItem("quiz_wizard_seen") || 0);

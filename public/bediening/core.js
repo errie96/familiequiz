@@ -68,7 +68,6 @@ socket.on("quiz_sound", (m) => {
 socket.on("cheat_beep", (a) => {
   if (!soundMe) return; // geluid uitgezet voor dit toestel
   QuizFX.alarm(false);
-  QuizFX.haptic([150, 80, 150]); // Android: trillen; iPhone (iOS 18+): twee korte tikken
 });
 function renderAlerts(list) {
   const box = $("cheat-alerts");

@@ -507,30 +507,6 @@ window.QuizFX = (function () {
   buzzer = routed("buzzer", buzzer); triumph = routed("triumph", triumph); ding = routed("ding", ding);
   whoosh = routed("whoosh", whoosh); drumHit = routed("drumHit", drumHit); fanfare = routed("fanfare", fanfare); tick = routed("tick", tick);
 
-  // Tikje bij een directe tik op een knop. iPhone: een verborgen schakelaar (<input switch>) in de pagina aanklikken
-  // laat Safari (iOS 18+) een haptische tik geven, maar alleen tijdens een echte tik van de gebruiker. Android: 40 ms.
-  let iosSwitch = null;
-  function tapFeedback() {
-    try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) { /* geen trillen */ }
-    try {
-      if (!iosSwitch) {
-        const label = document.createElement("label");
-        label.setAttribute("aria-hidden", "true");
-        label.style.cssText = "position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; pointer-events:none; overflow:hidden;";
-        iosSwitch = document.createElement("input");
-        iosSwitch.type = "checkbox"; iosSwitch.setAttribute("switch", ""); iosSwitch.tabIndex = -1;
-        label.appendChild(iosSwitch);
-        document.body.appendChild(label);
-      }
-      iosSwitch.click();
-    } catch (e) { /* geen tik mogelijk */ }
-  }
-  // Trillen (alleen Android; een iPhone kan dat vanuit een website niet). Eén puls als getal.
-  function haptic(pattern) {
-    const p = Array.isArray(pattern) ? pattern : [pattern || 60];
-    try { if (navigator.vibrate) navigator.vibrate(p.length === 1 ? p[0] : p); } catch (e) { /* geen trillen */ }
-  }
-
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
   function avatar(name, photo, size, color) {
     const a = document.createElement(photo ? "img" : "span");
@@ -594,7 +570,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, haptic, tapFeedback, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

@@ -1134,7 +1134,7 @@
       document.body.append(ov);
     }
     // Signaal bij een nieuwe vraag, na indienen e.d.: het scherm licht kort op in de teamkleur (werkt op elke telefoon,
-    // ook met Niet storen). Daarnaast een korte trilling op Android-telefoons die dat ondersteunen.
+    // ook met Niet storen). Trillen vanuit een website werkt op veel telefoons niet, dus dat doen we niet.
     function flash(times) {
       const f = $("flash");
       if (!f) return;
@@ -1142,15 +1142,10 @@
       f.style.animation = "none"; void f.offsetWidth;
       f.style.animation = `flashOn 0.45s ease-out ${Math.max(1, Math.min(3, times))}`;
     }
-    // Tikje bij elke tik op een knop (iPhone: haptische tik via de schakelaar-truc; Android: korte trilling)
-    document.addEventListener("click", (e) => {
-      if (prefs.vibrate && e.isTrusted && e.target.closest && e.target.closest("button")) QuizFX.tapFeedback();
-    });
     const buzz = (pattern) => {
       if (!prefs.vibrate) return;
       const p = Array.isArray(pattern) ? pattern : [pattern];
       flash(Math.ceil(p.length / 2));
-      try { if (navigator.vibrate) navigator.vibrate(p.length === 1 ? p[0] : p); } catch (e) { /* geen trillen */ }
     };
     function submittedNow(v) {
       switch (v.type) {

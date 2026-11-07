@@ -8,7 +8,20 @@ socket.on("state_update", (state) => {
   renderHistory(state.history);
   const w = $("warnings");
   w.classList.toggle("hidden", !state.warnings.length);
-  w.textContent = state.warnings.length ? "⚠️ " + state.warnings.join(" · ") : "";
+  // Compact: één regel, details pas na een tik (open/dicht blijft bewaard)
+  const key = state.warnings.join("|");
+  if (w.dataset.key !== key) {
+    w.dataset.key = key;
+    const wasOpen = !!(w.querySelector("details") && w.querySelector("details").open);
+    w.replaceChildren();
+    if (state.warnings.length) {
+      const d = document.createElement("details"); d.open = wasOpen;
+      const sm = document.createElement("summary"); sm.textContent = `⚠️ ${state.warnings.length} waarschuwing${state.warnings.length === 1 ? "" : "en"} (tik voor details)`;
+      const list = document.createElement("div");
+      state.warnings.forEach((x) => { const p = document.createElement("div"); p.textContent = "• " + x; list.append(p); });
+      d.append(sm, list); w.append(d);
+    }
+  }
 
   clearTimeout(clickLock);
   $("btn-force").disabled = false;

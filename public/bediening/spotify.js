@@ -117,7 +117,7 @@ function spRefreshUi() {
   $("sp-badge").textContent = on ? "● verbonden" : "○ niet verbonden";
   if (!on) spStatus("Nog niet verbonden. Doe dit vooraf, vóór de quiz begint.");
 }
-$("sp-connect").onclick = () => QuizSpotify.login().catch((e) => { $("spotify-panel").open = true; spStatus(e.message, true); });
+$("sp-connect").onclick = () => QuizSpotify.login().catch((e) => { openPanel("spotify-panel"); spStatus(e.message, true); });
 $("sp-refresh").onclick = spDevices;
 $("sp-device").onchange = () => localStorage.setItem("sp_device", $("sp-device").value);
 $("sp-test").onclick = () => spPlay({ title: "Bohemian Rhapsody", artist: "Queen" });
@@ -127,7 +127,7 @@ $("sp-disconnect").onclick = () => { QuizSpotify.disconnect(); spRefreshUi(); };
 document.addEventListener("click", () => QuizSpotify.activate());
 (async () => {
   const r = await QuizSpotify.handleRedirect();
-  if (r) $("spotify-panel").open = true;
+  if (r) openPanel("spotify-panel");
   spRefreshUi();
   if (r && !r.ok) spStatus(`Koppelen mislukt: ${r.message}. Staat ${QuizSpotify.redirect()} als Redirect-URI in je Spotify-app?`, true);
   if (!QuizSpotify.connected()) return;
