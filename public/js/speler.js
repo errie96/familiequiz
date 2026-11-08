@@ -300,6 +300,22 @@ function renderTeamCard() {
   $("role-text").textContent = me.role === "base"
     ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in."
     : `De basistelefoon (${me.baseLabel}) dient de antwoorden in.`;
+  // Akkoord met de basistelefoon: iedereen in het team moet akkoord zijn voordat de quiz begint
+  let bc = $("base-confirm");
+  if (!bc) { bc = el("div"); bc.id = "base-confirm"; $("role-text").after(bc); }
+  bc.replaceChildren();
+  const ok = me.baseOk || { approved: true, confirmed: true, waiting: [] };
+  if (!ok.approved) {
+    const btn = el("button", "btn-primary", `✔ Akkoord: ${me.role === "base" ? "deze telefoon" : me.baseLabel} is onze basis`);
+    btn.style.margin = "8px 0";
+    btn.onclick = () => socket.emit("approve_base", null, () => {});
+    bc.append(btn);
+  } else if (!ok.confirmed && ok.waiting.length) {
+    bc.append(el("p", "note", `⏳ Wachten op akkoord van: ${ok.waiting.join(", ")}`));
+  } else if (ok.confirmed && me.members.length > 1) {
+    bc.append(el("p", "note", "✅ Het hele team is akkoord met de basistelefoon."));
+  }
+  if (me.canChangeBase === false) bc.append(el("p", "note", "Wisselen van basistelefoon kan weer vóór de volgende ronde."));
   const list = $("member-list");
   list.replaceChildren();
   me.members.forEach((m) => {
@@ -308,7 +324,7 @@ function renderTeamCard() {
     li.append(el("span", "", (m.memberId === me.memberId ? `${m.label} (jij)` : m.label) + (m.role === "base" ? " ⭐ basis" : "")));
     const right = el("span");
     right.style.cssText = "display:flex; gap:8px; align-items:center;";
-    if (m.role !== "base" && m.connected && !pending) {
+    if (m.role !== "base" && m.connected && !pending && me.canChangeBase !== false) {
       const btn = el("button", "btn-option", m.memberId === me.memberId ? "Maak mij de basis" : "Stel voor als basis");
       btn.style.cssText = "width:auto; margin:0; padding:6px 10px; font-size:13px;";
       btn.onclick = () => proposeBase(m.memberId);

@@ -15,9 +15,18 @@ test('tekenen: tekenaar staat vast vóór de start, het woord komt pas bij de st
   const a1 = await phone(app, 'a1', { team: 'Alfa', label: 'Anna' });
   P.a1 = a1;
   const a2 = await phone(app, 'a2', { join: tid('Alfa'), label: 'Arie' });
+  P.a2 = a2;
   await phone(app, 'b1', { team: 'Beta', label: 'Bas' });
-  await phone(app, 'b2', { join: tid('Beta'), label: 'Bea' });
+  const b2 = await phone(app, 'b2', { join: tid('Beta'), label: 'Bea' });
   assert.equal((await a2.call('rename_self', { name: 'Ariejan' })).ok, true, 'vóór de start mag een speler zijn naam wijzigen');
+  // basistelefoon: eerst moet iedereen akkoord zijn, anders start de quiz niet
+  assert.equal(remote().controls.main.enabled, false, 'nog niet iedereen akkoord met de basistelefoon');
+  assert.match(remote().controls.main.hint, /Arie.*Bea|Bea.*Arie/s);
+  assert.equal(last('a2').me.baseOk.approved, false);
+  await a2.call('approve_base');
+  await b2.call('approve_base');
+  assert.equal(last('a2').me.baseOk.confirmed, true);
+  assert.equal(remote().controls.main.enabled, true, 'nu kan de quiz starten');
   host.send('host_main'); // start de quiz
   const r = await a2.call('rename_self', { name: 'Stiekem' });
   assert.equal(r.ok, false, 'na de start niet meer');
@@ -29,9 +38,21 @@ test('tekenen: tekenaar staat vast vóór de start, het woord komt pas bij de st
   const drawerView = [view(a1), view(a2)].find((v) => v.role === 'drawer');
   assert.equal(drawerView.word, null, 'het woord blijft geheim tot de start');
   assert.ok(tvState().step.teams.every((t) => t.drawer), 'de tv toont wie er tekent');
+  // midden in een ronde (tekenbeurt klaar, nog in de ronde) kan het team niet van basis wisselen
   host.send('host_main'); // start de beurt
+  const blocked = await a2.call('propose_base', {});
+  assert.equal(blocked.ok, false, 'tijdens een ronde geen andere basistelefoon');
   assert.equal(T.ss(draw).status, 'drawing');
   assert.ok([view(a1), view(a2)].find((v) => v.role === 'drawer').word, 'nu ziet de tekenaar het woord');
+});
+
+test('basistelefoon wisselen kan wel op een tussenpagina (vóór een ronde), met akkoord van het hele team', async () => {
+  const intro = T.steps.find((x) => x.kind === 'info' && x.roundIntro);
+  host.send('goto_step', { stepId: intro.id });
+  const res = await P.a2.call('propose_base', {});
+  assert.equal(res.ok, true, 'op een tussenpagina mag het');
+  await P.a1.call('respond_base', { approve: true });
+  assert.equal(last('a2').me.role, 'base', 'na akkoord van iedereen is Arie(jan) de basis');
 });
 
 test('30 Seconds: wie later aansluit komt ook aan de beurt', async () => {

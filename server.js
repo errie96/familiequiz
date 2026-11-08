@@ -1315,6 +1315,7 @@ function pauseReading(on) {
   else { s.readUntil = Date.now() + (s.readLeft ?? 0); delete s.readLeft; scheduleOpen(step); }
 }
 function enterStep() {
+  if (!baseChangeAllowed()) Object.values(G.teams).forEach((t) => { if (t.proposal) { t.proposal = null; notifyTeam(t, 'Het voorstel voor een andere basistelefoon is vervallen: de ronde begint. Wisselen kan weer vóór de volgende ronde.'); } });
   G.musicPaused = false; // nieuwe stap: muziek speelt weer gewoon
   timerClear();
   G.review = null;
@@ -1640,7 +1641,7 @@ function loadSaved() {
   G.teams = {};
   for (const t of Object.values(data.teams)) {
     if (!t || !t.teamId || !t.name) continue;
-    G.teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++G.seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null, color: TEAM_COLORS.includes(t.color) ? t.color : null, adjust: Number.isFinite(t.adjust) ? t.adjust : 0, ...(t.bot ? { bot: true } : {}) };
+    G.teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++G.seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null, color: TEAM_COLORS.includes(t.color) ? t.color : null, adjust: Number.isFinite(t.adjust) ? t.adjust : 0, baseApprovals: Array.isArray(t.baseApprovals) ? t.baseApprovals.filter((x) => typeof x === 'string') : undefined, ...(t.bot ? { bot: true } : {}) };
   }
   G.devices = {};
   for (const d of Object.values(data.devices || {})) {
@@ -1919,6 +1920,8 @@ function mainAction() {
     if (!G.settings.maxTeams) return none('📱 Toon het aanmeldscherm (QR-code)', 'Vul eerst bij Teams in hoeveel teams er maximaal mee mogen doen.');
     if (G.lobbyStage === 'welcome') return go('📱 Toon het aanmeldscherm (QR-code)', () => { G.lobbyStage = 'join'; });
     if (!Object.keys(G.teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
+    const unsure = Object.values(G.teams).filter((t) => !baseConfirmed(t));
+    if (unsure.length) return none('⏳ Basistelefoons nog niet bevestigd', `Nog niet akkoord: ${unsure.map((t) => `${t.name} (${baseWaiting(t).map((x) => x.label).join(', ')})`).join(' · ')}. Iedereen in een team tikt op "Akkoord".`);
     const ready = readiness();
     if (!ready.ok) return none('▶️ Start de quiz', `Niet startklaar: ${ready.errors[0]}${ready.errors.length > 1 ? ` (en nog ${ready.errors.length - 1})` : ''}`);
     return go('▶️ Start de quiz', startQuiz);
@@ -2009,7 +2012,12 @@ function mainAction() {
 function startQuiz() { G.gameId = crypto.randomUUID(); G.phase = 'PLAY'; G.stepIndex = 0; enterStep(); LOG.info('quiz_gestart', { teams: Object.keys(G.teams).length }); setTimeout(() => backupNow('start'), 500); }
 function forceAction() {
   // Vóór de start: niet startklaar, maar de quizmaster wil toch beginnen
-  if (G.phase === 'LOBBY') return G.lobbyStage === 'join' && Object.keys(G.teams).length && G.settings.maxTeams && !readiness().ok ? { label: '⚠️ Toch starten (niet startklaar)', run: () => { LOG.warn('start_ondanks_fouten', { fouten: readiness().errors }); startQuiz(); } } : null;
+  if (G.phase === 'LOBBY') {
+    if (!(G.lobbyStage === 'join' && Object.keys(G.teams).length && G.settings.maxTeams)) return null;
+    const unsure = Object.values(G.teams).filter((t) => !baseConfirmed(t));
+    if (!readiness().ok || unsure.length) return { label: unsure.length ? '⚠️ Toch starten (basistelefoon niet door iedereen bevestigd)' : '⚠️ Toch starten (niet startklaar)', run: () => { LOG.warn('start_ondanks_fouten', { fouten: readiness().errors, onbevestigd: unsure.map((t) => t.name) }); startQuiz(); } };
+    return null;
+  }
   const step = cur();
   if (!step) return null;
   const s = ss(step);
@@ -2123,6 +2131,8 @@ function broadcastState() {
       me: {
         memberId: d.memberId, teamId: t.teamId, teamName: t.name, color: t.color || '#64748b', photo: photoUrl(t.teamId), label: d.label, role: isBase ? 'base' : 'member',
         baseLabel: G.devices[t.baseDeviceId] ? G.devices[t.baseDeviceId].label : '', proposal: proposalFor(t, d),
+        baseOk: { approved: baseApprovals(t).includes(d.deviceId), confirmed: baseConfirmed(t), waiting: baseWaiting(t).map((x) => x.label) },
+        canChangeBase: baseChangeAllowed(),
         members: teamDevices(t).map((m) => ({ memberId: m.memberId, label: m.label, role: m.deviceId === t.baseDeviceId ? 'base' : 'member', connected: m.connected }))
       }
     });
@@ -2214,6 +2224,21 @@ function phoneView(step, team, device, isBase) {
   return base;
 }
 
+// ---- Basistelefoon: bevestigen en wisselen ----
+// Het hele team moet akkoord zijn met de basistelefoon voordat de quiz begint (iedereen die verbonden is).
+// Wisselen kan alleen buiten de rondes: in de lobby en op tussenpagina's, uitleg, "Dit was ronde", joker en teamfoto.
+const baseApprovals = (team) => (team.baseApprovals = Array.isArray(team.baseApprovals) ? team.baseApprovals : [team.baseDeviceId]);
+function baseConfirmed(team) {
+  const ok = baseApprovals(team);
+  return connectedDevices(team).every((d) => d.bot || ok.includes(d.deviceId));
+}
+function baseWaiting(team) { const ok = baseApprovals(team); return connectedDevices(team).filter((d) => !d.bot && !ok.includes(d.deviceId)); }
+function baseChangeAllowed() {
+  if (G.phase === 'LOBBY') return true;
+  if (G.phase !== 'PLAY') return false;
+  const step = cur();
+  return !step || ['info', 'roundresult', 'joker', 'teamphoto'].includes(step.kind);
+}
 function proposalFor(team, device) {
   const p = team.proposal;
   const candidate = p && G.devices[p.candidateId];
@@ -2231,8 +2256,10 @@ function evaluateProposal(team) {
   if (!p) return;
   const candidate = G.devices[p.candidateId];
   if (!candidate || candidate.teamId !== team.teamId || !candidate.connected) { team.proposal = null; return; }
+  if (!baseChangeAllowed()) return; // midden in een ronde wordt er niet gewisseld
   if (connectedDevices(team).every((d) => p.approvals.includes(d.deviceId))) {
     team.baseDeviceId = candidate.deviceId;
+    team.baseApprovals = [...p.approvals]; // wie het voorstel goedkeurde, is akkoord met de nieuwe basis
     team.proposal = null;
     notifyTeam(team, `${candidate.label} is nu de basistelefoon van het team.`);
   }
@@ -2330,6 +2357,8 @@ function applyOp(strokes, op) {
 // Alles wat de losse socket-bestanden (lib/sockets/*) nodig hebben, in één object
 function socketApi() {
   return {
+    baseApprovals,
+    baseChangeAllowed,
     pauseReading,
     DATA_DIR,
     END_VIEWS,
