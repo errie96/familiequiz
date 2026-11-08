@@ -61,7 +61,7 @@ socket.on("quiz_sound", (m) => {
     quizAudio.play().catch(() => setStatus("🔇 Tik één keer op de bediening om geluid toe te staan", "#f59e0b"));
     return;
   }
-  if (typeof QuizFX[m.name] === "function" && ["buzzer", "triumph", "ding", "whoosh", "drumHit", "fanfare", "tick"].includes(m.name)) QuizFX[m.name](...(m.args || []));
+  if (typeof QuizFX[m.name] === "function" && ["buzzer", "triumph", "ding", "whoosh", "drumHit", "fanfare", "tick", "pop", "chime", "shutter", "aww", "reveal", "heartbeat", "applause"].includes(m.name)) QuizFX[m.name](...(m.args || []));
 });
 
 // ---------------- Spiekmeldingen (blijven staan tot de speler terug is) ----------------

@@ -18,16 +18,18 @@ $("btn-undo").onclick = () => {
   if (S && S.controls && S.controls.undo && S.controls.undo.enabled && confirm("Laatste correctie ongedaan maken?")) socket.emit("undo_last");
 };
 $("btn-pause").onclick = () => socket.emit("toggle_pause");
+$("btn-music").onclick = () => socket.emit("music_toggle", { paused: !(S && S.music && S.music.paused) });
 // Sneltoetsen (handig op een laptop). Niet tijdens typen in een veld, en niet als een menu open staat.
 //   Spatie = grote knop · ← = vorige stap · P = pauze · M = muziek stoppen
 document.addEventListener("keydown", (e) => {
   const t = e.target || {};
   if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName || "") || t.isContentEditable) return;
   if (document.getElementById("wizard") && document.getElementById("wizard").classList.contains("open")) return;
+  if (document.getElementById("menu") && document.getElementById("menu").classList.contains("open")) return; // instellingen open
   if (e.code === "Space") { e.preventDefault(); $("btn-main").click(); }
   else if (e.code === "ArrowLeft") { e.preventDefault(); $("btn-prev").click(); }
   else if (e.code === "KeyP") $("btn-pause").click();
-  else if (e.code === "KeyM") { if (typeof spStop === "function") spStop(); socket.emit("song_pause"); }
+  else if (e.code === "KeyM") { if (S && S.music) $("btn-music").click(); else { if (typeof spStop === "function") spStop(); socket.emit("song_pause"); } }
 });
 $("btn-positions").onclick = () => socket.emit("toggle_positions", { mode: "list" });
 $("btn-race").onclick = () => socket.emit("toggle_positions", { mode: "race" });

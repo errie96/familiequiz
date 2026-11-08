@@ -22,6 +22,21 @@
   card.append(main, menu);
   nodes.forEach((n) => { if (n === header) return; if (MENU_IDS.includes(n.id)) return; main.append(n); });
   card.insertBefore(header, main);
+  // Twee vakken in de hoofdkolom: links de knoppen (en spiekmeldingen), rechts wat er nu speelt (paneel, nakijken,
+  // einde). Op een smal scherm staan ze gewoon onder elkaar, in dezelfde volgorde als voorheen.
+  // Drie vakken: links meldingen en "hierna", in het midden de knoppen (centraal), rechts het paneel van de stap
+  const left = document.createElement("div"); left.id = "play-left";
+  const center = document.createElement("div"); center.id = "play-center";
+  const right = document.createElement("div"); right.id = "play-right";
+  const SIDE_IDS = ["cheat-alerts", "warnings", "up-next"];
+  [...main.children].forEach((n) => (SIDE_IDS.includes(n.id) ? left : n.id === "main-controls" ? center : right).append(n));
+  main.append(left, center, right);
+  // QR-code voor de telefoonbediening pas laden als iemand het blokje opent
+  if (q("phone-remote")) q("phone-remote").addEventListener("toggle", () => {
+    if (!q("phone-remote").open) return;
+    q("phone-remote-qr").src = "/qr-bediening2.svg?t=" + Date.now();
+    fetch("/api/join-url").then((r) => r.json()).then((d) => { q("phone-remote-url").textContent = d.url + "/bediening2.html"; }).catch(() => {});
+  });
   MENU_IDS.forEach((id) => { const n = q(id); if (n) menu.append(n); });
   if (q("teams-panel")) q("teams-panel").open = false;
   // inhoudsopgave van het menu
@@ -44,6 +59,7 @@
   const openMenu = (id) => { menu.classList.add("open"); showPanel(id || null); };
   q("tb-menu").onclick = () => openMenu();
   q("menu-close").onclick = () => { menu.classList.remove("open"); showPanel(null); };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menu.classList.contains("open")) { menu.classList.remove("open"); showPanel(null); } });
   q("tb-sos").onclick = () => openMenu("emergency-panel");
   // hoogte van de kopbalk doorgeven, zodat de grote knop er netjes onder blijft staan
   const setTop = () => document.documentElement.style.setProperty("--topbar-h", header.offsetHeight + "px");

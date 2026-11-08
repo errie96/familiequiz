@@ -4,6 +4,16 @@
 const SP_BROWSER = "__browser__";
 let spBrowserId = null, spLast = null, spPlaying = false, spWasPaused = false;
 $("sp-redirect").textContent = QuizSpotify.redirect();
+// Spotify accepteert op http alleen 127.0.0.1. Bediening geopend via het netwerkadres (bijv. 192.168.2.183)?
+// Dan een knop om dezelfde bediening via 127.0.0.1 te openen (werkt op de laptop waar de quiz draait).
+if (location.protocol === "http:" && location.hostname !== "127.0.0.1") { // ook "localhost" accepteert Spotify niet
+  const local = `http://127.0.0.1:${location.port || 3000}${location.pathname}`;
+  const a = document.createElement("a");
+  a.href = local; a.className = "btn-option"; a.style.cssText = "display:block; text-align:center; margin-top:8px;";
+  a.textContent = "🔁 Open de bediening via 127.0.0.1 (nodig voor Spotify)";
+  $("sp-connect").after(a);
+  $("sp-redirect").textContent = local;
+}
 const spStatus = (t, warn) => { $("sp-status").textContent = t || ""; $("sp-status").style.color = warn ? "#fbbf24" : ""; };
 const spTarget = () => { const v = $("sp-device").value; return v === SP_BROWSER ? spBrowserId : v || null; };
 async function spDevices() {
@@ -135,14 +145,26 @@ document.addEventListener("click", () => QuizSpotify.activate());
   spDevices();
 })();
 // Bij elke muziekvraag het liedje starten; stoppen bij pauze of een ander scherm
+let spMusicPaused = false;
 function spOnState(st) {
   if (!QuizSpotify.connected()) return;
   const song = st.step && st.step.kind === "song" && st.panel && st.panel.type === "song" && st.panel.song && !st.panel.song.hasAudio ? st.panel.song : null;
+  const mPaused = !!(st.music && st.music.paused); // muziekknop (bediening of telefoon)
   if (!song || st.paused) {
     if (spPlaying) spStop();
     if (!song) spLast = null;
-  } else if (spLast !== st.step.id) { spLast = st.step.id; spPlay(song); }
-  else if (spWasPaused && !spPlaying) { spPlay(song); }
+  } else if (spLast !== st.step.id) { spLast = st.step.id; spMusicPaused = mPaused; if (!mPaused) spPlay(song); }
+  else if (mPaused && !spMusicPaused) { spStop(); spMusicPaused = true; }
+  else if (!mPaused && spMusicPaused) { spMusicPaused = false; spResume(song); }
+  else if (spWasPaused && !spPlaying && !mPaused) { spPlay(song); }
   spWasPaused = st.paused;
+}
+// Verder spelen waar hij was (niet opnieuw beginnen); lukt dat niet, dan het liedje opnieuw starten
+async function spResume(song) {
+  const dev = spTarget();
+  if (!dev) return;
+  if (dev === spBrowserId) { QuizSpotify.resume(); spPlaying = true; return; }
+  const r = await QuizSpotify.resumeOn(dev);
+  if ([200, 202, 204].includes(r.status)) spPlaying = true; else spPlay(song);
 }
 const spSong = () => (S && S.panel && S.panel.type === "song" ? S.panel.song : null);

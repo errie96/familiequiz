@@ -24,7 +24,7 @@
 }
 /* Laptop: bediening links, menu altijd zichtbaar rechts */
 @media (min-width: 1100px) {
-  body.wide .card { display: grid; grid-template-columns: minmax(0, 1fr) 460px; column-gap: 20px; align-items: start; max-width: 1500px !important; margin: 0 auto; }
+  body.wide .card { display: grid; grid-template-columns: minmax(0, 1fr) 460px; column-gap: 20px; align-items: start; margin: 0 auto; }
   body.wide #topbar { grid-column: 1 / span 2; }
   body.wide #main-col { grid-column: 1; grid-row: 2; }
   body.wide #menu { display: block; position: sticky; top: var(--topbar-h, 58px); max-height: calc(100vh - var(--topbar-h, 58px)); overflow-y: auto; grid-column: 2; grid-row: 2; padding: 0 0 20px; }
@@ -46,7 +46,7 @@
 #menu[data-view] #menu-title { font-size: 16px !important; color: #94a3b8; }
 /* Tijdens de quiz (ook op een laptop): geen vaste instellingen-kolom, alleen de bediening; ⚙️ opent het menu */
 @media (min-width: 1100px) {
-  body.wide.playing .card { grid-template-columns: minmax(0, 1fr); max-width: 980px !important; }
+  body.wide.playing .card { grid-template-columns: minmax(0, 1fr); }
   body.wide.playing #topbar { grid-column: 1; }
   body.wide.playing #menu { display: none; }
   body.wide.playing #menu.open { display: block; position: fixed; inset: 0 0 0 auto; width: 520px; max-height: none; z-index: 70; background: #0f172a; padding: 14px; box-shadow: -10px 0 30px rgba(0,0,0,0.5); overflow-y: auto; }
@@ -55,3 +55,44 @@
 /* Waarschuwingen compact */
 #warnings details summary { cursor: pointer; font-weight: bold; }
 #warnings details div { margin-top: 6px; line-height: 1.5; }
+
+/* Laptop (1920×1080, ook met 125–150% schaal): tijdens de quiz links de knoppen, rechts het paneel van de huidige stap */
+@media (min-width: 1100px) {
+  body.wide.playing #main-col { display: grid; grid-template-columns: minmax(360px, 430px) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  body.wide.playing #play-left { position: sticky; top: var(--topbar-h, 58px); max-height: calc(100vh - var(--topbar-h, 58px)); overflow-y: auto; padding-bottom: 12px; }
+  body.wide.playing #play-left #main-controls { position: static; }
+  body.wide.playing #play-right > :first-child { margin-top: 10px; }
+  body.wide.playing #panel, body.wide.playing #review-nav, body.wide.playing #end-box { font-size: 16px; }
+}
+
+/* Laptop 1920×1080: het hele scherm gebruiken (de pagina zelf was smal gehouden voor telefoons) */
+@media (min-width: 1100px) {
+  body.wide { max-width: none !important; padding: 12px 20px; }
+  body.wide .card { max-width: none !important; width: 100%; grid-template-columns: minmax(380px, 460px) minmax(0, 1fr); column-gap: 24px; }
+  body.wide #menu { grid-column: 2; }
+  body.wide #menu-index { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  body.wide #menu-index button { font-size: 16px; padding: 16px 14px; }
+  body.wide #menu > details.menu-active { max-width: 1100px; }
+  body.wide.playing .card { grid-template-columns: minmax(0, 1fr); }
+  body.wide.playing #main-col { grid-template-columns: minmax(380px, 460px) minmax(0, 1fr); }
+}
+
+/* ===== Laptop-indeling (1920×1080) =====
+   Knoppen centraal in het midden, links meldingen en "hierna", rechts het paneel van de huidige stap.
+   Instellingen: geen vaste kolom meer, maar een overlay over het hele scherm (⚙️ in de kopbalk). */
+@media (min-width: 1100px) {
+  body.wide .card, body.wide.playing .card { display: block !important; max-width: none !important; }
+  body.wide #main-col, body.wide.playing #main-col { display: grid !important; grid-template-columns: minmax(260px, 1fr) minmax(420px, 520px) minmax(360px, 1.25fr) !important; column-gap: 24px; align-items: start; }
+  body.wide #play-left, body.wide #play-center { position: sticky; top: var(--topbar-h, 58px); max-height: calc(100vh - var(--topbar-h, 58px)); overflow-y: auto; padding-bottom: 12px; }
+  body.wide #play-center #main-controls { position: static; box-shadow: none; margin: 12px 0 0; }
+  body.wide #play-center #btn-main { font-size: 26px; padding: 26px 16px; }
+  body.wide #play-right > :first-child { margin-top: 12px; }
+  body.wide #play-left #up-next { margin-top: 12px; }
+  /* menu = overlay */
+  body.wide #menu, body.wide.playing #menu { display: none !important; }
+  body.wide #menu.open, body.wide.playing #menu.open { display: block !important; position: fixed !important; inset: 0 !important; width: auto !important; max-height: none !important; z-index: 90; overflow-y: auto; background: rgba(15, 23, 42, 0.97); padding: 24px max(24px, calc((100vw - 1200px) / 2)) 40px !important; box-shadow: none; }
+  body.wide #tb-menu, body.wide #menu-close { display: inline-block !important; }
+}
+/* De vraag zelf klein en gedempt in de bediening: niet van een afstand mee te lezen */
+#panel .q-small { font-size: 13px; font-weight: normal; color: #94a3b8; text-align: left; margin: 4px 0 6px; }
+#panel .opt { font-size: 13px; }

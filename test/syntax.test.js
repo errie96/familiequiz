@@ -18,7 +18,12 @@ test('server and browser inline scripts have valid JavaScript syntax', () => {
       .map((match) => match[1])
       .filter((source) => source.trim());
 
-    // de bediening laadt haar code uit losse bestanden (public/bediening/*.js)
+    // de pagina's laden hun code uit losse bestanden: <script src="..."> uit de eigen map meenemen
+    for (const m of html.matchAll(/<script\s[^>]*src="([^"]+)"/gi)) {
+      if (/socket\.io|^https?:/.test(m[1])) continue;
+      const p = path.join(root, 'public', m[1].replace(/^\//, ''));
+      if (fs.existsSync(p)) scripts.push(fs.readFileSync(p, 'utf8'));
+    }
     if (file === 'public/bediening.html') {
       for (const f of fs.readdirSync(path.join(root, 'public', 'bediening')).filter((x) => x.endsWith('.js'))) scripts.push(fs.readFileSync(path.join(root, 'public', 'bediening', f), 'utf8'));
     }

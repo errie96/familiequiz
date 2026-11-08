@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Familiequiz – bediening (telefoon)</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="shared.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(16px + env(safe-area-inset-bottom, 0px)); min-height: 100vh; display: flex; flex-direction: column; gap: 10px; }
+    header { display: flex; align-items: center; gap: 8px; }
+    header h1 { flex: 1; font-size: 18px; margin: 0; }
+    #conn { font-size: 13px; color: #94a3b8; }
+    #where { background: #1e293b; border-radius: 12px; padding: 10px 12px; }
+    #where b { display: block; font-size: 17px; }
+    #where span { color: #94a3b8; font-size: 14px; }
+    #timer { font-size: 15px; color: #fbbf24; font-weight: bold; margin-top: 4px; }
+    button { font: inherit; border: 0; border-radius: 14px; color: #fff; padding: 16px 12px; font-size: 17px; font-weight: bold; cursor: pointer; width: 100%; }
+    button:disabled { opacity: 0.45; }
+    #main { background: #2563eb; font-size: 22px; padding: 26px 14px; min-height: 96px; }
+    #main:not(:disabled):active { transform: scale(0.98); }
+    #hint { color: #94a3b8; font-size: 14px; text-align: center; min-height: 1.2em; margin: -2px 0 0; }
+    #force { background: #475569; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #prev { background: #334155; }
+    #pause { background: #b45309; }
+    #pause.on { background: #16a34a; }
+    #undo { background: #334155; font-size: 15px; font-weight: normal; }
+    #music { background: #334155; }
+    #review { display: none; background: #1e293b; border-radius: 12px; padding: 10px; }
+    #review.on { display: block; }
+    #review p { margin: 0 0 8px; text-align: center; font-weight: bold; }
+    #rv-prev, #rv-next { background: #334155; }
+    #alerts .a { background: #7f1d1d; border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; font-weight: bold; }
+    #alerts .a small { display: block; font-weight: normal; color: #fecaca; }
+    .qcard { background: #1e293b; border-left: 4px solid #22c55e; border-radius: 12px; padding: 10px 12px; }
+    .qcard.next { border-left-color: #6366f1; opacity: 0.9; }
+    .qcard small { display: block; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .qcard b { display: block; font-size: 15px; margin: 2px 0; }
+    .qcard span { display: block; color: #86efac; font-size: 14px; }
+    .qcard.next span { color: #a5b4fc; }
+    .note { color: #64748b; font-size: 12px; text-align: center; margin-top: auto; }
+    .note a { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <header><h1>🎛️ Familiequiz</h1><span id="conn">○ verbinden…</span></header>
+  <div id="alerts"></div>
+  <div id="where"><b id="round">–</b><span id="prog"></span><div id="timer"></div></div>
+  <div id="qnow" class="qcard" hidden><small>Nu</small><b id="qnow-what"></b><span id="qnow-ans"></span></div>
+  <button id="main" disabled>…</button>
+  <p id="hint"></p>
+  <button id="force" hidden></button>
+  <div id="review"><p id="rv-info"></p><div class="row"><button id="rv-prev">◀ Vorige</button><button id="rv-next">Volgende ▶</button></div></div>
+  <div class="row">
+    <button id="prev">⬅️ Vorige stap</button>
+    <button id="pause">☕ Pauze</button>
+  </div>
+  <div class="row">
+    <button id="undo" disabled>↶ Ongedaan maken</button>
+    <button id="music" disabled>🎵 Muziek</button>
+  </div>
+  <div id="qnext" class="qcard next" hidden><small>Hierna</small><b id="qnext-what"></b><span id="qnext-ans"></span></div>
+  <p class="note">Beoordelen (30 Seconds, logo's, tekenen), Spotify en instellingen doe je op de laptop. Laat de bediening op de laptop open: daar speelt de muziek. <a href="bediening.html">Volledige bediening</a></p>
+
+  <script>
+    // Telefoonbediening: alleen de belangrijkste knoppen. Zelfde inlog als de gewone bediening (toegangscode, daarna
+    // een sessiesleutel op dit toestel) en dezelfde knoppen-afspraken: elke klik stuurt mee bij welke stand hij hoort.
+    const socket = io();
+    const $ = (id) => document.getElementById(id);
+    let S = null, lock = null;
+    const conn = (t, c) => { $("conn").textContent = t; $("conn").style.color = c; };
+    function login(ask) {
+      const token = localStorage.getItem("quiz_host_token");
+      if (token && !ask) return socket.emit("register_remote", { token });
+      const pin = (prompt("Toegangscode voor de bediening:") || "").trim();
+      if (pin) socket.emit("register_remote", { pin }); else conn("● geen code: ververs de pagina", "#ef4444");
+    }
+    socket.on("connect", () => login(false));
+    socket.on("disconnect", () => conn("○ verbinding weg…", "#ef4444"));
+    socket.on("remote_confirmed", (d) => { if (d && d.token) localStorage.setItem("quiz_host_token", d.token); conn("● verbonden", "#4ade80"); });
+    socket.on("auth_denied", (d) => {
+      if (d && d.expired) { localStorage.removeItem("quiz_host_token"); return login(true); }
+      if (d && d.locked) { conn("● te veel foute pogingen", "#ef4444"); return alert("Te veel foute toegangscodes. Probeer het later opnieuw."); }
+      alert("Onjuiste toegangscode."); login(true);
+    });
+    socket.on("host_error", (d) => alert(d.message));
+    try { QuizFX.wantAwake(); } catch (e) { /* scherm aan houden lukt niet */ }
+    document.addEventListener("click", () => { try { QuizFX.unlockAudio(); } catch (e) { /* geen geluid */ } });
+    socket.on("cheat_beep", () => { try { QuizFX.alarm(false); } catch (e) { /* geen geluid */ } });
+
+    function send(event, btn) {
+      if (!S || btn.disabled) return;
+      btn.disabled = true;
+      clearTimeout(lock);
+      lock = setTimeout(() => { if (S) render(S); }, 2500); // vangnet als er geen update komt
+      socket.emit(event, { key: S.controls.key });
+    }
+    $("main").onclick = () => send("host_main", $("main"));
+    $("force").onclick = () => send("host_force", $("force"));
+    $("prev").onclick = () => { if (confirm("Terug naar de vorige stap?")) socket.emit("prev_step"); };
+    $("pause").onclick = () => socket.emit("toggle_pause");
+    $("undo").onclick = () => { if (S && S.controls.undo.enabled && confirm(S.controls.undo.label.replace("↶ ", "") + "?")) socket.emit("undo_last"); };
+    $("music").onclick = () => { if (S && S.music) socket.emit("music_toggle", { paused: !S.music.paused }); };
+    $("rv-prev").onclick = () => socket.emit("review_nav", { dir: -1 });
+    $("rv-next").onclick = () => socket.emit("review_nav", { dir: 1 });
+
+    function render(s) {
+      clearTimeout(lock);
+      const c = s.controls || {};
+      $("round").textContent = s.phase === "LOBBY" ? "Lobby" : s.phase === "END" ? "Einde van de quiz" : (s.header && s.header.round) || "Familiequiz";
+      const p = s.header && s.header.progress;
+      $("prog").textContent = s.paused ? "☕ Pauze" : p ? (p.label || `Vraag ${p.n} van ${p.total}`) : "";
+      $("main").textContent = (c.main && c.main.label) || "…";
+      $("main").disabled = !(c.main && c.main.enabled);
+      $("hint").textContent = (c.main && c.main.hint) || "";
+      $("force").hidden = !c.force;
+      if (c.force) { $("force").textContent = c.force.label; $("force").disabled = false; }
+      $("undo").disabled = !(c.undo && c.undo.enabled);
+      $("pause").textContent = s.paused ? "▶️ Verder" : "☕ Pauze";
+      $("pause").classList.toggle("on", !!s.paused);
+      $("pause").disabled = s.phase !== "PLAY";
+      const onPause = s.phase === "PLAY" && !!s.paused; // tijdens de pauze geen volgende/vorige
+      $("prev").disabled = s.phase !== "PLAY" || onPause;
+      if (onPause) { $("main").disabled = true; $("force").disabled = true; $("hint").textContent = "☕ Pauze: druk eerst op ▶️ Verder."; }
+      // muziek pauze / verder (alleen tijdens een muziekvraag)
+      $("music").disabled = !s.music;
+      $("music").textContent = !s.music ? "🎵 Muziek" : s.music.paused ? "▶️ Muziek verder" : "⏸ Muziek pauze";
+      $("music").style.background = s.music && s.music.paused ? "#16a34a" : "";
+      const rv = s.review;
+      $("review").classList.toggle("on", !!rv);
+      if (rv) $("rv-info").textContent = `🔍 ${rv.data ? rv.data.subtitle || rv.data.title : "Nakijken"} (${(rv.page || 0) + 1} van ${rv.total || 1})`;
+      const box = $("alerts");
+      box.replaceChildren();
+      (s.alerts || []).forEach((a) => {
+        const d = document.createElement("div"); d.className = "a";
+        d.textContent = `🚨 ${a.teamName}`;
+        const sm = document.createElement("small"); sm.textContent = `${a.label || ""} · ${a.timestamp || ""} · scherm weg of app verlaten`;
+        d.append(sm); box.append(d);
+      });
+      // huidige en volgende vraag (alleen voor de quizmaster), met het goede antwoord
+      const card = (id, x) => {
+        $(id).hidden = !x;
+        if (!x) return;
+        $(id + "-what").textContent = (x.where ? x.where + " · " : "") + x.what;
+        $(id + "-ans").textContent = x.answer ? `✔ ${x.answer}` : (x.extra || "");
+      };
+      card("qnow", s.current);
+      card("qnext", s.upNext);
+      // klok van de huidige stap (indien aanwezig)
+      const t = s.step && s.step.timer;
+      QuizFX.countdown("b2", t || null, (info) => { $("timer").textContent = info ? `⏱ ${info.secs} s${info.running ? "" : " (gepauzeerd)"}` : ""; });
+    }
+    socket.on("state_update", (s) => { if (!s || !s.controls) return; S = s; render(s); });
+  </script>
+</body>
+</html>

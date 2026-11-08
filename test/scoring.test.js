@@ -204,3 +204,14 @@ test('antwoordvolgorde A-D is na opnieuw inlezen van de Excel hetzelfde (veilig 
   assert.deepEqual(a.rounds.find((r) => r.id === 'r1').categories, b.rounds.find((r) => r.id === 'r1').categories);
   assert.deepEqual(a.test, b.test);
 });
+
+test('Hitster-jaartal: exact 5, 1 jaar ernaast 3, 2 jaar ernaast 2, 3 jaar ernaast 1', () => {
+  assert.deepEqual(T.settings.hitsterYearPoints.slice(0, 4), [5, 3, 2, 1]);
+});
+
+test('extra muziekronde: eerst de Hitster-playlist op Spotify, pas daarna de Excel', () => {
+  const round = { id: 'extra_test', dynamic: true, category: 'original' };
+  assert.equal(T.playlistFirst(round), true, 'met een gekoppelde playlist komt die eerst');
+  T.failPlaylist('extra_test', 'test: Spotify niet verbonden');
+  assert.equal(T.playlistFirst(round), false, 'lukt de playlist niet, dan de Excel');
+});

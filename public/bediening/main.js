@@ -33,11 +33,16 @@ socket.on("state_update", (state) => {
   if (state.internet === false) $("tv-status").textContent += " · 🌐 geen internet";
   const m = state.controls.main;
   $("btn-main").textContent = m.label;
-  $("btn-main").disabled = !m.enabled || !!state.review;
-  $("main-hint").textContent = state.review ? "Sluit eerst het nakijken." : m.hint || "";
+  const onPause = state.phase === "PLAY" && !!state.paused; // tijdens de pauze geen volgende/vorige
+  $("btn-main").disabled = !m.enabled || !!state.review || onPause;
+  $("main-hint").textContent = state.review ? "Sluit eerst het nakijken." : onPause ? "☕ De quiz staat op pauze. Druk eerst op ▶️ Hervat." : m.hint || "";
   const f = state.controls.force;
   $("btn-force").classList.toggle("hidden", !f);
   if (f) $("btn-force").textContent = f.label;
+  $("btn-force").disabled = onPause;
+  // Muziek pauze / verder tijdens een muziekvraag (ook op de telefoonbediening)
+  $("btn-music").classList.toggle("hidden", !state.music);
+  if (state.music) { $("btn-music").textContent = state.music.paused ? "▶️ Muziek verder" : "⏸ Muziek pauze"; $("btn-music").style.background = state.music.paused ? "#16a34a" : ""; }
   const undo = state.controls.undo || { enabled: false, label: "↶ Niets om ongedaan te maken" };
   $("btn-undo").textContent = undo.label;
   $("btn-undo").disabled = !undo.enabled || !!state.review;
@@ -49,7 +54,7 @@ socket.on("state_update", (state) => {
   $("btn-race").textContent = state.showPositions === "race" ? "↩ Balkenrace van tv" : "📈 Balkenrace op tv";
   $("btn-race").style.background = state.showPositions === "race" ? "#0ea5e9" : "";
   $("btn-pause").disabled = state.phase !== "PLAY";
-  $("btn-prev").disabled = state.phase !== "PLAY";
+  $("btn-prev").disabled = state.phase !== "PLAY" || onPause;
   $("btn-standings").textContent = state.showStandings ? "↩ Terug" : "📊 Stand";
   $("btn-standings").classList.toggle("hidden", state.phase !== "END");
   $("btn-review").classList.toggle("hidden", state.phase !== "END");
@@ -138,10 +143,10 @@ socket.on("state_update", (state) => {
   // Instellingen
   const locked = state.settingsLocked;
   $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
-  ["s-round", "s-timer", "s-time", "s-wager", "s-thirty", "s-blur", "s-price", "s-logo", "s-hitster", "s-hplace", "s-hyear", "s-htitle", "s-hartist", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+  ["s-round", "s-timer", "s-time", "s-read", "s-preview", "s-wager", "s-thirty", "s-blur", "s-price", "s-logo", "s-hitster", "s-hplace", "s-hyear", "s-htitle", "s-hartist", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
   const ae = document.activeElement && document.activeElement.id;
   if (!settingsFilled || !ae || !ae.startsWith("s-")) {
-    $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime;
+    $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime; $("s-read").value = state.settings.readSeconds ?? 2; $("s-preview").value = state.settings.previewSeconds ?? 2;
     $("s-wager").value = state.settings.finalMaxWager; $("s-thirty").value = state.settings.thirtySeconds;
     $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", "); $("s-hitster").value = state.settings.hitsterTarget;
     $("s-hplace").value = state.settings.hitsterPlacePoints; $("s-hyear").value = (state.settings.hitsterYearPoints || []).join(", "); $("s-htitle").value = state.settings.hitsterTitlePoints ?? 2; $("s-hartist").value = state.settings.hitsterArtistPoints ?? 2;

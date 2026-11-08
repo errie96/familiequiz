@@ -58,9 +58,15 @@ test('teamfoto: origineel komt via eenmalige sleutel binnen en gaat in de foto-z
   await a.call('set_team_photo', { dataUrl: tinyJpeg });
   assert.equal(fs.existsSync(file), false);
 
-  // na een reset van de quiz blijven de teamfoto's in de foto-zip staan
+  // nieuwe quiz (reset): alle foto's naar het archief, het album begint leeg
   app.host.send('reset_quiz', { confirm: true });
   const afterReset = await zipNames();
-  assert.ok(afterReset.includes(Buffer.from(`teamfotos/${day}_Zeegse_Zuiperds.jpg`)), 'teamfoto overleeft een reset');
+  assert.ok(!afterReset.includes(Buffer.from('teamfotos/')), 'foto-zip is leeg na een nieuwe quiz');
+  const archief = path.join(T.PHOTO_DIR, 'archief');
+  const runs = fs.readdirSync(archief);
+  assert.equal(runs.length, 1, 'één archiefmap');
+  const teamDays = fs.readdirSync(path.join(archief, runs[0], 'teamfotos'));
+  assert.ok(fs.readdirSync(path.join(archief, runs[0], 'teamfotos', teamDays[0])).some((f) => f.startsWith('Zeegse_Zuiperds--')), 'teamfoto staat in het archief');
+  assert.equal(app.remote().photoCount, 0);
   await sleep(1);
 });

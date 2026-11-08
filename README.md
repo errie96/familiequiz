@@ -27,7 +27,7 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
   - *📤 Uitslag delen*: een mooi plaatje van de eindstand met teamfoto's, te delen via WhatsApp e.d. (of te downloaden). Spelers kunnen dit ook zelf vanaf hun telefoon.
 - **Hall of fame**: op het aanmeldscherm staan de winnaars van eerdere quizzen (uit de quizgeschiedenis; oefenquizzen met testteams tellen niet mee).
 - **Stand blijft geheim**: bij *Dit was ronde …* staan alleen de teams (geen punten, geen volgorde). Met *🏅 Posities op tv* zet de quizmaster de tussenstand op de tv: alleen posities, nooit punten. Bij de prijzenronde komen de bedragen niet op de tv (die zie je bij het nakijken).
-- **Hitster-punten**: per liedje 5 voor de goede plek, jaartal met speling (exact 5, 1 jaar ernaast 3, 2-3 jaar 1) en bonus voor titel (2) en artiest (2). De app doet een voorstel (tikfouten, hoofdletters en *feat.* tellen goed), de quizmaster keurt in de bediening goed of af. Alles is aan te passen bij Instellingen (0 = niet vragen).
+- **Hitster-punten**: per liedje 5 voor de goede plek, jaartal met speling (exact 5, 1 jaar ernaast 3, 2 jaar 2, 3 jaar 1) en bonus voor titel (2) en artiest (2). De app doet een voorstel (tikfouten, hoofdletters en *feat.* tellen goed), de quizmaster keurt in de bediening goed of af. Alles is aan te passen bij Instellingen (0 = niet vragen).
 - **Emoji-reacties**: bij uitlegschermen, *Dit was ronde* en in de pauze staat op de telefoons een balk met 😂 😱 👏 🎉 ❤️ 🔥 🤯 💩; de emoji's zweven over de tv (met een stipje in de teamkleur). Niet tijdens vragen, en per telefoon beperkt tegen spammen.
 - **Bediening extra's**: sneltoetsen op de laptop (spatie = grote knop, ← = vorige stap, P = pauze, M = muziek stoppen), een blok *⏭ Hierna* met de volgende vraag, het antwoord en het weetje, punten corrigeren (−5/−1/+1/+5 per team in *📊 Scores*, ongedaan te maken met ↶) en bij logo's/foto blur een gelijkenis-percentage per antwoord.
 - **Awards**: nieuw zijn *Grootste comeback*, *Snelste foute antwoord* en *Jokerpech*.
@@ -60,6 +60,11 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Tussenpagina's** met animatie: "Nu gaan we door naar…" bij elke ronde en elke categorie.
 - **Joker** vóór ronde 1; de tv toont waarop elk team de joker zet.
 - **Foto blur** is een open vraag; de quizmaster keurt goed/fout. **Geheugen**: geen klok, alleen de basistelefoon schrijft.
+- **Meerkeuze in drie stappen**: eerst alleen de vraag (2 s), dan vliegen de antwoorden binnen (2 s zichtbaar), en pas daarna kan er gekozen worden. Beide tijden zijn in te stellen bij Instellingen (0 = overslaan). Met *⏩ Antwoorden nu openen* sla je het wachten over; tijdens de pauze staat het stil.
+- **Pauze**: zolang de quiz op pauze staat, werken de grote knop en *Vorige* niet (ook niet via sneltoetsen of de telefoonbediening).
+- **Muziek pauze/verder**: tijdens een muziekvraag in de bediening, op de telefoonbediening en met de toets M. Spotify gaat verder waar hij was; een iTunes-fragment of eigen bestand op de tv ook.
+- **Effecten op de tv**: vragen vliegen binnen (met whoosh), een plop per team dat indient (elk team eigen toon), confetti en applaus als iedereen het goed heeft en "oeeeh" als niemand het goed heeft, een opgaande onthulling bij muziek/prijzen/logo's, rode pulserende rand en hartslag in de laatste seconden, belletje en binnenstuiterend kaartje bij een nieuw team, fototoestel-klik en flits bij een nieuwe teamfoto, applaus bij "Dit was ronde…". Alle geluiden worden zelf gemaakt (geen internet nodig) en volgen de instelling *Geluid via*.
+- **Telefoonbediening** (`/bediening2.html`): alleen de belangrijkste knoppen (grote knop, vorige, pauze, ongedaan maken, muziek pauze/verder, nakijken bladeren) plus spiekmeldingen en klok; zelfde toegangscode. QR-code in de bediening onder *📱 Bediening ook op je telefoon*. De bediening op de laptop is ingedeeld voor 1920×1080: tijdens de quiz links de knoppen, rechts het paneel van de huidige stap.
 - **Tekenen**: iedereen tekent een keer (ook de basis; dan vult een ander het antwoord in). De tekenaars worden vóór elke beurt aangewezen (tv en telefoon tonen wie), het woord komt pas bij de start. Beurt eindigt als elk team heeft ingediend. Tekeningen staan bij het beoordelen en nakijken.
 - **30 Seconds**: woorden live goedkeuren; ze kleuren meteen groen op de tv. Iedereen legt één keer uit: wie later aansluit komt achteraan in de rij, en wie even niet verbonden is schuift één keer door naar achteren.
 - **Slotvraag**: inzet maximaal 100 punten (instelbaar). Geen gelijke stand → scherm "Geen gelijke stand".
@@ -75,7 +80,8 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 |---|---|---|
 | Telefoon | `/` | elk team (basistelefoon) en teamgenoten |
 | Tv | `/host.html` | de tv, alleen weergave (één keer op OK drukken voor geluid) |
-| Bediening | `/bediening.html` | de quizmaster, met toegangscode (lokaal standaard `1234`; online zelf instellen met `HOST_PIN`) |
+| Bediening | `/bediening.html` | de quizmaster, met toegangscode: uit `HOST_PIN`, anders uit het bestand `pincode.txt` naast server.js (niet in git), anders lokaal `1234`. Wijzigt de code, dan moet elk toestel opnieuw inloggen. |
+| Telefoonbediening | `/bediening2.html` | alleen de belangrijkste knoppen, zelfde toegangscode |
 
 ## Verloop
 Teamfoto → rondeoverzicht en uitleg → testvragen (tellen niet) → "Hier begint de echte quiz" → joker inzetten → ronde 1 t/m 8 → slotvraag → (beslissingsvraag bij gelijke stand) → ontknoping → nakijken.
@@ -189,7 +195,13 @@ De quiz draait volledig op de laptop; telefoons en tv verbinden via de wifi met 
 - De QR-code op de tv maakt de server zelf (geen internet nodig) en wijst naar het adres van de laptop, bijv. `http://192.168.1.23:3000`. Lettertype en confetti zitten ook in de app.
 - De bediening ziet zelf of er internet is (🌐 *geen internet* rechtsboven) en waarschuwt in de startklaar-controle voor muziek zonder audiobestand.
 
-## Code-indeling bediening
+## Code-indeling
+
+**Server.** De spelstand (teams, toestellen, fase, stap, pauze, instellingen, ...) staat in één gedeeld object `G` (`lib/game.js`). `server.js` bevat de spelregels, de stappen, de scores en wat elk scherm te zien krijgt. De acties (socket-berichten) staan per onderwerp in `lib/sockets/`: `schermen.js` (bediening en tv aanmelden), `teams.js` (team maken of aansluiten), `antwoorden.js` (alles wat spelers insturen, plus spiekmeldingen), `spelverloop.js` (grote knop, pauze, vorige, nakijken, einde), `rondes.js` (beoordelen per ronde) en `beheer.js` (noodknoppen, instellingen, teams, vragenlijst, Spotify/Hitster, geluid). Ze krijgen de functies van de server via één `api`-object. Overige losse onderdelen in `lib/`: `settings.js` (standaardinstellingen en controle), `network.js` (het juiste netwerkadres voor de QR-code), `photo-store.js` (pauzefoto's, teamfoto's, originelen en het archief per quiz), `review.js` (de nakijkpagina's), `momentum.js`, `https-guard.js`, `security.js`, `state-store.js`, `backup.js`, `content.js`, `fromExcel.js`, `texts.js` en `logger.js`. Fouten die de quiz bewust opvangt, komen als `opgevangen_fout` in het logboek. De server stuurt een scherm alleen een nieuwe stand als er voor dat scherm echt iets veranderd is.
+
+**Tv en telefoon.** `public/host.html` en `public/index.html` bevatten alleen de opmaak; de code staat in `public/js/tv.js` en `public/js/speler.js`. De telefoonbediening is `public/bediening2.html`.
+
+### Bediening
 
 `public/bediening.html` bevat alleen nog de opmaak. De code staat in `public/bediening/`: `core.js` (verbinding, inloggen, spiekmeldingen), `controls.js` (vaste knoppen), `backups.js`, `prep.js` (checklist, teamoverzicht), `hitster.js`, `panel.js` (stap-paneel), `teams.js`, `quizfile.js`, `spotify.js`, `settings.js` (scores, thema, rondeplan), `main.js` (verwerken van elke nieuwe stand) en `layout.js`/`layout.css` (kopbalk, menu, voorbereiding). Het zijn gewone scripts in een vaste volgorde. `test/ui-smoke.test.js` laadt bediening, tv en telefoon in een nep-browser en haalt alle standen van een complete quiz erdoorheen; een JavaScript-fout in een van de schermen laat de test falen.
 

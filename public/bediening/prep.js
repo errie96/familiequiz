@@ -63,6 +63,6 @@ function renderTeamOverview(state) {
 $("btn-unvoid").onclick = () => socket.emit("void_question", { mode: null });
 $("btn-dismiss-alerts").onclick = () => socket.emit("alert_dismiss", { key: "all" });
 $("btn-goto").onclick = () => { const id = $("goto-round").value; if (id && confirm("Naar deze ronde springen?")) socket.emit("goto_step", { stepId: id }); };
-$("btn-reset").onclick = () => { if (confirm("Alles wissen en opnieuw beginnen? Alle teams en scores gaan verloren.")) socket.emit("reset_quiz"); };
+$("btn-reset").onclick = () => { if (confirm("Alles wissen en opnieuw beginnen? Alle teams en scores gaan verloren. De foto's gaan naar het archief (data/fotos/archief) en het album begint leeg.")) socket.emit("reset_quiz"); };
 
 const parseList = (txt) => String(txt).split(/[ ,;]+/).filter(Boolean).map(Number);

@@ -11,6 +11,8 @@ test('QR-adres: echte wifi (192.168.x) gaat voor Docker, WSL, VirtualBox en Tail
   assert.equal(T.pickLanAddress({ docker0: v4('172.17.0.1'), 'vEthernet (WSL)': v4('172.25.32.1'), tailscale0: v4('100.101.1.2'), 'Wi-Fi': v4('192.168.1.23') }), '192.168.1.23');
   assert.equal(T.pickLanAddress({ 'VirtualBox Host-Only': v4('192.168.56.1'), en0: v4('10.0.0.12') }), '10.0.0.12');
   assert.equal(T.pickLanAddress({ lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }] }), null);
+  // VMware-adapters tellen nooit mee
+  assert.equal(T.pickLanAddress({ 'VMware Network Adapter VMnet8': v4('192.168.6.1'), 'Wi-Fi': v4('192.168.2.183') }), '192.168.2.183');
 });
 
 let a, b;

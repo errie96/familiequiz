@@ -154,7 +154,7 @@ $("s-sound-out").onchange = () => {
 $("bots-add").onclick = () => socket.emit("add_bots", { n: 3 });
 $("bots-remove").onclick = () => { if (confirm("Alle testteams verwijderen?")) socket.emit("remove_bots"); };
 $("btn-save-settings").onclick = () => socket.emit("update_settings", {
-  roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value),
+  roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value), readSeconds: Number($("s-read").value), previewSeconds: Number($("s-preview").value),
   finalMaxWager: Number($("s-wager").value), thirtySeconds: Number($("s-thirty").value),
   blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value), logoPoints: parseList($("s-logo").value), hitsterTarget: Number($("s-hitster").value), hitsterPlacePoints: Number($("s-hplace").value), hitsterYearPoints: parseList($("s-hyear").value), hitsterTitlePoints: Number($("s-htitle").value), hitsterArtistPoints: Number($("s-hartist").value)
 });

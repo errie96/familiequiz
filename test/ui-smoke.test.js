@@ -40,7 +40,7 @@ test('complete quiz spelen en alle standen verzamelen', { timeout: 120000 }, asy
   assert.equal(remote().phase, 'END');
 });
 
-for (const [page, room, extra] of [['bediening.html', 'remote_room', ['remote_confirmed']], ['host.html', 'tv_room', ['tv_ok']], ['index.html', 'speler', ['session']]]) {
+for (const [page, room, extra] of [['bediening.html', 'remote_room', ['remote_confirmed']], ['bediening2.html', 'remote_room', ['remote_confirmed']], ['host.html', 'tv_room', ['tv_ok']], ['index.html', 'speler', ['session']]]) {
   test(`${page}: laadt en verwerkt alle standen zonder JavaScript-fouten`, async () => {
     const ui = loadPage(page);
     ui.fire('connect');

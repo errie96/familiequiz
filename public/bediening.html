@@ -74,6 +74,7 @@
       <button id="btn-main" class="btn-primary big">...</button>
       <p id="main-hint" class="muted" style="text-align:center; min-height:1.2em;"></p>
       <button id="btn-force" class="btn-option hidden" style="text-align:center;"></button>
+      <button id="btn-music" class="btn-option hidden" style="text-align:center; font-size:18px;">⏸ Muziek pauze</button>
       <button id="btn-undo" class="btn-option" style="text-align:center; margin-top:6px;" disabled>↶ Niets om ongedaan te maken</button>
       <div class="row">
         <button id="btn-prev" class="btn-option" style="text-align:center;">⬅️ Vorige</button>
@@ -83,7 +84,11 @@
         <button id="btn-race" class="btn-option hidden" style="text-align:center;">📈 Balkenrace op tv</button>
       </div>
       <div id="team-overview" title="Wat doet elk team nu?"></div>
-      <div id="kbd-hint" class="muted" style="font-size:12px; margin-top:4px;">⌨️ Spatie = grote knop · ← = vorige stap · P = pauze · M = muziek stoppen</div>
+      <div id="kbd-hint" class="muted" style="font-size:12px; margin-top:4px;">⌨️ Spatie = grote knop · ← = vorige stap · P = pauze · M = muziek pauze/verder</div>
+      <details id="phone-remote" style="margin-top:6px; font-size:13px;">
+        <summary class="muted">📱 Bediening ook op je telefoon</summary>
+        <div style="text-align:center; padding:8px 0;"><img id="phone-remote-qr" alt="QR-code telefoonbediening" style="width:170px; height:170px; background:#fff; padding:6px; border-radius:8px;"><div id="phone-remote-url" class="muted" style="margin-top:4px;"></div></div>
+      </details>
       <div class="row">
         <button id="btn-review" class="btn-option hidden" style="text-align:center;">🔍 Nakijken (alles)</button>
         <button id="btn-time" class="btn-option hidden" style="text-align:center;">⏱️ +10 sec</button>
@@ -228,6 +233,8 @@
       <div class="setting"><label for="s-round">Punten per ronde (alle rondes even veel)</label><input type="number" id="s-round" min="10" max="1000"></div>
       <div class="setting"><label for="s-timer">Tijdslimiet bij meerkeuze</label><input type="checkbox" id="s-timer"></div>
       <div class="setting"><label for="s-time">Standaardtijd (seconden)</label><input type="number" id="s-time" min="5" max="300"></div>
+      <div class="setting"><label for="s-read">Meerkeuze: eerst alleen de vraag (seconden)</label><input type="number" id="s-read" min="0" max="30"></div>
+      <div class="setting"><label for="s-preview">Meerkeuze: daarna antwoorden zien vóór kiezen (seconden)</label><input type="number" id="s-preview" min="0" max="30"></div>
       <div class="setting"><label for="s-wager">Slotvraag: maximale inzet</label><input type="number" id="s-wager" min="0" max="100000"></div>
       <div class="setting"><label for="s-thirty">30 Seconds: seconden per beurt</label><input type="number" id="s-thirty" min="10" max="120"></div>
       <div class="setting"><label for="s-blur">Foto blur: punten per stap</label><input type="text" id="s-blur"></div>

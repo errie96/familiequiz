@@ -69,6 +69,10 @@ test('geluid via de bediening: de tv stuurt geluiden door, anders niet', () => {
 test('spiekmelding ook als de verbinding wegvalt tijdens een vraag', () => {
   const mc = T.steps.find((x) => x.kind === 'mc' && !x.test);
   host.send('goto_step', { stepId: mc.id });
+  // telefoonbediening: huidige vraag met het goede antwoord, en wat er hierna komt
+  assert.equal(remote().current.what, mc.question);
+  assert.equal(remote().current.answer, mc.options[mc.answer]);
+  assert.ok(remote().upNext && remote().upNext.what, 'volgende stap bekend');
   assert.equal(remote().alerts.length, 0);
   P.a1.h.disconnect(); // scherm op slot zonder dat het 'weg'-bericht nog verstuurd werd
   assert.equal(remote().alerts.length, 1, 'melding na het wegvallen van de verbinding');
@@ -85,4 +89,25 @@ test('delen op de telefoon: na de ontknoping krijgt de telefoon de uitslag', () 
   for (let i = 0; i < 20 && remote().end.reveal !== 'done'; i++) host.send('host_main');
   assert.ok(Array.isArray(b1v().share) && b1v().share.length === 2, 'uitslag om te delen');
   assert.ok(b1v().share.every((r) => r.name && Number.isFinite(r.score)));
+});
+
+test('pauze: volgende en vorige werken niet; muziek pauze/verder tijdens een muziekvraag', () => {
+  const song = T.steps.find((x) => x.kind === 'song' && !x.test && !x.demo);
+  host.send('goto_step', { stepId: song.id });
+  const at = T.cur().id;
+  host.send('toggle_pause');
+  assert.equal(remote().paused, true);
+  host.send('host_main', { key: remote().controls.key });
+  host.send('prev_step');
+  assert.equal(T.cur().id, at, 'tijdens de pauze blijft de quiz op dezelfde stap');
+  host.send('toggle_pause');
+
+  assert.deepEqual(remote().music, { paused: false });
+  const tvBefore = emitted.filter((x) => x.room === 'tv_room' && /_audio$/.test(x.e)).length;
+  host.send('music_toggle', { paused: true });
+  assert.equal(remote().music.paused, true);
+  host.send('music_toggle', { paused: false });
+  assert.equal(remote().music.paused, false);
+  const tv = emitted.filter((x) => x.room === 'tv_room' && /_audio$/.test(x.e)).slice(tvBefore).map((x) => x.e);
+  assert.deepEqual(tv, ['pause_audio', 'resume_audio'], 'de tv pauzeert en speelt verder');
 });

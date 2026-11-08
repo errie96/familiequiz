@@ -21,7 +21,7 @@ function renderPanel(state) {
   box.append(head);
 
   if (p.type === "mc") {
-    box.append(Object.assign(el("h3"), { textContent: p.question || "(foto/logo-vraag)" }));
+    box.append(el("p", "q-small", p.question || "(foto/logo-vraag)")); // klein: niet van een afstand mee te lezen
     if (p.variant === "blur") {
       const b = el("button", "btn-primary", `🔍 Scherper maken (${p.blurStep} van ${p.blurMax})`);
       b.disabled = p.status !== "open" || p.blurStep >= p.blurMax;
@@ -210,14 +210,14 @@ function renderPanel(state) {
   }
 
   if (p.type === "tiebreak") {
-    box.append(el("h3", "", "Beslissingsvraag (gelijke stand)"), el("p", "", p.question), el("p", "", `Goede antwoord: ${p.answer}${p.unit ? " " + p.unit : ""}`));
+    box.append(el("h3", "", "Beslissingsvraag (gelijke stand)"), el("p", "q-small", p.question), el("p", "", `Goede antwoord: ${p.answer}${p.unit ? " " + p.unit : ""}`));
     p.teams.forEach((t) => box.append(Object.assign(el("div", "line"), { textContent: `${t.name}: ${t.guess === null ? "⏳" : t.guess}` })));
   }
 
   if (p.type === "final") {
     box.append(el("h3", "", "Slotvraag"));
     if (p.status !== "wager") {
-      box.append(el("p", "", p.question));
+      box.append(el("p", "q-small", p.question));
       p.options.forEach((o, i) => { const r = el("div", "opt" + (i === p.answer ? " right" : "")); r.append(el("span", "", `${L(i)}: ${o}`), el("span", "", i === p.answer ? "✅" : "")); box.append(r); });
     }
     p.teams.forEach((t) => {

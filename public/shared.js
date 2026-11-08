@@ -102,6 +102,38 @@ window.QuizFX = (function () {
     src.buffer = buf; filt.type = "bandpass"; filt.frequency.setValueAtTime(400, c.currentTime); filt.frequency.exponentialRampToValueAtTime(2400, c.currentTime + 0.6);
     gain.gain.value = 0.25; src.connect(filt); filt.connect(gain); gain.connect(c.destination); src.start();
   }
+  // ---- Extra geluidjes (allemaal zelf gemaakt met de Web Audio API, dus ook zonder internet) ----
+  function tone(c, { f, type = "sine", t0 = 0, dur = 0.2, vol = 0.15, to = null }) {
+    const osc = c.createOscillator(), gain = c.createGain(), t = c.currentTime + t0;
+    osc.type = type; osc.frequency.setValueAtTime(f, t);
+    if (to) osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+    gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(vol, t + 0.015); gain.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    osc.connect(gain); gain.connect(c.destination); osc.start(t); osc.stop(t + dur + 0.02);
+  }
+  function noise(c, { t0 = 0, dur = 0.1, vol = 0.2, freq = 3000, q = 0.8, type = "bandpass" }) {
+    const len = Math.max(1, Math.floor(c.sampleRate * dur)), buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+    const src = c.createBufferSource(), filt = c.createBiquadFilter(), gain = c.createGain();
+    src.buffer = buf; filt.type = type; filt.frequency.value = freq; filt.Q.value = q; gain.gain.value = vol;
+    src.connect(filt); filt.connect(gain); gain.connect(c.destination); src.start(c.currentTime + t0);
+  }
+  // "Plop" als een team indient; n geeft elk team een eigen toonhoogte
+  function pop(n = 0) { const c = audio(); if (!c) return; const f = [520, 587, 659, 698, 784, 880, 988, 1047][Math.abs(n) % 8]; tone(c, { f, to: f * 1.6, dur: 0.12, vol: 0.2, type: "sine" }); }
+  // Belletje als er een nieuw team bijkomt in de lobby
+  function chime() { const c = audio(); if (!c) return; [784, 988, 1175].forEach((f, i) => tone(c, { f, t0: i * 0.09, dur: 0.5, vol: 0.12, type: "triangle" })); }
+  // Fototoestel-klik bij een nieuwe teamfoto
+  function shutter() { const c = audio(); if (!c) return; noise(c, { dur: 0.05, vol: 0.5, freq: 4000 }); noise(c, { t0: 0.08, dur: 0.07, vol: 0.35, freq: 2500 }); }
+  // "Oeeeh": niemand had het goed
+  function aww() { const c = audio(); if (!c) return; [392, 370, 349, 294].forEach((f, i) => tone(c, { f, to: i === 3 ? 220 : null, t0: i * 0.32, dur: i === 3 ? 0.9 : 0.3, vol: 0.13, type: "sawtooth" })); }
+  // Opgaande "onthulling" (muziek, prijzen, uitslagen)
+  function reveal() { const c = audio(); if (!c) return; tone(c, { f: 220, to: 880, dur: 0.45, vol: 0.12, type: "triangle" }); [880, 1109, 1319].forEach((f, i) => tone(c, { f, t0: 0.45 + i * 0.07, dur: 0.6, vol: 0.1, type: "triangle" })); }
+  // Hartslag in de laatste seconden
+  function heartbeat() { const c = audio(); if (!c) return; tone(c, { f: 70, to: 45, dur: 0.16, vol: 0.5 }); tone(c, { f: 70, to: 45, t0: 0.2, dur: 0.16, vol: 0.35 }); }
+  // Applaus (ruis in korte klapjes) voor de rondeuitslag
+  function applause(sec = 2.2) { const c = audio(); if (!c) return; for (let i = 0; i < sec * 22; i++) noise(c, { t0: Math.random() * sec, dur: 0.03 + Math.random() * 0.03, vol: 0.08 + Math.random() * 0.1, freq: 1200 + Math.random() * 2500, q: 0.6 }); }
+  // Korte confettiregen (stuk korter dan bij de winnaar)
+  function burst() { if (typeof confetti === "function") { confetti({ particleCount: 120, spread: 100, startVelocity: 45, origin: { x: 0.5, y: 0.6 } }); return; } simpleConfetti(1200); }
+
   // Eigen confetti (zonder internet of extra bibliotheek): gekleurde snippers die over het scherm dwarrelen
   function simpleConfetti(ms = 7000) {
     const c = document.createElement("canvas");
@@ -506,6 +538,8 @@ window.QuizFX = (function () {
   };
   buzzer = routed("buzzer", buzzer); triumph = routed("triumph", triumph); ding = routed("ding", ding);
   whoosh = routed("whoosh", whoosh); drumHit = routed("drumHit", drumHit); fanfare = routed("fanfare", fanfare); tick = routed("tick", tick);
+  pop = routed("pop", pop); chime = routed("chime", chime); shutter = routed("shutter", shutter); aww = routed("aww", aww);
+  reveal = routed("reveal", reveal); heartbeat = routed("heartbeat", heartbeat); applause = routed("applause", applause);
 
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
   function avatar(name, photo, size, color) {
@@ -570,7 +604,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
@@ -584,7 +618,7 @@ window.QuizSpotify = (function () {
   const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
   async function login() {
-    if (!window.crypto || !crypto.subtle) throw new Error("Koppelen kan alleen via http://127.0.0.1:3000/host.html of een https-adres.");
+    if (!window.crypto || !crypto.subtle) throw new Error(`Spotify koppelen kan alleen via http://127.0.0.1:${location.port || 3000}/bediening.html (op deze laptop) of via https.`);
     const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
     localStorage.setItem("sp_verifier", verifier);
     const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
@@ -640,6 +674,7 @@ window.QuizSpotify = (function () {
   }
   const play = (uri, deviceId) => api("PUT", "/me/player/play" + (deviceId ? "?device_id=" + deviceId : ""), { uris: [uri], position_ms: 0 });
   const pause = (deviceId) => api("PUT", "/me/player/pause" + (deviceId ? "?device_id=" + deviceId : ""));
+  const resumeOn = (deviceId) => api("PUT", "/me/player/play" + (deviceId ? "?device_id=" + deviceId : "")); // verder waar hij was
   async function devices() { const r = await api("GET", "/me/player/devices"); return { status: r.status, list: (r.json && r.json.devices) || [] }; }
   function disconnect() { ["sp_access", "sp_refresh", "sp_exp", "sp_scope"].forEach((k) => localStorage.removeItem(k)); }
 
@@ -927,5 +962,5 @@ window.QuizSpotify = (function () {
 
   // Jaar van de eerste uitgave voor een nummer uit de Excel (artiest = eerste naam)
   const firstYear = (t) => earliestYear({ ...t, firstArtist: String(t.artist || '').split(/ & |, /)[0] });
-  return { fromPlaylist, checkYear, hitsterAccountPlaylists, firstYear, findHitsterPlaylists, playlistTracks, connected, login, handleRedirect, find, play, pause, resume, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf, lastError: () => lastError };
+  return { fromPlaylist, checkYear, hitsterAccountPlaylists, firstYear, findHitsterPlaylists, playlistTracks, connected, login, handleRedirect, find, play, pause, resume, resumeOn, devices, disconnect, startPlayer, activate, redirect, randomTrack, keyOf, lastError: () => lastError };
 })();

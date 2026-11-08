@@ -28,6 +28,15 @@ test('complete quiz met robots: alle stappen, ontknoping, awards en geen quizges
   // momentum-meldingen na de rondes: altijd een lijst, hooguit twee, en minstens één ronde met een melding
   assert.ok(momentum.length && momentum.every((m) => Array.isArray(m) && m.length <= 2), 'momentum bij elke rondeuitslag');
   assert.ok(momentum.some((m) => m.length > 0), 'minstens één momentum-melding');
+  // nakijken: muziekronde als tijdlijn (oud → nieuw), prijzen nu en vroeger samen op één scherm
+  const pages = T.reviewPages('all');
+  const tl = pages.filter((p) => /Tijdlijn/.test(p.subtitle));
+  assert.ok(tl.length, 'tijdlijn bij de muziekronde');
+  const years = tl.flatMap((p) => p.rows.map((r) => Number(r[0])));
+  assert.deepEqual(years, [...years].sort((a, b) => a - b), 'liedjes op volgorde van jaar');
+  const pr = pages.filter((p) => /^Prijzen nu en/.test(p.subtitle));
+  assert.ok(pr.length && pr[0].columns.includes('Wanneer'), 'prijzen nu en vroeger op één scherm');
+  assert.ok(pr[0].rows.some((r) => r[1] === 'Nu') && pr[0].rows.some((r) => /jaar geleden/.test(r[1])));
   // ontknoping: plek voor plek tot het einde
   for (let i = 0; i < 20 && remote().end.reveal !== 'done'; i++) host.send('host_main');
   assert.equal(remote().end.reveal, 'done');
