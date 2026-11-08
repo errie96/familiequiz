@@ -131,6 +131,38 @@ window.QuizFX = (function () {
   function heartbeat() { const c = audio(); if (!c) return; tone(c, { f: 70, to: 45, dur: 0.16, vol: 0.5 }); tone(c, { f: 70, to: 45, t0: 0.2, dur: 0.16, vol: 0.35 }); }
   // Applaus (ruis in korte klapjes) voor de rondeuitslag
   function applause(sec = 2.2) { const c = audio(); if (!c) return; for (let i = 0; i < sec * 22; i++) noise(c, { t0: Math.random() * sec, dur: 0.03 + Math.random() * 0.03, vol: 0.08 + Math.random() * 0.1, freq: 1200 + Math.random() * 2500, q: 0.6 }); }
+  // Tromgeroffel: snelle slagen op een snaredrum, steeds harder, en aan het eind een bekkenslag
+  function drumroll(sec = 3) {
+    const c = audio(); if (!c) return;
+    const hits = Math.round(sec * 26);
+    for (let i = 0; i < hits; i++) {
+      const p = i / hits;
+      noise(c, { t0: i / 26 + (Math.random() - 0.5) * 0.008, dur: 0.06, vol: 0.06 + p * 0.22, freq: 1800 + Math.random() * 600, q: 0.7 });
+      if (i % 2 === 0) tone(c, { f: 180, to: 120, t0: i / 26, dur: 0.05, vol: 0.04 + p * 0.08 });
+    }
+    noise(c, { t0: sec, dur: 1.6, vol: 0.35, freq: 6000, q: 0.3, type: "highpass" }); // bekken
+    tone(c, { f: 90, to: 45, t0: sec, dur: 0.4, vol: 0.5 }); // grote trom
+  }
+  // "Wah wah wah waaah" (sad trombone)
+  function sadTrombone() {
+    const c = audio(); if (!c) return;
+    [[311, 0, 0.42], [294, 0.45, 0.42], [277, 0.9, 0.42]].forEach(([f, t0, dur]) => tone(c, { f, t0, dur, vol: 0.16, type: "sawtooth" }));
+    // laatste toon lang, met vibrato
+    const t = c.currentTime + 1.38, osc = c.createOscillator(), gain = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
+    osc.type = "sawtooth"; osc.frequency.setValueAtTime(262, t); osc.frequency.linearRampToValueAtTime(247, t + 1.4);
+    lfo.frequency.value = 6; lg.gain.value = 7; lfo.connect(lg); lg.connect(osc.frequency);
+    gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(0.16, t + 0.03); gain.gain.setValueAtTime(0.16, t + 1.1); gain.gain.exponentialRampToValueAtTime(0.0008, t + 1.5);
+    osc.connect(gain); gain.connect(c.destination); osc.start(t); lfo.start(t); osc.stop(t + 1.55); lfo.stop(t + 1.55);
+  }
+  // Juichtoon: publiek dat "jeeej" roept (ruis die opzwelt) met fluitjes en een vrolijk akkoord
+  function cheer() {
+    const c = audio(); if (!c) return;
+    for (let i = 0; i < 14; i++) noise(c, { t0: i * 0.06, dur: 1.4, vol: 0.05, freq: 700 + Math.random() * 1600, q: 1.2 });
+    [1800, 2300, 2000].forEach((f, i) => tone(c, { f, to: f * 1.3, t0: 0.2 + i * 0.35, dur: 0.35, vol: 0.06 }));
+    [523, 659, 784, 1047].forEach((f, i) => tone(c, { f, t0: i * 0.07, dur: 1.2, vol: 0.07, type: "triangle" }));
+    applause(2.5);
+  }
+
   // Korte confettiregen (stuk korter dan bij de winnaar)
   function burst() { if (typeof confetti === "function") { confetti({ particleCount: 120, spread: 100, startVelocity: 45, origin: { x: 0.5, y: 0.6 } }); return; } simpleConfetti(1200); }
 
@@ -540,6 +572,7 @@ window.QuizFX = (function () {
   whoosh = routed("whoosh", whoosh); drumHit = routed("drumHit", drumHit); fanfare = routed("fanfare", fanfare); tick = routed("tick", tick);
   pop = routed("pop", pop); chime = routed("chime", chime); shutter = routed("shutter", shutter); aww = routed("aww", aww);
   reveal = routed("reveal", reveal); heartbeat = routed("heartbeat", heartbeat); applause = routed("applause", applause);
+  drumroll = routed("drumroll", drumroll); sadTrombone = routed("sadTrombone", sadTrombone); cheer = routed("cheer", cheer);
 
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
   function avatar(name, photo, size, color) {
@@ -604,7 +637,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

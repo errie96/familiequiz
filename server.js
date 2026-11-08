@@ -485,6 +485,21 @@ function compileQuiz(extraWarnings) {
 }
 // Controle: staan alle foto's, logo's en geluidsbestanden uit de vragenlijst echt in public/media/?
 const MEDIA_WARNING = '📁 ';
+// Soundboard: vaste geluiden (zelf gemaakt) en eigen geluidsbestanden in public/media/sounds/ (mp3, wav, ogg, m4a)
+const SOUNDBOARD = [
+  { name: 'drumroll', label: '🥁 Tromgeroffel' }, { name: 'applause', label: '👏 Applaus' },
+  { name: 'sadTrombone', label: '🎺 Wah-wah-waah' }, { name: 'cheer', label: '🎉 Gejuich' },
+  { name: 'buzzer', label: '❌ Zoemer' }, { name: 'ding', label: '🔔 Belletje' }, { name: 'fanfare', label: '🎺 Fanfare' }
+];
+const SOUNDS_DIR = path.join(__dirname, 'public', 'media', 'sounds');
+let soundsCache = { at: 0, list: [] };
+function customSounds() {
+  if (Date.now() - soundsCache.at < 10000) return soundsCache.list;
+  let list = [];
+  try { list = fs.readdirSync(SOUNDS_DIR).filter((f) => /^[\w\- .()'&!]+\.(mp3|wav|ogg|m4a)$/i.test(f)).sort().slice(0, 40).map((f) => ({ file: f, label: '🎵 ' + f.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') })); } catch (e) { /* map bestaat (nog) niet */ }
+  soundsCache = { at: Date.now(), list };
+  return list;
+}
 // Wifi-QR voor het welkomstscherm (plaatje dat de quizmaster zelf neerzet); kort onthouden om niet steeds te kijken
 G.wifiQrCache = { at: 0, ok: false };
 function wifiQrPresent() {
@@ -552,6 +567,7 @@ G.showPositions = false; // tussenstand op de tv (nooit punten): false | 'list' 
 G.review = null;   // { scope: rondeId | 'all', page }
 G.reveal = 'idle'; // einduitslag: idle -> stepping (plek voor plek) -> done
 G.revealN = 0;     // aantal onthulde plekken (van laag naar hoog)
+G.revealDuo = false; // de laatste twee teams staan samen in beeld (nog zonder plek)
 G.lobbyStage = 'welcome'; // lobby: eerst de welkomstpagina, dan het aanmeldscherm met QR-code
 G.endView = 'ranking'; // ranking | breakdown | awards | album (op de tv na de ontknoping)
 const END_VIEWS = ['ranking', 'breakdown', 'awards', 'album'];
@@ -1387,7 +1403,7 @@ function raiseCheat(deviceId, stepId) {
 const tiebreakPlayed = () => G.steps.some((x) => x.kind === 'tiebreak' && G.ssAll[x.id] && (G.ssAll[x.id].teams || []).length);
 function finishQuiz() {
   if (G.phase === 'END') return;
-  G.phase = 'END'; G.reveal = 'idle'; G.endView = 'ranking'; G.review = null; G.showStandings = false; G.showPositions = false; timerClear();
+  G.phase = 'END'; G.revealDuo = false; G.reveal = 'idle'; G.endView = 'ranking'; G.review = null; G.showStandings = false; G.showPositions = false; timerClear();
   LOG.info('quiz_einde', {}); setTimeout(() => backupNow('einde'), 500);
   archiveFinishedQuiz();
 }
@@ -1619,7 +1635,7 @@ function saveNow() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase: G.phase, stepIndex: G.stepIndex, paused: G.paused, reveal: G.reveal, revealN: G.revealN, lobbyStage: G.lobbyStage, endView: G.endView, settings: G.settings, seq: G.seq, ssAll: G.ssAll, dynSongs: G.dynSongs, dynStart: G.dynStart, gameId: G.gameId, yearFixes: G.yearFixes, rejectedKeys: G.rejectedKeys, awardStats: G.awardStats, playlistFailed: G.playlistFailed,
+      phase: G.phase, stepIndex: G.stepIndex, paused: G.paused, reveal: G.reveal, revealN: G.revealN, revealDuo: G.revealDuo, lobbyStage: G.lobbyStage, endView: G.endView, settings: G.settings, seq: G.seq, ssAll: G.ssAll, dynSongs: G.dynSongs, dynStart: G.dynStart, gameId: G.gameId, yearFixes: G.yearFixes, rejectedKeys: G.rejectedKeys, awardStats: G.awardStats, playlistFailed: G.playlistFailed,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams: G.teams,
       undoHistory: G.undoHistory,
@@ -1674,6 +1690,7 @@ function loadSaved() {
   G.stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), G.steps.length - 1);
   G.reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
   G.revealN = Number.isInteger(data.revealN) ? data.revealN : 0;
+  G.revealDuo = data.revealDuo === true;
   G.lobbyStage = data.lobbyStage === 'join' ? 'join' : 'welcome';
   G.endView = END_VIEWS.includes(data.endView) ? data.endView : 'ranking';
   G.awardStats = data.awardStats && typeof data.awardStats === 'object' ? data.awardStats : {};
@@ -1899,7 +1916,7 @@ function hostPanel(step) {
 function actionKey() {
   const step = cur();
   const s = step ? ss(step) : {};
-  return [G.phase, G.stepIndex, G.lobbyStage, G.reveal, G.revealN, G.endView, step ? step.id : '', s.status || '', s.turn ?? '', mainAction().label].join('|');
+  return [G.phase, G.stepIndex, G.lobbyStage, G.reveal, G.revealN, G.revealDuo, G.endView, step ? step.id : '', s.status || '', s.turn ?? '', mainAction().label].join('|');
 }
 // Vangnet: een fout in één actie mag nooit de hele quiz platleggen
 const serverErrors = [];
@@ -1928,8 +1945,15 @@ function mainAction() {
   }
   if (G.phase === 'END') {
     const list = ranking();
-    if (G.reveal === 'idle') return go('🥁 Start de ontknoping', () => { G.reveal = 'stepping'; G.revealN = 0; });
+    if (G.reveal === 'idle') return go('🥁 Start de ontknoping', () => { G.reveal = 'stepping'; G.revealN = 0; G.revealDuo = false; });
+    // Podium: van de laatste plek omhoog tot er twee teams over zijn; dan die twee samen in beeld ("wie wint er?"),
+    // en daarna met tromgeroffel de winnaar (en daarmee ook de nummer 2).
     if (G.reveal === 'stepping' && G.revealN < list.length) {
+      const remaining = list.length - G.revealN;
+      if (list.length >= 2 && remaining === 2) {
+        if (!G.revealDuo) return go('🥈🥇 Toon de laatste twee teams', () => { G.revealDuo = true; }, 'Beide finalisten samen in beeld: wie wordt er eerste?');
+        return go('🥁 Onthul de winnaar!', () => { G.revealN = list.length; G.reveal = 'done'; G.revealDuo = false; }, 'Eerst tromgeroffel, dan de winnaar. De andere is tweede.');
+      }
       const nextTeam = list[list.length - 1 - G.revealN];
       const last = G.revealN === list.length - 1;
       return go(last ? '🏆 Onthul de winnaar!' : `🎖️ Onthul plek ${nextTeam.rank}`, () => { G.revealN++; if (G.revealN >= list.length) G.reveal = 'done'; },
@@ -2064,7 +2088,7 @@ function broadcastState() {
     standings: G.phase === 'END' ? ranking() : null,
     alerts: Object.values(G.alerts),
     theme: G.settings.theme, lobbyStage: G.lobbyStage, welcome: G.content.welcome, texts: G.content.texts,
-    end: G.phase === 'END' ? { reveal: G.reveal, revealN: G.revealN, endView: G.endView, scores: G.reveal !== 'idle' ? ranking() : null, breakdown: G.reveal === 'done' ? breakdown() : null,
+    end: G.phase === 'END' ? { reveal: G.reveal, revealN: G.revealN, duo: G.revealDuo, endView: G.endView, scores: G.reveal !== 'idle' ? ranking() : null, breakdown: G.reveal === 'done' ? breakdown() : null,
       awards: G.reveal === 'done' && G.endView === 'awards' ? awards() : null, album: null, gameDate: new Date().toISOString() } : null,
     hallOfFame: G.phase === 'LOBBY' ? hallOfFame() : null
   };
@@ -2107,6 +2131,7 @@ function broadcastState() {
     readiness: G.phase === 'LOBBY' ? readiness() : null,
     upNext: G.phase === 'PLAY' ? upNext() : null,
     current: G.phase === 'PLAY' ? stepSummary(cur(), true) : null,
+    soundboard: { builtin: SOUNDBOARD, custom: customSounds() },
     music: G.phase === 'PLAY' && cur() && cur().kind === 'song' ? { paused: G.musicPaused } : null,
     internet: G.internet, photoCount: pausePhotos.length + new Set([...archivedTeamPhotos().map((a) => a.teamId), ...Object.keys(G.teamPhotos).map(safeId)]).size,
     showPositions: G.showPositions,
@@ -2357,6 +2382,8 @@ function applyOp(strokes, op) {
 // Alles wat de losse socket-bestanden (lib/sockets/*) nodig hebben, in één object
 function socketApi() {
   return {
+    SOUNDBOARD,
+    customSounds,
     baseApprovals,
     baseChangeAllowed,
     pauseReading,

@@ -52,6 +52,12 @@ function setSoundOut(where) {
   if (soundOut === "tv") socket.emit("tv_sound", { name: "media_pause" });
 }
 socket.on("pause_audio", () => allAudio().forEach((a) => a.pause()));
+// Soundboard van de quizmaster: een vast geluid of een eigen bestand uit public/media/sounds/
+socket.on("sfx", (m) => {
+  if (!m) return;
+  if (m.name && ["drumroll", "applause", "sadTrombone", "cheer", "buzzer", "ding", "fanfare"].includes(m.name) && typeof QuizFX[m.name] === "function") QuizFX[m.name]();
+  else if (typeof m.src === "string" && m.src.startsWith("/media/sounds/")) { const a = new Audio(m.src); a.play().catch(() => {}); }
+});
 socket.on("resume_audio", () => allAudio().forEach((a) => { a.play().catch(() => {}); })); // verder waar hij was
 
 // ---------- Spiekmeldingen: blijven staan tot de speler weer kijkt ----------
@@ -603,10 +609,14 @@ function renderEnd(end) {
     });
     return;
   }
-  if (rs === "idle" || !end.scores) { resetReveal(); return; }
+  if (rs === "idle" || !end.scores) { resetReveal(); hideDuo(); return; }
   const list = end.scores;
   const target = Math.min(end.revealN, list.length);
-  if (target < revealedN) resetReveal();
+  if (target < revealedN) { resetReveal(); hideDuo(); }
+  // Podium: de laatste twee teams samen in beeld (zonder plek), daarna tromgeroffel en de winnaar
+  if (end.duo && target === list.length - 2 && revealedN === target) { showDuo(list.slice(0, 2)); return; }
+  if (duoShown && target === list.length && revealedN === list.length - 2) { finishDuo(list); return; }
+  if (duoBusy) return; // de onthulling van de winnaar loopt nog
   const fresh = target - revealedN > 0 && target - revealedN <= 1;
   let spotMs = 0;
   while (revealedN < target) {
@@ -682,6 +692,50 @@ function startAlbum(slides) {
   albumKey = key; albumSlides = slides; albumIdx = 0;
   showSlide();
   albumTimer = setInterval(() => { albumIdx++; showSlide(); }, 5500);
+}
+// ---------- Podium: de laatste twee samen, dan de winnaar ----------
+let duoShown = false, duoBusy = false;
+function duoCard(p) {
+  const st = TEAMSTYLE[p.name] || {};
+  const c = el("div", "duo-card");
+  c.dataset.name = p.name;
+  c.append(el("div", "duo-label", ""), QuizFX.avatar(p.name, p.photo || st.photo, "clamp(160px, 30vh, 480px)", p.color || st.color), el("div", "", p.name));
+  return c;
+}
+function showDuo(top2) {
+  if (duoShown) return;
+  duoShown = true;
+  // vaste volgorde op naam, zodat de plaats op het scherm niets verraadt
+  const pair = [...top2].sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  $("duo-cards").replaceChildren(...pair.map(duoCard));
+  $("reveal-duo").classList.remove("hidden");
+  QuizFX.whoosh(); setTimeout(() => QuizFX.drumHit(), 350); setTimeout(() => QuizFX.drumHit(), 700);
+}
+function hideDuo() { duoShown = false; duoBusy = false; $("reveal-duo").classList.add("hidden"); }
+function finishDuo(list) {
+  if (duoBusy) return;
+  duoBusy = true;
+  const cards = [...$("duo-cards").children];
+  cards.forEach((c) => c.classList.add("shake"));
+  QuizFX.drumroll(3);
+  setTimeout(() => {
+    const winners = list.filter((p) => p.rank === 1).map((p) => p.name);
+    cards.forEach((c) => {
+      c.classList.remove("shake");
+      const win = winners.includes(c.dataset.name);
+      c.classList.add(win ? "win" : "lose");
+      c.querySelector(".duo-label").textContent = win ? "🏆 WINNAAR!" : "🥈 Tweede plaats";
+    });
+    QuizFX.cheer(); QuizFX.launchConfetti();
+    setTimeout(() => {
+      // daarna de gewone eindstand met de winnaarsbanner
+      $("reveal-duo").classList.add("hidden");
+      duoShown = false;
+      while (revealedN < list.length) { const li = QuizFX.rankRow(list[list.length - 1 - revealedN]); $("tv-scoreboard").prepend(li); li.classList.add("show"); revealedN++; }
+      showWinnerBanner(list, false);
+      duoBusy = false;
+    }, 5500);
+  }, 3100);
 }
 // Ontknoping: elke plek eerst groot in beeld (foto, naam, punten), daarna schuift het team in de ranglijst
 let spotTimer = null, spotDone = null, winnerPending = false;

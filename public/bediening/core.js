@@ -54,6 +54,7 @@ socket.on("quiz_sound", (m) => {
   if (!m) return;
   if (m.name === "media_pause") { quizAudio.pause(); return; }
   if (soundOut !== "bediening" || !soundHere()) return;
+  if (m.name === "sfx_file") { if (typeof m.src === "string" && m.src.startsWith("/media/sounds/")) new Audio(m.src).play().catch(() => {}); return; } // soundboard-bestand
   if (m.name === "media_play") {
     if (quizAudio.dataset.src !== m.src) { quizAudio.src = m.src; quizAudio.dataset.src = m.src; }
     try { if (Math.abs((quizAudio.currentTime || 0) - (m.at || 0)) > 1) quizAudio.currentTime = m.at || 0; } catch (e) { /* nog niet geladen */ }
@@ -61,7 +62,7 @@ socket.on("quiz_sound", (m) => {
     quizAudio.play().catch(() => setStatus("🔇 Tik één keer op de bediening om geluid toe te staan", "#f59e0b"));
     return;
   }
-  if (typeof QuizFX[m.name] === "function" && ["buzzer", "triumph", "ding", "whoosh", "drumHit", "fanfare", "tick", "pop", "chime", "shutter", "aww", "reveal", "heartbeat", "applause"].includes(m.name)) QuizFX[m.name](...(m.args || []));
+  if (typeof QuizFX[m.name] === "function" && ["buzzer", "triumph", "ding", "whoosh", "drumHit", "fanfare", "tick", "pop", "chime", "shutter", "aww", "reveal", "heartbeat", "applause", "drumroll", "sadTrombone", "cheer"].includes(m.name)) QuizFX[m.name](...(m.args || []));
 });
 
 // ---------------- Spiekmeldingen (blijven staan tot de speler terug is) ----------------

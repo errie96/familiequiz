@@ -193,6 +193,21 @@
     #mc-options.opts-in .qo { animation: fxOpt 0.5s ease-out both; }
     #mc-options.opts-in .qo:nth-child(1) { animation-delay: 0s; } #mc-options.opts-in .qo:nth-child(2) { animation-delay: 0.12s; }
     #mc-options.opts-in .qo:nth-child(3) { animation-delay: 0.24s; } #mc-options.opts-in .qo:nth-child(4) { animation-delay: 0.36s; }
+    /* Podium: de laatste twee teams samen in beeld */
+    #reveal-duo { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 40%, rgba(30,41,59,0.96), rgba(2,6,23,0.98)); }
+    #reveal-duo.hidden { display: none; }
+    .duo-title { font-size: clamp(30px, 5vw, 96px); margin: 0 0 4vh; color: #fbbf24; animation: duoPulse 1.6s ease-in-out infinite; }
+    .duo-cards { display: flex; gap: 8vw; align-items: flex-end; }
+    .duo-card { display: flex; flex-direction: column; align-items: center; gap: 2vh; font-size: clamp(22px, 3.2vw, 64px); font-weight: bold; animation: duoIn 0.9s cubic-bezier(.2,1.4,.4,1) both; }
+    .duo-card:nth-child(2) { animation-delay: 0.35s; }
+    .duo-card.shake { animation: duoShake 0.12s linear infinite; }
+    .duo-card.win { transform: scale(1.15); filter: drop-shadow(0 0 3vw rgba(251,191,36,0.9)); transition: transform 0.6s, filter 0.6s; }
+    .duo-card.lose { opacity: 0.45; transform: scale(0.85); transition: transform 0.6s, opacity 0.6s; }
+    .duo-label { font-size: 0.7em; color: #fbbf24; min-height: 1.3em; }
+    @keyframes duoIn { from { opacity: 0; transform: translateY(8vh) scale(0.7); } }
+    @keyframes duoPulse { 50% { transform: scale(1.06); } }
+    @keyframes duoShake { 0% { transform: translateX(-0.4vw); } 50% { transform: translateX(0.4vw); } 100% { transform: translateX(-0.4vw); } }
+    @media (prefers-reduced-motion: reduce) { .duo-card, .duo-title, .duo-card.shake { animation: none; } }
 </style>
 </head>
 <body class="tv">
@@ -341,6 +356,10 @@
       </div>
       <div id="end-reveal" class="hidden">
         <h1 class="tv-title" style="color:#f59e0b; text-align:center;" data-t="einde.uitslag">🏆 De Einduitslag 🏆</h1>
+        <div id="reveal-duo" class="hidden">
+          <h2 class="duo-title">Wie wordt er eerste?</h2>
+          <div id="duo-cards" class="duo-cards"></div>
+        </div>
         <ul id="tv-scoreboard" class="big-list"></ul>
         <div id="winner-banner" class="hidden">
           <div id="winner-photos" class="winner-photos"></div>

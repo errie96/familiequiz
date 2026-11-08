@@ -58,3 +58,22 @@ $("btn-skip").onclick = () => { if (confirm("Deze stap overslaan?")) socket.emit
 $("btn-all-correct").onclick = () => { if (confirm("Deze meerkeuzevraag voor alle teams goed rekenen?")) socket.emit("void_question", { mode: "all_correct" }); };
 $("btn-void").onclick = () => { if (confirm("Deze meerkeuzevraag laten vervallen (niemand krijgt punten)?")) socket.emit("void_question", { mode: "void" }); };
 $("btn-logout-all").onclick = () => { if (confirm("Alle bediening-toestellen uitloggen? Daarna moet iedereen de toegangscode opnieuw invoeren.")) socket.emit("logout_all"); };
+
+// ---------------- Soundboard: vaste geluiden + eigen bestanden uit public/media/sounds/ ----------------
+let sbKey = null;
+function renderSoundboard(sb) {
+  if (!sb) return;
+  const key = JSON.stringify(sb);
+  if (key === sbKey) return;
+  sbKey = key;
+  const box = $("sb-buttons");
+  box.replaceChildren();
+  const add = (label, payload) => {
+    const b = el("button", "btn-option", label);
+    b.style.cssText = "margin:0; padding:10px 6px; font-size:15px; text-align:center;";
+    b.onclick = () => socket.emit("soundboard", payload);
+    box.append(b);
+  };
+  sb.builtin.forEach((x) => add(x.label, { name: x.name }));
+  sb.custom.forEach((x) => add(x.label, { file: x.file }));
+}

@@ -40,6 +40,7 @@ socket.on("state_update", (state) => {
   $("btn-force").classList.toggle("hidden", !f);
   if (f) $("btn-force").textContent = f.label;
   $("btn-force").disabled = onPause;
+  renderSoundboard(state.soundboard);
   // Muziek pauze / verder tijdens een muziekvraag (ook op de telefoonbediening)
   $("btn-music").classList.toggle("hidden", !state.music);
   if (state.music) { $("btn-music").textContent = state.music.paused ? "▶️ Muziek verder" : "⏸ Muziek pauze"; $("btn-music").style.background = state.music.paused ? "#16a34a" : ""; }
