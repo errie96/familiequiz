@@ -2,10 +2,41 @@
 
 Teams spelen op hun telefoon, de vragen staan op de tv en de quizmaster bedient alles vanaf een eigen telefoon.
 
-Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als DRAAIBOEK.docx).
+Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (één bestand; geen losse Word-kopie meer, zodat er nooit twee versies zijn).
+
+## Waar staat wat
+
+| Plek | Wat | Aanpassen? |
+|---|---|---|
+| `vragenlijst.xlsx` | Alle vragen, rondes, teksten (ook naam en opening) en de families die meedoen | Ja, dit is de plek voor de inhoud |
+| `Hitster-bibliotheek.xlsx` | De Hitster-lijsten voor extra muziekrondes | Via de bediening (blok 🎶) of zelf |
+| `public/media/` | Foto's, logo's, liedjes, geluiden, huisstijl, muziek en wifi-QR; zie `public/media/README.txt` | Ja, elk soort bestand in zijn eigen map |
+| `DRAAIBOEK.md` | Spelverloop en de voorbereidingslijst | Ja |
+| `config.json` | Standaardinstellingen (punten, tijden); in de bediening aan te passen vóór de start | Zelden |
+| `pincode.txt` | Toegangscode van de bediening (gaat niet naar GitHub) | Ja |
+| `questions.json` | Reservequiz als de Excel onleesbaar is, en basis voor tabbladen die in de Excel ontbreken | Nee, niet gebruiken voor eigen vragen |
+| `data/` | Wordt door de server zelf gemaakt: stand, uploads, reservekopieën, logboek, foto's (gaat niet naar GitHub) | Nee, niet met de hand |
+| `server.js`, `lib/`, `public/*.html`, `public/js/`, `public/bediening/` | De app zelf | Nee |
+| `scripts/`, `test/`, `test-helpers/`, `.github/` | Hulpscripts en tests | Nee |
+
+Let op: een Excel die je in de bediening uploadt, komt in `data/` te staan. Staan er dan twee versies (in de projectmap en in `data/`), dan gebruikt de quiz de nieuwste; de bediening toont in het blok *Vragenlijst (Excel)* welk bestand is ingelezen. Pas bij voorkeur alleen `vragenlijst.xlsx` in de projectmap aan en tik op *Opnieuw inlezen*.
+
 
 
 ## Nieuw in deze versie
+- **Persoonlijk aanmelden en teams maken**: staat er iets in het nieuwe Excel-tabblad *Families* (familie + aantal personen), dan vult iedereen op de telefoon naam, familie en leeftijd in. De bediening toont per familie wie er is (jong naar oud, met teller) en maakt met *🎲 Maak teams* even grote teams met leeftijden en families gespreid; verplaatsen, opnieuw verdelen en laatkomers indelen kan. De basistelefoon kiest daarna teamnaam en kleur. Leeg tabblad = teams maken zichzelf, zoals voorheen. Zie DRAAIBOEK.md, *Aanmelden en teams maken*.
+- **Beslissingsvraag uit de leeftijden**: bij een gelijke stand is de eerste schatvraag "Hoe oud zijn alle deelnemers bij elkaar?"; het antwoord rekent de quiz zelf uit.
+- **30 Seconds korter kunnen maken**: vóór de ronde kiest de bediening het aantal vertellers per team; de basistelefoon tikt aan wie (bij een klein team: wie een tweede keer mag). Plus de noodknop *Stop na deze rondgang*.
+- **Aftelklok vóór de start** stel je in de bediening in (5/10/15/30 min, +5, weg), net als de pauzetimer. De vaste starttijd in de Excel is vervallen.
+- **Logoronde**: het kader neemt de verhouding van elk logo over (breed, vierkant of hoog), zoals bij foto blur.
+- **De avond in cijfers**: extra scherm na de ontknoping (knop in de bediening).
+- **Voorbeeldplaatjes in de Excel**: tabblad *Voorbeelden* laat met genummerde schermfoto's zien waar elke tekst uit *Teksten* in beeld komt; in *Teksten* staat per regel bij welk plaatje en nummer hij hoort.
+- **Rustiger tv-beeld**: inhoud staat niet meer tegen de bovenrand geplakt maar net boven het midden; antwoorden en woordtegels zijn groter.
+- **Steviger bij storingen**: aanmeldingen overleven een herstart; elk scherm krijgt zijn stand apart (een fout bij één telefoon blokkeert de rest niet); een speler kan op een andere telefoon zijn plek overnemen door dezelfde naam in te vullen. DRAAIBOEK.md heeft een *noodkaart*.
+- **Afwerking tv en telefoons**: de opening is een eigen stap (eerst 6 s opening, dan pas het testscherm); korte logo-flits bij elke nieuwe ronde (uit te zetten) en het logo groot op het pauze- en eindscherm; "Pauze!" en de timer vast bovenaan bij foto's of een dilemma; logo's in de logoronde onvervormd in een vast kader; meerkeuze-antwoorden direct achter de vraag, en bij *antwoord meteen tonen* 2 s wachten waarna de teamfoto's naar het gekozen vakje vliegen; de tijdbalk in een eigen strook; prijsjes schermvullend; overwinningskaarten waarop alles past; zeven nieuwe momentum-meldingen; oefentekenen op bediening2; trillen op Android (spelers en bediening2); de quiz als app op het beginscherm, alleen vóór het aanmelden.
+- **Pauzetimer**: tijdens de pauze in de bediening of bediening2 instellen wanneer jullie verder gaan (5/10/15/20 min, +5 min, weg). Tv en telefoons tonen "We gaan verder om … · nog mm:ss", met een belletje als de tijd om is; hervatten blijft handwerk.
+- **Opening, jingle en achtergrondmuziek**: bij *Start de quiz* vliegt het logo groot in beeld met een jingle (`public/media/muziek/opening.wav`, tekst `opening.tekst` in de Excel). Vóór de start en in de pauze speelt zachte achtergrondmuziek (`achtergrond.wav`). Eigen muziek: zet `opening.mp3` / `achtergrond.mp3` in die map (mp3 gaat voor wav; `npm run standaard-muziek` maakt de standaardbestanden opnieuw). In de bediening (🎛️ Tijdens de quiz): achtergrondmuziek aan/uit en *Opening testen*. De tv meldt of hij geluid heeft; het "druk op OK"-balkje staat alleen nog vóór de start in beeld. Teamnamen worden niet meer midden in een woord afgebroken, en de stap-voor-stap voorbereiding en checklist in de bediening zijn uitgebreid (tv-geluid, naam/logo/wifi, opening en muziek, draaiboek).
+- **Naam, logo en aftelklok**: de naam, ondertitel, korte naam (onder het app-icoon) staan bovenaan het tabblad *Teksten* in de Excel; `{quiznaam}` in een tekst wordt overal vervangen door de naam. Het logo en het app-icoon zijn bestanden in `public/media/huisstijl/` (eigen `logo.png` gaat voor `logo.svg`; zie `LEES-MIJ.txt` daar). Het logo staat op de welkomstpagina, het aanmeldscherm, linksboven tijdens de quiz, op de telefoons en op het uitslagplaatje. Vóór de start telt een klok af naar de starttijd (tv en telefoons, met de klok van de laptop). Valt de verbinding weg, dan toont de tv na 1,5 seconde een rustige kaart met het logo in plaats van een rood balkje.
 - **Welkomstpagina** op de tv vóór het aanmeldscherm (tekst in de Excel, tabblad *Teksten*). In de bediening: "Toon het aanmeldscherm".
 - **Alle vaste teksten in de Excel** (tabblad *Teksten*): welkomstpagina, tussenpagina's, joker, foto blur, muziek, tekenen, 30 Seconds, slotvraag, einde, pauze enz. Pas de kolom *Tekst* aan; {punten}, {team} e.d. vult de quiz zelf in. De uitleg per ronde staat in het tabblad *Rondes*. Daarna in de bediening *Excel uploaden* of *Opnieuw inlezen*: de nieuwe teksten staan meteen op tv en telefoons. Dat kan tot de start van de quiz.
 - **Thema's** (Standaard, Winter, Kerst, Oud & nieuw, Zomer, Halloween): bediening → *Thema*, op elk moment.
@@ -14,7 +45,7 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Volgorde start**: aanmelden → rondeoverzicht en uitleg → 3 testvragen → teamfoto → *Hier begint de echte quiz* → joker → ronde 1. Bij de start van elke ronde staat erbij hoe je de punten verdient.
 - **Teamfoto**: na de testvragen (kijken of alles werkt) het vaste teamfotomoment. Alleen dan kan de basistelefoon een foto maken (groene knop = camera; kiezen uit de galerij kan niet); daarvoor en daarna is de teamfoto niet te wijzigen (de quizmaster kan er wel een verwijderen). De foto komt terug bij *Dit was ronde …*, bij de ontknoping, op de winnaarsbanner en in een diavoorstelling op de tv tijdens de pauze. Tijdens de pauze kan iedereen ook een **pauzefoto** maken: die komt direct op de tv en wordt bewaard in `data/fotos/<datum>/`; in de bediening download je alle foto's van de avond als zip, op ware grootte: de telefoon stuurt na de kleine tv-versie het origineel na (`POST /origineel/<sleutel>`, eenmalige sleutel, max. 15 MB, opnieuw opgeslagen als JPEG zonder locatiegegevens), bewaard in `data/fotos/origineel/`. Teamfoto's worden bewaard in `data/teamphotos.json`.
 - **Hitster-lijsten bijwerken**: het tabblad *Bronnen* in `Hitster-bibliotheek.xlsx` bevat per tabblad de link naar de complete liedjeslijst (Primera) en de officiële Spotify-playlist. Bijwerken kan op twee manieren:
-  - in de bediening: *🎶 Hitster-playlists per editie* → *🔄 Lijsten bijwerken* (vóór de start). De server haalt de pagina's op, zet de nieuwe lijsten klaar en toont per tabblad wat er nieuw of weg is. Met *⬇️ Download Excel* haal je het bijgewerkte bestand op om in je projectmap/GitHub te zetten (op het gratis Render-plan gaat de update anders bij een herstart verloren);
+  - in de bediening: *🎶 Hitster-playlists per editie* → *🔄 Lijsten bijwerken* (vóór de start). De server haalt de pagina's op, zet de nieuwe lijsten klaar en toont per tabblad wat er nieuw of weg is. Met *⬇️ Download Excel* haal je het bijgewerkte bestand op om in je projectmap/GitHub te zetten;
   - op je eigen computer: `npm run update-hitster` werkt `Hitster-bibliotheek.xlsx` in de projectmap bij (het oude bestand blijft bewaard als `.backup.xlsx`).
   Eigen aanvullingen (Bron = *Eigen*), zelf aangepaste jaartallen (Jaar check leeg), startkaarten en audio blijven staan. Nieuwe editie toevoegen: maak een tabblad *Hitster - <naam>* en zet de link in *Bronnen*. Een playlistlink in *Bronnen* wordt automatisch gebruikt, tenzij je in de bediening zelf een andere hebt ingesteld.
 - **Jaartallen controleren**: bediening → *🎶 Hitster-playlists* → *✔ Jaartallen controleren*. Met Spotify verbonden zoekt de bediening voor alle nummers met *Jaar check = Ja* (of één categorie) het jaar van de eerste uitgave op en schrijft dat in de Hitster-Excel; gecontroleerde nummers krijgen een lege Jaar check. Alles duurt zo'n 15–20 minuten, stoppen en later verder gaan kan. Daarna *⬇️ Download Excel* om het bestand te bewaren. Zo hangt de quizavond niet meer af van de controle tijdens het spelen.
@@ -60,10 +91,27 @@ Het volledige spelverloop voor de quizmasters staat in **DRAAIBOEK.md** (ook als
 - **Tussenpagina's** met animatie: "Nu gaan we door naar…" bij elke ronde en elke categorie.
 - **Joker** vóór ronde 1; de tv toont waarop elk team de joker zet.
 - **Foto blur** is een open vraag; de quizmaster keurt goed/fout. **Geheugen**: geen klok, alleen de basistelefoon schrijft.
+- **Per ronde eerst een oefenvraag**: ronde → *Eerst een oefenvraag* → oefenvraag → *Nu begint het echt!* → de echte vragen (teksten `oefen.intro.titel/tekst` en `oefen.klaar.titel/tekst`).
+- **Spotify speelt het origineel**: remixen, live-versies, karaoke, covers en dergelijke worden overgeslagen; bij meerdere treffers wint de beste titel- en artiestmatch, met voorkeur voor het jaar van het origineel.
+- **Momentum-meldingen verklappen niets over de koppositie**: alleen "X stijgt N plaatsen" en "X komt terug van de laatste plek" (nooit over de nummer 1), of een neutrale melding. Uit te zetten bij *Tijdens de quiz*.
+- **Logo's**: het aantal logo's is instelbaar (standaard 10, de eerste N uit de Excel; de ronde blijft 100 punten waard).
+- **Antwoorden direct tonen of pas bij het nakijken**: schakelaars bij *Tijdens de quiz* voor meerkeuze en voor foto's/logo's (standaard: meerkeuze pas bij het nakijken, foto's en logo's direct).
+- **Testvragen (meerkeuze)**: zijn alle antwoorden binnen, dan wordt het juiste antwoord pas getoond als de quizmaster op *🎯 Toon het goede antwoord* drukt; daarna *Volgende*. Oefenfoto's en oefenlogo's tonen het antwoord direct, ook als *antwoord direct tonen* uit staat.
+- **Pauzefoto's van de quizmaster**: op de telefoonbediening staat tijdens de pauze de knop *📸 Pauzefoto maken* (achtercamera). De foto komt op de fotomuur van de tv (onder de naam *Quizmaster*), in het album en op ware grootte in de foto-zip.
+- **Knoppen zonder functie zijn grijs**: in beide bedieningen is een knop uitgeschakeld (grijs) zolang hij niets kan doen: *Vorige* op de eerste stap, *grote knop* en *doorgaan* tijdens een pauze of het nakijken, *Ongedaan maken* zonder actie, *Pauzedilemma* zonder dilemma's, *Overwinningskaarten* vóór de ontknoping, en de bladerknoppen van het nakijken aan het begin en het eind.
+- **Bovenste regel van de tv**: ronde links, vraagnummer in het midden, punten rechts; is de tekst te lang voor zijn vak, dan schaalt hij zichzelf kleiner.
+- **Instellingen in twee groepen**: *Tijdens de quiz* (geluid, spiekmelding, momentum, antwoorden tonen) is altijd te wijzigen; de spelregels en de vragenlijst staan alleen in de voorbereiding en verdwijnen uit het menu zodra de quiz start.
+- **Schermovergangen**: één vaste, rustige overgang tussen alle tv-schermen (het ronde-gordijn is weg: de uitlegpagina van de ronde is de overgang). De timerbalk loopt vloeiend. Foute antwoorden dimmen en het goede antwoord krijgt een ring en glans.
+- **Finale**: de tv dimt met een spotlight, de punten tellen in 1 seconde op, bij plek 1 staat alleen de winnaar in beeld (de laatste twee teams staan daarvoor samen in beeld), daarna een podium met drie blokken.
+- **Overwinningskaarten**: na de ontknoping tekent de tv per team een kaart (naam, eindscore, plaats, statistieken; de winnaar is *Familiequiz Kampioen*). Elke telefoon toont de eigen kaart om te screenshotten; de kaarten komen in `data/fotos/kaarten/` en in de foto-zip (knop *🏆 Overwinningskaarten maken* in de bediening om opnieuw te maken).
+- **Prijsjes als badges** op de telefoon (zodra de prijsjes op de tv staan) en een trofee-animatie met geluid op de tv.
+- **Pauzedilemma's**: tabblad *Dilemma's* in de Excel (Dilemma · Optie A · Optie B). Tijdens een pauze pusht de quizmaster met *🤔 Volgend pauzedilemma* (laptop en telefoonbediening) een dilemma: elke telefoon kiest A of B (veranderen mag), de tv toont live balkjes, geen punten. *📸 Foto's weer tonen* brengt de fotomuur terug.
+- **Soundboard**: eigen geluiden uploaden met *⬆️ Eigen geluid toevoegen* (mp3/wav/ogg/m4a, max 4 MB). Een bestand met de naam van een quizgeluid (`drumroll`, `applause`, `sadTrombone`, `cheer`, `buzzer`, `ding`, `fanfare`, `whoosh`, `reveal`, …) vervangt dat geluid overal in de quiz.
+- **30 Seconds** goedkeuren kan ook op de telefoonbediening.
 - **Basistelefoon kiezen en bevestigen**: bij het maken van het team is de maker de basistelefoon. Iedereen die aansluit tikt op *✔ Akkoord* (of stelt een ander voor; dan moet het hele team akkoord gaan). De quiz kan pas starten als in elk team iedereen akkoord is; de bediening toont wie nog moet. (*Toch starten* kan als het echt nodig is.) Wisselen kan daarna alleen buiten de rondes: op tussenpagina's, uitleg, *Dit was ronde*, joker en teamfoto. Een lopend voorstel vervalt als een ronde begint. De quizmaster kan in noodgevallen altijd een basis aanwijzen (⭐ in de bediening).
 - **Na de testvragen**: een dia "De test lijkt geslaagd! ✅ – Alles werkt. We gaan nu verder!" (teksten `testklaar.titel` en `testklaar.tekst`, aan te passen via het tabblad *Teksten*).
 - **Eigen extra pagina's**: tabblad *Pagina's* in `vragenlijst.xlsx` met de kolommen Waar · Emoji · Titel · Tekst. Waar = *voor testvragen*, *na testvragen*, *na teamfoto*, *na uitleg*, *na joker*, *voor ronde 3*, *na ronde 3* of *voor slotvraag*. Na het opslaan in de bediening *Opnieuw inlezen*. Een onbekende plek geeft een waarschuwing.
-- **Meerkeuze in drie stappen**: eerst alleen de vraag (2 s), dan vliegen de antwoorden binnen (2 s zichtbaar), en pas daarna kan er gekozen worden. Beide tijden zijn in te stellen bij Instellingen (0 = overslaan). Met *⏩ Antwoorden nu openen* sla je het wachten over; tijdens de pauze staat het stil.
+- **Meerkeuze in twee stappen**: eerst 2 seconden alleen de vraag, dan vliegen de antwoorden binnen (A en C van links, B en D van rechts, met een oplopende plop) en kan er meteen geantwoord worden. De tijd is vast en niet meer in te stellen. Met *⏩ Antwoorden nu openen* sla je het wachten over; tijdens de pauze staat het stil.
 - **Soundboard** (bediening, onder de knoppen): 🥁 Tromgeroffel, 👏 Applaus, 🎺 Wah-wah-waah (sad trombone), 🎉 Gejuich, ❌ Zoemer, 🔔 Belletje en 🎺 Fanfare. Eigen geluiden: zet mp3/wav/ogg/m4a-bestanden in `public/media/sounds/`; ze verschijnen binnen 10 seconden als extra knop (bestandsnaam = knoptekst). Speelt af op de tv, of op de bediening als *Geluid via* daarop staat.
 - **Podium-ontknoping**: van de laatste plek omhoog, plek voor plek. Zijn er nog twee teams over, dan staan die samen groot op de tv ("Wie wordt er eerste?", op naam gesorteerd zodat de plek niets verraadt). Bij *🥁 Onthul de winnaar!* trillen beide kaarten tijdens 3 seconden tromgeroffel, daarna licht de winnaar op (🏆) en zakt de ander weg (🥈), met gejuich en confetti, en volgt de eindstand met de winnaarsbanner.
 - **Pauze**: zolang de quiz op pauze staat, werken de grote knop en *Vorige* niet (ook niet via sneltoetsen of de telefoonbediening).
@@ -105,9 +153,9 @@ Een team scoort dus een percentage van het maximum. Per ronde te overschrijven m
 Alle vragen en opdrachten staan in **`vragenlijst.xlsx`** (een tabblad per ronde, uitleg op het tabblad *Lees mij*).
 De server leest dit bestand zelf in; er is geen extra pakket voor nodig. Tot vlak voor de start kun je nog wijzigen:
 - **Via de bediening** (blokje *Vragenlijst (Excel)*): kies *Excel uploaden*. Het bestand wordt meteen gecontroleerd en ingelezen. Waarschuwingen (bv. een vraag zonder foute antwoorden, een liedje zonder jaar) staan bovenin de bediening.
-- Of vervang `vragenlijst.xlsx` op de server (of push naar GitHub en laat Render opnieuw deployen) en tik op *Opnieuw inlezen*.
-- Staan beide, dan wint het nieuwste bestand. Op het gratis Render-plan verdwijnt een upload bij een herstart; zet voor de echte avond een schijf aan (zie `render.yaml`) of zet het bestand in de repository.
-- Na de start van de quiz kan dit niet meer. Foto's, logo's en audio zet je in `public/media/` (op Render: in de repository).
+- Of vervang `vragenlijst.xlsx` in de projectmap en tik op *Opnieuw inlezen*.
+- Staan beide, dan wint het nieuwste bestand.
+- Na de start van de quiz kan dit niet meer. Foto's, logo's en audio zet je in `public/media/` (zie `public/media/README.txt`).
 - Bij elke keer inlezen worden de antwoordvolgordes (A/B/C/D) opnieuw gehusseld.
 - Ontbreekt de Excel, dan wordt `questions.json` gebruikt (ook voor wat niet in de Excel staat, zoals de teksten bij de testvragen).
 
@@ -130,8 +178,8 @@ Liedjes zonder `audio`: koppel Spotify (hieronder) of speel het liedje zelf af.
 ## Spotify koppelen (vooraf, in de bediening)
 De bediening (host) logt in bij Spotify en start bij elke muziekvraag zelf het liedje.
 1. Eenmalig in je Spotify-app (developer dashboard): voeg `http://127.0.0.1:3000/bediening.html` toe als Redirect URI
-   (en voor Render ook `https://<jouw-naam>.onrender.com/bediening.html`), en zet het Spotify-account onder *User Management*. Spotify Premium is nodig.
-2. Open de bediening via `http://127.0.0.1:3000/bediening.html` (op de laptop waar de server draait) of via het https-adres op Render.
+   en zet het Spotify-account onder *User Management*. Spotify Premium is nodig.
+2. Open de bediening via `http://127.0.0.1:3000/bediening.html` (op de laptop waar de server draait).
    Via het netwerkadres (192.168…) staat Spotify inloggen niet toe.
 3. Klap *Spotify* open, tik op **Verbind met Spotify** en log in.
 4. Kies waar de muziek klinkt: **Deze browser** (de bediening op een laptop, aangesloten op de speakers) of een ander Spotify-apparaat
@@ -140,8 +188,8 @@ De bediening (host) logt in bij Spotify en start bij elke muziekvraag zelf het l
 Afspelen in de browser zelf werkt op een computer (Chrome, Edge, Firefox), niet in een telefoonbrowser; kies op een telefoon de Spotify-app als apparaat.
 De Client ID staat in `public/shared.js` (`QuizSpotify`).
 
-## Opslaan en Render
-De lopende stand staat in `data/state.json` (teamfoto's in `data/teamphotos.json`); de vorige geldige stand blijft als `data/state.json.bak` beschikbaar als reservekopie. Als het hoofd-bestand ontbreekt of beschadigd is, probeert de server die reservekopie te herstellen. Een bewuste reset wist ook deze reservekopie. Afgeronde quizzen staan apart in `data/history.json` (met `data/history.json.bak` als reservekopie); een nieuwe quiz of reset wist de geschiedenis niet. Na een herstart staat een lopende quiz op pauze. Online draaien via Render: zie `render.yaml`
+## Opslaan en herstellen
+De lopende stand staat in `data/state.json` (teamfoto's in `data/teamphotos.json`). Bij de start van de quiz worden de vragen vastgezet in `data/quiz-vast.json`: na een herstart midden in de quiz komen de vragen daar vandaan, niet opnieuw uit de Excel, en wordt het juiste scherm op naam teruggezocht. Een Excel die intussen is aangepast, nog open staat of beschadigd is, kan de lopende quiz dus niet meer door elkaar gooien. `npm start` en start-lokaal lopen via `scripts/run.js`: die start de server na een crash vanzelf opnieuw (na 5 crashes binnen een minuut stopt hij, zodat je de fout kunt lezen); de vorige geldige stand blijft als `data/state.json.bak` beschikbaar als reservekopie. Als het hoofd-bestand ontbreekt of beschadigd is, probeert de server die reservekopie te herstellen. Een bewuste reset wist ook deze reservekopie. Afgeronde quizzen staan apart in `data/history.json` (met `data/history.json.bak` als reservekopie); een nieuwe quiz of reset wist de geschiedenis niet. Na een herstart staat een lopende quiz op pauze.
 (zet `HOST_PIN` op een lange code, bijv. drie woorden met streepjes, en voor een echte avond plan `starter` met schijf). Niet pushen tijdens de quiz.
 
 ## Noodknoppen (bediening)
@@ -160,7 +208,8 @@ springen naar een ronde, +10 seconden, team of speler hernoemen/verplaatsen/verw
 **Reservekopieën** (`data/backups/`)
 - Automatisch elke 5 minuten (alleen als er iets veranderd is), bij het opstarten, bij de start en het einde van de quiz, na een upload en vóór een reset. Gekopieerd: `state.json`, `history.json`, `teamphotos.json`, `playlists.json`, de gebruikte `vragenlijst.xlsx` en `Hitster-bibliotheek.xlsx`.
 - Bewaard: de laatste 40 kopieën en per dag de laatste van de afgelopen 30 dagen.
-- In de bediening (*🛟 Reservekopieën en logboek*): nu een kopie maken, alles als zip downloaden, of een eerdere kopie downloaden. Terugzetten: pak de zip uit in de map `data/` (server eerst stoppen). Op het gratis Render-plan verdwijnt `data/` bij een herstart: download dus af en toe een zip.
+- Automatisch: bij de start, aan het begin van elke ronde, vóór de slotvraag, aan het einde, vóór een reset en elke 5 minuten. Kopieën van de start, rondes, slotvraag en einde blijven 3 dagen bewaard, ook als er veel automatische kopieën bij komen.
+- In de bediening (*🛟 Reservekopieën en logboek*): nu een kopie maken, alles als zip downloaden, een eerdere kopie downloaden, of met *↩️ terugzetten* de stand van dat moment terugzetten. De huidige stand wordt dan eerst zelf als kopie bewaard (`voor-terugzetten`), de server start kort opnieuw op en de quiz staat daarna op pauze. Dit werkt als de quiz is gestart met start-lokaal of `npm start`. Teruggezet worden de stand, teamfoto's, playlists en vastgezette vragen; de quizgeschiedenis en het fotoalbum blijven zoals ze zijn.
 
 **Logboek** (`data/logs/quiz-JJJJ-MM-DD.log`, 14 dagen bewaard)
 - Elke regel is JSON: verbindingen (telefoon, tv, bediening), inlogpogingen, ingrijpende acties van de quizmaster, geweigerde of te grote berichten, fouten (met stacktrace), reservekopieën, start en einde van de quiz.

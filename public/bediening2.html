@@ -19,7 +19,8 @@
     #where span { color: #94a3b8; font-size: 14px; }
     #timer { font-size: 15px; color: #fbbf24; font-weight: bold; margin-top: 4px; }
     button { font: inherit; border: 0; border-radius: 14px; color: #fff; padding: 16px 12px; font-size: 17px; font-weight: bold; cursor: pointer; width: 100%; }
-    button:disabled { opacity: 0.45; }
+    button:disabled { opacity: 0.45; filter: grayscale(1); cursor: not-allowed; }
+    [hidden] { display: none !important; } /* .row { display: grid } maakte verborgen knoppen weer zichtbaar */
     #main { background: #2563eb; font-size: 22px; padding: 26px 14px; min-height: 96px; }
     #main:not(:disabled):active { transform: scale(0.98); }
     #hint { color: #94a3b8; font-size: 14px; text-align: center; min-height: 1.2em; margin: -2px 0 0; }
@@ -36,8 +37,18 @@
     #rv-prev, #rv-next { background: #334155; }
     #alerts .a { background: #7f1d1d; border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; font-weight: bold; }
     #alerts .a small { display: block; font-weight: normal; color: #fecaca; }
+    .hidden { display: none !important; }
+    .padwrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #fff; border-radius: 12px; touch-action: none; overflow: hidden; }
+    .padwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    #demopad .tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 6px; }
+    #demopad .tools button { padding: 12px 4px; font-size: 15px; background: #334155; }
+    [data-pausetimer] .ps-label { font-size: 14px; color: #cbd5e1; }
+    [data-pausetimer] .ps-time { font-size: 28px; font-weight: 800; color: #fbbf24; font-variant-numeric: tabular-nums; }
     .qcard { background: #1e293b; border-left: 4px solid #22c55e; border-radius: 12px; padding: 10px 12px; }
     .qcard.next { border-left-color: #6366f1; opacity: 0.9; }
+    #words-list .w { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid #334155; font-size: 16px; }
+    #words-list button { width: auto; padding: 10px 14px; font-size: 15px; background: #334155; }
+    #words-list button.ok { background: #16a34a; }
     .qcard small { display: block; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
     .qcard b { display: block; font-size: 15px; margin: 2px 0; }
     .qcard span { display: block; color: #86efac; font-size: 14px; }
@@ -50,6 +61,7 @@
   <header><h1>🎛️ Familiequiz</h1><span id="conn">○ verbinden…</span></header>
   <div id="alerts"></div>
   <div id="where"><b id="round">–</b><span id="prog"></span><div id="timer"></div></div>
+  <div id="words" class="qcard" hidden><small id="words-title"></small><div id="words-list"></div></div>
   <div id="qnow" class="qcard" hidden><small>Nu</small><b id="qnow-what"></b><span id="qnow-ans"></span></div>
   <button id="main" disabled>…</button>
   <p id="hint"></p>
@@ -58,6 +70,27 @@
   <div class="row">
     <button id="prev">⬅️ Vorige stap</button>
     <button id="pause">☕ Pauze</button>
+  </div>
+  <!-- Oefenronde tekenen: de quizmaster tekent hier, de tv kijkt live mee -->
+  <div id="demopad" hidden>
+    <p class="note" id="demopad-word" style="margin:6px 0 4px; font-size:16px; color:#fff; font-weight:bold;"></p>
+    <div class="padwrap"><canvas id="demopad-canvas"></canvas></div>
+    <div class="tools"><button data-c="#111827">Zwart</button><button data-c="#dc2626">Rood</button><button data-c="#2563eb">Blauw</button><button id="demopad-undo">↩</button><button id="demopad-clear">🗑</button></div>
+  </div>
+  <div id="pfoto" hidden>
+    <input type="file" id="pfoto-input" accept="image/*" capture="environment" hidden>
+    <button id="pfoto-btn" style="background:#0ea5e9;">📸 Pauzefoto maken</button>
+    <p id="pfoto-msg" class="note" style="margin:4px 0 0;"></p>
+  </div>
+  <div id="ptimer" hidden>
+    <p class="note" style="margin:6px 0 4px;">⏱️ Pauzetimer op tv en telefoons: verder over…</p>
+    <div class="row"><button data-min="5" style="background:#0e7490;">5 min</button><button data-min="10" style="background:#0e7490;">10 min</button><button data-min="15" style="background:#0e7490;">15 min</button><button data-min="20" style="background:#0e7490;">20 min</button></div>
+    <div class="row"><button data-min="5" data-add="1" style="background:#334155;">➕ 5 min</button><button data-min="0" style="background:#334155;">✖ Weg</button></div>
+    <div data-pausetimer class="qcard hidden" style="text-align:center; margin:6px 0;"></div>
+  </div>
+  <div id="dil" class="row" hidden>
+    <button id="dil-next" style="background:#7c3aed;">🤔 Pauzedilemma</button>
+    <button id="dil-hide" style="background:#334155;">📸 Foto's</button>
   </div>
   <div class="row">
     <button id="undo" disabled>↶ Ongedaan maken</button>
@@ -79,7 +112,10 @@
       const pin = (prompt("Toegangscode voor de bediening:") || "").trim();
       if (pin) socket.emit("register_remote", { pin }); else conn("● geen code: ververs de pagina", "#ef4444");
     }
-    socket.on("connect", () => login(false));
+    socket.on("connect", () => { login(false); QuizFX.syncClock(socket); });
+    document.querySelectorAll("#ptimer button[data-min]").forEach((b) => {
+      b.onclick = () => socket.emit("set_pause_timer", { minutes: Number(b.dataset.min), add: b.dataset.add === "1" });
+    });
     socket.on("disconnect", () => conn("○ verbinding weg…", "#ef4444"));
     socket.on("remote_confirmed", (d) => { if (d && d.token) localStorage.setItem("quiz_host_token", d.token); conn("● verbonden", "#4ade80"); });
     socket.on("auth_denied", (d) => {
@@ -104,10 +140,49 @@
     $("prev").onclick = () => { if (confirm("Terug naar de vorige stap?")) socket.emit("prev_step"); };
     $("pause").onclick = () => socket.emit("toggle_pause");
     $("undo").onclick = () => { if (S && S.controls.undo.enabled && confirm(S.controls.undo.label.replace("↶ ", "") + "?")) socket.emit("undo_last"); };
+    // Pauzefoto: de quizmaster maakt tijdens de pauze ook een foto (staat bij "Quizmaster" op de fotomuur en in het album)
+    $("pfoto-btn").onclick = () => $("pfoto-input").click();
+    $("pfoto-input").onchange = async () => {
+      const f = $("pfoto-input").files && $("pfoto-input").files[0];
+      $("pfoto-input").value = "";
+      if (!f) return;
+      const msg = (t) => { $("pfoto-msg").textContent = t; };
+      $("pfoto-btn").disabled = true; msg("Foto voorbereiden…");
+      try {
+        const dataUrl = await QuizFX.compressPhoto(f, 1280, false, 600000);
+        socket.emit("host_pause_photo", { dataUrl }, (res) => {
+          $("pfoto-btn").disabled = false;
+          msg(res && res.ok ? "✅ Staat op het grote scherm! Nog een?" : (res && res.message) || "Dat lukte niet.");
+          if (res && res.ok) QuizFX.uploadOriginal(f, res.original); // ware grootte voor het album, op de achtergrond
+        });
+      } catch (e) { $("pfoto-btn").disabled = false; msg(e.message || "Foto kon niet worden verwerkt."); }
+    };
+    $("dil-next").onclick = () => socket.emit("next_dilemma");
+    $("dil-hide").onclick = () => socket.emit("hide_dilemma");
     $("music").onclick = () => { if (S && S.music) socket.emit("music_toggle", { paused: !S.music.paused }); };
     $("rv-prev").onclick = () => socket.emit("review_nav", { dir: -1 });
     $("rv-next").onclick = () => socket.emit("review_nav", { dir: 1 });
 
+    // Trillen op de telefoon van de quizmaster (Android; een iPhone staat dit niet toe)
+    let vibeSeen = null;
+    const vibe = (p) => { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) { /* niet toegestaan */ } };
+    // Tekenvlak voor de oefenronde: zelfde berichten als de bediening op de laptop ("demo_ops")
+    const demoPad = (() => {
+      const canvas = $("demopad-canvas");
+      let strokes = [], drawing = null, pending = [], timer = null, color = "#111827";
+      const repaint = () => QuizFX.paintStrokes(canvas, strokes);
+      const flush = () => { clearTimeout(timer); timer = null; if (pending.length) { socket.emit("demo_ops", { ops: pending }); pending = []; } };
+      const queue = (op) => { pending.push(op); if (!timer) timer = setTimeout(flush, 60); };
+      const pos = (e) => { const r = canvas.getBoundingClientRect(); return [Math.round(((e.clientX - r.left) / r.width) * 1000), Math.round(((e.clientY - r.top) / r.height) * 1000)]; };
+      canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); canvas.setPointerCapture(e.pointerId); const p = pos(e); drawing = { id: "q" + Date.now().toString(36), c: color, w: 5, p: [p] }; strokes.push(drawing); queue({ t: "p", id: drawing.id, c: drawing.c, w: 5, p: [p] }); repaint(); });
+      canvas.addEventListener("pointermove", (e) => { if (!drawing) return; e.preventDefault(); const p = pos(e); drawing.p.push(p); queue({ t: "p", id: drawing.id, c: drawing.c, w: 5, p: [p] }); repaint(); });
+      const end = () => { drawing = null; flush(); };
+      canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+      document.querySelectorAll("#demopad .tools button[data-c]").forEach((b) => { b.onclick = () => { color = b.dataset.c; }; });
+      $("demopad-undo").onclick = () => { strokes.pop(); queue({ t: "u" }); repaint(); };
+      $("demopad-clear").onclick = () => { strokes = []; queue({ t: "x" }); repaint(); };
+      return { reset() { strokes = []; drawing = null; pending = []; requestAnimationFrame(repaint); } };
+    })();
     function render(s) {
       clearTimeout(lock);
       const c = s.controls || {};
@@ -119,19 +194,21 @@
       $("hint").textContent = (c.main && c.main.hint) || "";
       $("force").hidden = !c.force;
       if (c.force) { $("force").textContent = c.force.label; $("force").disabled = false; }
-      $("undo").disabled = !(c.undo && c.undo.enabled);
+      $("undo").disabled = !(c.undo && c.undo.enabled) || !!s.review;
       $("pause").textContent = s.paused ? "▶️ Verder" : "☕ Pauze";
       $("pause").classList.toggle("on", !!s.paused);
       $("pause").disabled = s.phase !== "PLAY";
       const onPause = s.phase === "PLAY" && !!s.paused; // tijdens de pauze geen volgende/vorige
-      $("prev").disabled = s.phase !== "PLAY" || onPause;
+      $("prev").disabled = s.phase !== "PLAY" || onPause || !s.canPrev || !!s.review;
       if (onPause) { $("main").disabled = true; $("force").disabled = true; $("hint").textContent = "☕ Pauze: druk eerst op ▶️ Verder."; }
+      else if (s.review) { $("main").disabled = true; $("force").disabled = true; $("hint").textContent = "🔍 Nakijken staat open: sluit het op de laptop."; }
       // muziek pauze / verder (alleen tijdens een muziekvraag)
       $("music").disabled = !s.music;
       $("music").textContent = !s.music ? "🎵 Muziek" : s.music.paused ? "▶️ Muziek verder" : "⏸ Muziek pauze";
       $("music").style.background = s.music && s.music.paused ? "#16a34a" : "";
       const rv = s.review;
       $("review").classList.toggle("on", !!rv);
+      if (rv) { $("rv-prev").disabled = (rv.page || 0) <= 0; $("rv-next").disabled = (rv.page || 0) >= (rv.total || 1) - 1; }
       if (rv) $("rv-info").textContent = `🔍 ${rv.data ? rv.data.subtitle || rv.data.title : "Nakijken"} (${(rv.page || 0) + 1} van ${rv.total || 1})`;
       const box = $("alerts");
       box.replaceChildren();
@@ -141,6 +218,48 @@
         const sm = document.createElement("small"); sm.textContent = `${a.label || ""} · ${a.timestamp || ""} · scherm weg of app verlaten`;
         d.append(sm); box.append(d);
       });
+      // Oefenronde tekenen: tekenvlak zolang de oefentekening loopt
+      const dd = s.panel && s.panel.type === "demo_draw" ? s.panel : null;
+      const ddOn = !!dd && dd.status === "drawing" && !s.paused;
+      if (ddOn && $("demopad").hidden) demoPad.reset();
+      $("demopad").hidden = !ddOn;
+      if (dd) $("demopad-word").textContent = `✏️ Teken: "${dd.word}"`;
+      // Trillen (alleen Android): bij een nieuwe spiekmelding, en als de grote knop na het wachten weer kan
+      const nAlerts = (s.alerts || []).length, mainOn = !!(c.main && c.main.enabled);
+      if (vibeSeen) {
+        if (nAlerts > vibeSeen.alerts) vibe([120, 80, 120, 80, 200]);
+        else if (mainOn && !vibeSeen.main && s.phase === "PLAY" && !s.paused) vibe(60);
+      }
+      vibeSeen = { alerts: nAlerts, main: mainOn };
+      $("pfoto").hidden = !(s.phase === "PLAY" && s.paused); // pauzefoto alleen tijdens de pauze
+      $("ptimer").hidden = !(s.phase === "PLAY" && s.paused); // pauzetimer instellen
+      QuizFX.setPauseTimer(s.pauseTimer);
+      // Pauzedilemma (alleen tijdens een pauze)
+      $("dil").hidden = !(s.phase === "PLAY" && s.paused);
+      if (!$("dil").hidden) { const dl = s.dilemma || {}; $("dil-next").disabled = !dl.count; $("dil-hide").disabled = !dl.text; $("dil-next").textContent = dl.text ? `🤔 Volgende (A ${dl.counts.a} · B ${dl.counts.b})` : "🤔 Pauzedilemma"; }
+      // 30 Seconds: woorden goedkeuren (net als op de laptop); het kleurt meteen groen op de tv
+      const pn = s.panel;
+      const th = pn && (pn.type === "thirty" || pn.type === "demo_thirty") && pn.words ? pn : null;
+      $("words").hidden = !th;
+      if (th) {
+        const sig = JSON.stringify([th.words, th.ok, th.status, th.team]);
+        if ($("words").dataset.sig !== sig) {
+          $("words").dataset.sig = sig;
+          $("words-title").textContent = th.type === "demo_thirty" ? "Oefenbeurt: jij legt uit" : `30 Seconds · ${th.team || ""}${th.explainer ? " · " + th.explainer : ""}`;
+          const list = $("words-list");
+          list.replaceChildren();
+          th.words.forEach((w, i) => {
+            const row = document.createElement("div"); row.className = "w";
+            const t = document.createElement("span"); t.textContent = w;
+            const b = document.createElement("button");
+            b.textContent = th.ok && th.ok[i] ? "✔ goed" : "goed?";
+            b.className = th.ok && th.ok[i] ? "ok" : "";
+            b.disabled = th.status === "ready";
+            b.onclick = () => socket.emit("thirty_toggle", { index: i });
+            row.append(t, b); list.append(row);
+          });
+        }
+      }
       // huidige en volgende vraag (alleen voor de quizmaster), met het goede antwoord
       const card = (id, x) => {
         $(id).hidden = !x;

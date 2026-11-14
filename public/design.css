@@ -1,0 +1,132 @@
+/* Ontwerp voor tv en telefoons: "game show" met glas, goud en gloed (naar het Lovable-ontwerp).
+   Alle kleuren komen uit variabelen; elk thema in themes.css vult dezelfde variabelen anders in.
+   Geladen ná de eigen stijlen van host.html en index.html (niet in de bediening: die blijft zakelijk). */
+
+body {
+  --bg: #0f1729;
+  --fg: #f6f8fc;
+  --muted: #a3adbf;
+  --card: #18223a;
+  --primary: #f0bd4f;          /* goud: knoppen, accenten, punten */
+  --primary-glow: #f7d57a;
+  --primary-fg: #111827;       /* tekst op een gouden vlak */
+  --accent: #2f6fd6;           /* tweede kleur: categorie, balken */
+  --info: #60a5fa;             /* blauwe accenten (adres, punten erbij) */
+  --success: #2fc98a;
+  --warning: #f2a93b;
+  --danger: #f04a45;
+  --silver: #cfd5de;
+  --bronze: #c7834a;
+  --glass: rgba(46, 58, 82, 0.38);
+  --glass-strong: rgba(27, 37, 58, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --radius: 14px;
+  --stage:
+    radial-gradient(120% 80% at 50% -10%, #23365e 0%, transparent 60%),
+    radial-gradient(60% 50% at 90% 110%, rgba(16, 94, 72, 0.5) 0%, transparent 70%),
+    linear-gradient(180deg, #0d1424 0%, #080e1b 100%);
+  --particle: rgba(240, 246, 255, 0.85);
+  --gradient-gold: linear-gradient(135deg, var(--primary-glow), var(--primary) 55%, color-mix(in srgb, var(--primary) 70%, var(--bronze)));
+  --shadow-glow: 0 0 60px -10px color-mix(in srgb, var(--primary) 55%, transparent);
+  --shadow-card: 0 30px 60px -30px rgba(0, 0, 0, 0.7);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  background: var(--stage) fixed, var(--bg);
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: "Quizfont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+}
+body h1, body h2, body h3 { font-weight: 700; }
+
+/* ---------- Glas ---------- */
+body .card, body .qbox, body .qo, body .tchip, body .pill, body .word, body .slot, body .gcard, body .award-card,
+body .team-card, body .fam-card, body .stat-card, body .round-tile, body .dil-opt, body .pos-row, body .big-list li,
+body .btn-option, body #welcome-wifi, body .preshow-tel {
+  background-color: var(--glass);
+  border: 1px solid var(--glass-border);
+}
+body .card { background: var(--glass-strong); border-radius: calc(var(--radius) + 8px); box-shadow: var(--shadow-card); }
+@supports ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  body .card, body .qo, body .gcard, body .award-card, body .team-card, body .fam-card, body .stat-card, body .round-tile, body .dil-opt, body .pos-row {
+    -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+  }
+}
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  body .card, body .qo, body .gcard, body .award-card { background-color: var(--glass-strong); }
+}
+
+/* ---------- Knoppen en accenten ---------- */
+body .btn-primary { background: var(--gradient-gold); color: var(--primary-fg); box-shadow: var(--shadow-glow); }
+body .btn-primary:active { filter: brightness(0.92); transform: scale(0.98); }
+body .btn-option { color: var(--fg); }
+body .btn-option:active { transform: scale(0.98); }
+body .qo .letter, body .fam-count, body .pointsnow, body .trans-pre, body .stat-value, body .pd-pts, body .brand-sub,
+body .preshow .ps-time, body .momentum-line, body #review-sub, body .duo-title, body .duo-label, body .aw-title, body .dil-tag,
+body .pos-row .pos-rank, body #reveal-spot .spot-rank, body .spot-rank, body .rc-no { color: var(--primary); }
+body #join-url, body #reveal-spot .spot-pts, body .dil-opt.b .dil-tag { color: var(--info); }
+body .dil-bar i { background: var(--primary); }
+body .dil-opt.b .dil-bar i, body .bar { background: var(--info); }
+body .cat { background: var(--accent); }
+body .tv-sub, body .muted { color: var(--muted); }
+body .round-tile .rt-no { background: var(--primary); color: var(--primary-fg); }
+body .pill.points { background: var(--gradient-gold); color: var(--primary-fg); box-shadow: 0 0 0 2px var(--glass-border), var(--shadow-glow); }
+body .tv-title { color: var(--fg); text-shadow: 0 0 2.2vw color-mix(in srgb, var(--primary) 45%, transparent); }
+body .tlcard { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--primary))); }
+body .lobby-spot .team-avatar { border-color: var(--primary); box-shadow: var(--shadow-glow); }
+body #winner-banner { background: var(--gradient-gold); color: var(--primary-fg); box-shadow: var(--shadow-glow); }
+body .pw-tile.new { outline-color: var(--primary); }
+
+/* Goed / fout */
+body .qo.correct, body .tchip.done, body .word.ok, body .slot.ok, body .fam-card.full {
+  background-color: color-mix(in srgb, var(--success) 32%, transparent);
+  border-color: var(--success);
+}
+body .qo.correct { box-shadow: 0 0 0 2px var(--success), 0 0 50px -6px var(--success); }
+body .word.no, body .slot.no { background-color: color-mix(in srgb, var(--danger) 30%, transparent); border-color: var(--danger); }
+
+/* Podium: goud, zilver, brons uit het thema */
+body .pd-1 .pd-block { background: linear-gradient(180deg, var(--primary-glow), var(--primary)); }
+body .pd-2 .pd-block { background: linear-gradient(180deg, #ffffff, var(--silver)); }
+body .pd-3 .pd-block { background: linear-gradient(180deg, color-mix(in srgb, var(--bronze) 60%, #fff), var(--bronze)); }
+body .pd-1 .pd-name { color: var(--primary-glow); }
+
+/* Overlays in de themakleur in plaats van vast paars */
+body #round-curtain { background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 60%, var(--bg)) 0%, var(--bg) 70%); }
+body #opening, body #sting { background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent) 55%, var(--bg)), var(--bg)); }
+body #positions-overlay, body #reveal-spot, body #reveal-duo { background: var(--stage), var(--bg); }
+
+/* ---------- Losse klassen uit het Lovable-ontwerp (glass, bg-gold, text-gold, ...) ----------
+   Voor nieuwe elementen: class="glass", "bg-gold", "text-gold", "shadow-glow", "glow-success" enz. */
+.stage { background: var(--stage), var(--bg); background-color: var(--bg); transition: background 0.8s ease; }
+.glass { background: var(--glass); border: 1px solid var(--glass-border); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); }
+.glass-strong { background: var(--glass-strong); border: 1px solid var(--glass-border); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
+.shadow-glow { box-shadow: var(--shadow-glow); }
+.shadow-card { box-shadow: var(--shadow-card); }
+.bg-gold { background: var(--gradient-gold); color: var(--primary-fg); }
+.text-gold { background: var(--gradient-gold); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
+.tabular { font-variant-numeric: tabular-nums; }
+.glow-success { box-shadow: 0 0 0 2px var(--success), 0 0 50px -6px color-mix(in srgb, var(--success) 75%, transparent); }
+.glow-primary { box-shadow: 0 0 0 2px var(--primary), 0 0 40px -8px color-mix(in srgb, var(--primary) 70%, transparent); }
+.pulse-ring { animation: dsPulseRing 1.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; }
+/* Winnaarsnaam op het podium en grote getallen in goudverloop */
+body .pd-1 .pd-name, body .stat-value { background: var(--gradient-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+body .st-score, body .pd-pts, body .stat-value, body #tv-timer { font-variant-numeric: tabular-nums; }
+
+/* ---------- Bewegingsbasis ---------- */
+@keyframes dsRise { from { opacity: 0; transform: translateY(16px) scale(0.98); } }
+@keyframes dsPulseRing { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes dsBreathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+.ds-stagger > * { animation: dsRise 0.5s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 80ms); }
+.ds-in { animation: dsRise 0.45s var(--ease-out) both; }
+/* Telefoon: pulserende "Wachten op de quizmaster" */
+.ds-live { display: flex; align-items: center; justify-content: center; gap: 10px; width: fit-content; margin: 14px auto 4px; padding: 8px 16px;
+  border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-border); font-weight: 600; font-size: 15px; animation: dsBreathe 2.4s ease-in-out infinite; }
+.ds-live i { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--success); }
+.ds-live i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--success); animation: dsPulseRing 1.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; }
+/* Telefoon: antwoordknoppen voelen "tastbaar" */
+body:not(.tv) .btn-option { transition: transform 0.15s var(--ease-out), box-shadow 0.2s, background-color 0.2s; }
+@media (hover: hover) { body:not(.tv) .btn-option:not(:disabled):hover { transform: scale(1.02); box-shadow: 0 0 0 1px var(--primary), 0 0 24px -8px var(--primary); } }
+@media (prefers-reduced-motion: reduce) { .ds-stagger > *, .ds-in, .ds-live, .ds-live i::after, .pulse-ring { animation: none; } }

@@ -76,7 +76,30 @@ window.addEventListener("blur", () => notifyLeftApp("app_switch"));
 window.addEventListener("focus", notifyBack);
 
 // ---------------- Identiteit ----------------
-function saveIdentity(id) { deviceId = id; localStorage.setItem("quiz_device_id", id); }
+function saveIdentity(id) { deviceId = id; localStorage.setItem("quiz_device_id", id); lockInstall(); }
+// Installeren als app mag alleen vóór het aanmelden. Zodra deze telefoon bij een team hoort: de iPhone-instelling weg en
+// het manifest op "gewoon in de browser". Zet iemand de quiz daarna toch nog op zijn beginscherm, dan is dat een gewone
+// snelkoppeling die dezelfde browser (en dus hetzelfde team) opent, en geen losse app die als nieuw toestel binnenkomt.
+const isStandalone = () => (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+function lockInstall() {
+  document.querySelectorAll('meta[name="apple-mobile-web-app-capable"], meta[name="mobile-web-app-capable"]').forEach((m) => m.remove());
+  const link = document.querySelector('link[rel="manifest"]');
+  if (link && !/mode=browser/.test(link.getAttribute("href"))) link.setAttribute("href", "/manifest.webmanifest?mode=browser");
+  const tip = document.getElementById("install-tip");
+  if (tip) tip.classList.add("hidden");
+}
+function showInstallTip() {
+  const tip = document.getElementById("install-tip");
+  if (!tip) return;
+  const ua = navigator.userAgent || "";
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const android = /Android/.test(ua);
+  const show = !deviceId && !isStandalone() && (ios || android);
+  tip.classList.toggle("hidden", !show);
+  document.getElementById("install-ios").classList.toggle("hidden", !ios);
+  document.getElementById("install-android").classList.toggle("hidden", !android);
+}
+if (deviceId) lockInstall();
 function clearIdentity() {
   localStorage.removeItem("quiz_device_id");
   deviceId = null; me = null; currentView = null; mounted = { key: null, update: null };
@@ -110,8 +133,10 @@ function setOffline(off) {
 }
 socket.on("disconnect", () => setOffline(true));
 socket.on("connect_error", () => setOffline(true));
+fetch("/api/brand").then((r) => r.json()).then((b) => QuizFX.setBrand(b)).catch(() => {}); // logo en aftelklok al op het aanmeldscherm
 socket.on("connect", () => {
   setOffline(false);
+  QuizFX.syncClock(socket);
   if (deviceId) { socket.emit("hello", { deviceId }); requestWakeLock(); }
   else showJoin();
 });
@@ -163,7 +188,7 @@ function resumePending(state) {
   keep.forEach((p) => sendPending(p, () => {}));
   if (dropped) showToast("Je vorige antwoord kwam te laat: die vraag was al gesloten.", 5000, "#b45309");
 }
-socket.on("kicked", () => { clearIdentity(); showJoin("Je team is verwijderd door de quizmaster."); });
+socket.on("kicked", (data) => { clearIdentity(); showJoin(data && data.person ? "De quizmaster heeft je aanmelding verwijderd. Meld je zo nodig opnieuw aan." : "Je team is verwijderd door de quizmaster."); });
 socket.on("quiz_reset", () => { clearIdentity(); showJoin(); });
 
 // ---------------- Team maken / aansluiten ----------------
@@ -173,12 +198,63 @@ function showJoinError(message) {
   $("join-error").textContent = message || "";
   $("join-error").classList.toggle("hidden", !message);
 }
+// Persoonlijk aanmelden of zelf teams maken? De server zegt welke van de twee (en welke families er zijn).
+let personalJoin = false, chosenFamily = null, familyNames = [];
+// Eén vaste code per aanmeldpoging: tikt iemand twee keer (trage wifi), dan herkent de quiz dat het dezelfde telefoon is
+const signupToken = Math.random().toString(36).slice(2) + Date.now().toString(36);
+function renderFamilies() {
+  const box = $("su-families");
+  $("su-family-free").classList.toggle("hidden", familyNames.length > 0);
+  box.replaceChildren(...familyNames.map((f) => {
+    const b = el("button", "btn-option", f);
+    b.type = "button";
+    b.style.cssText = "width:auto; flex:1 1 40%; margin:0; text-align:center;" + (chosenFamily === f ? " background:#2563eb; color:#fff; font-weight:bold; border:2px solid #fff;" : "");
+    b.onclick = () => { chosenFamily = f; renderFamilies(); showJoinError(""); };
+    return b;
+  }));
+}
+function applyJoinMode(info) {
+  personalJoin = !!(info && info.personal);
+  $("signup-personal").classList.toggle("hidden", !personalJoin);
+  $("signup-teams").classList.toggle("hidden", personalJoin);
+  if (!personalJoin) return;
+  clearInterval(pollHandle); pollHandle = null;
+  const names = (info.families || []).map(String);
+  if (JSON.stringify(names) !== JSON.stringify(familyNames)) { familyNames = names; if (!names.includes(chosenFamily)) chosenFamily = null; renderFamilies(); }
+  if (info.ended) showJoinError("De quiz is al afgelopen.");
+}
 function showJoin(message) {
   showScreen("join-screen");
+  showInstallTip();
   updateSteps();
   selectTab(!$("join-existing").classList.contains("hidden") ? "join" : "new");
   showJoinError(message);
+  socket.emit("signup_info", null, (info) => { applyJoinMode(info); if (message) showJoinError(message); });
 }
+function signUp() {
+  const label = $("su-name").value.trim();
+  const family = familyNames.length ? chosenFamily : $("su-family-free").value.trim();
+  const ageText = $("su-age").value.trim();
+  if (!label) return showJoinError("Vul je naam in.");
+  if (!family) return showJoinError(familyNames.length ? "Tik je familie aan." : "Vul je familienaam in.");
+  if (!/^\d{1,3}$/.test(ageText)) return showJoinError("Vul je leeftijd in (alleen een getal).");
+  $("btn-signup").disabled = true;
+  let answered = false;
+  setTimeout(() => { if (!answered) { $("btn-signup").disabled = false; showJoinError("Geen antwoord van de quiz. Controleer de wifi en tik nog een keer op Aanmelden."); } }, 6000);
+  const data = { label, family, age: Number(ageText), token: signupToken };
+  socket.emit("signup", data, (res) => {
+    answered = true; $("btn-signup").disabled = false;
+    // Naam bestaat al, maar die telefoon is niet verbonden: dezelfde persoon op een andere telefoon? Dan de plek overnemen.
+    if (res && !res.ok && res.reclaim) {
+      if (confirm(res.message + "\n\nOK = ja, dat ben ik.  Annuleren = nee, ik kies een andere naam.")) socket.emit("signup", { ...data, reclaim: true }, onJoined);
+      else showJoinError("Kies een andere naam (bijv. met een letter erachter).");
+      return;
+    }
+    onJoined(res);
+  });
+}
+$("btn-signup").addEventListener("click", signUp);
+$("su-age").addEventListener("keydown", (e) => { if (e.key === "Enter") signUp(); });
 const myName = () => $("my-name").value.trim();
 function updateSteps() { $("join-steps").classList.toggle("hidden", !myName()); }
 $("my-name").addEventListener("input", () => {
@@ -283,6 +359,48 @@ function photoPicker(onFile, labels) {
   return { row, cam, setBusy(b) { cam.disabled = b; } };
 }
 
+// ---------------- Teamnaam en kleur kiezen (persoonlijk aanmelden: de quizmaster heeft de teams gemaakt) ----------------
+let setupKey = null;
+function renderTeamSetup() {
+  const box = $("team-setup");
+  const st = me.setup;
+  box.classList.toggle("hidden", !st && !(me.personal && me.autoName));
+  if (!st) {
+    setupKey = null;
+    if (me.personal && me.autoName) box.replaceChildren(el("p", "note", `⏳ ${me.baseLabel} bedenkt met jullie een teamnaam en vult hem in op de basistelefoon.`));
+    return;
+  }
+  const key = [me.teamId, me.teamName, st.needsName, me.color, st.colors.map((c) => (c.free ? 1 : 0)).join("")].join("|");
+  if (key === setupKey) return;
+  const typing = document.activeElement && document.activeElement.id === "setup-name";
+  const typed = typing ? document.activeElement.value : null;
+  setupKey = key;
+  const title = el("b", "", st.needsName ? QuizFX.t("aanmeld.teamnaam") : "Teamnaam en kleur (aanpassen kan tot de start)");
+  const input = el("input"); input.type = "text"; input.id = "setup-name"; input.maxLength = 24; input.placeholder = "Bijv. Balloerbatser of Zeegsterzuuperd"; input.autocomplete = "off";
+  input.value = typed !== null ? typed : st.needsName ? "" : me.teamName;
+  input.style.margin = "8px 0";
+  const colors = el("div"); colors.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin:6px 0 10px;";
+  st.colors.forEach((x) => {
+    const b = el("button"); b.type = "button";
+    b.style.cssText = `width:40px; height:40px; border-radius:50%; padding:0; margin:0; background:${x.c}; border:${x.c === me.color ? "4px solid #fff" : "4px solid transparent"}; opacity:${x.free ? 1 : 0.2};`;
+    b.disabled = !x.free;
+    b.onclick = () => socket.emit("team_setup", { color: x.c }, (res) => { if (res && !res.ok && res.message) msg.textContent = res.message; });
+    colors.append(b);
+  });
+  const msg = el("p", "note"); msg.style.margin = "6px 0 0";
+  const save = el("button", "btn-primary", st.needsName ? "✔ Dit is onze teamnaam" : "Teamnaam wijzigen");
+  save.style.margin = "0";
+  const send = () => {
+    const name = input.value.trim();
+    if (!name) { msg.textContent = "Vul een teamnaam in."; return; }
+    socket.emit("team_setup", { name }, (res) => { msg.textContent = res && res.ok ? "✅ Opgeslagen." : (res && res.message) || "Dat lukte niet."; if (res && res.ok) input.blur(); });
+  };
+  save.onclick = send;
+  input.onkeydown = (e) => { if (e.key === "Enter") send(); };
+  box.replaceChildren(title, input, colors, save, msg);
+  if (typing) input.focus();
+}
+
 // ---------------- Teamkaart ----------------
 function renderTeamCard() {
   $("team-title").textContent = me.teamName;
@@ -296,6 +414,7 @@ function renderTeamCard() {
   $("team-photo-actions").classList.add("hidden"); // teamfoto alleen op het teamfotomoment (na de testvragen)
   panelPicker.cam.textContent = me.photo ? "📸 Nieuwe teamfoto" : "📸 Teamfoto maken";
   $("btn-team-photo-remove").classList.toggle("hidden", !me.photo);
+  renderTeamSetup();
   const pending = !!me.proposal;
   $("role-text").textContent = me.role === "base"
     ? "Dit is jullie basistelefoon: hiermee dien je de antwoorden in."
@@ -336,7 +455,7 @@ function renderTeamCard() {
     li.append(right);
     list.appendChild(li);
   });
-  $("member-actions").classList.toggle("hidden", me.role === "base");
+  $("member-actions").classList.toggle("hidden", me.role === "base" || !!me.personal); // persoonlijk aanmelden: de quizmaster verplaatst
   renderProposal();
 }
 function renderProposal() {
@@ -426,8 +545,25 @@ function submitBtn(label, onclick) {
 }
 
 const BUILD = {
+  // Aangemeld, wachten tot de quizmaster de teams maakt (of, na de start, je indeelt)
+  signup_wait(box, v) {
+    const head = el("div"); head.dataset.brand = "tel";
+    const ps = el("div", "preshow-tel hidden"); ps.dataset.preshow = "";
+    box.append(head, ps, bigEl("✅"), el("h2", "", QuizFX.t("aanmeld.wacht.titel", { naam: me ? me.label : "" })));
+    const who = el("p", "note", `Familie ${me.family || "–"}${me.age != null ? ` · ${me.age} jaar` : ""}`);
+    box.append(who, el("p", "note", v.started ? "De quiz is al begonnen. De quizmaster zet je zo in een team." : QuizFX.t("aanmeld.wacht.tekst")));
+    box.append(el("p", "note", "Klopt er iets niet? Zeg het tegen de quizmaster. Laat dit scherm open."));
+    QuizFX.renderBrand(box);
+    QuizFX.tickPreshow();
+    return noop;
+  },
   lobby(box) {
-    box.append(el("h2", "", QuizFX.t("tel.wachten.titel")), el("p", "note", QuizFX.t("tel.wachten.tekst")));
+    const head = el("div"); head.dataset.brand = "tel";
+    const ps = el("div", "preshow-tel hidden"); ps.dataset.preshow = "";
+    const live = el("div", "ds-live"); live.append(el("i"), document.createTextNode(" Wachten op de quizmaster"));
+    box.append(head, ps, el("h2", "", QuizFX.t("tel.wachten.titel")), el("p", "note", QuizFX.t("tel.wachten.tekst")), live);
+    QuizFX.renderBrand(box);
+    QuizFX.tickPreshow();
     // Kort: waar de instellingen zitten
     box.append(el("p", "note", "⚙️ Rechtsboven: tekst groter, contrast, trillen en je naam."));
   },
@@ -446,6 +582,25 @@ const BUILD = {
     const e = el("div", "", "🏁 🏆"); e.style.fontSize = "54px";
     d.append(e, el("h2", "", QuizFX.t("tel.einde.titel")), el("p", "note", QuizFX.t("tel.einde.tekst")));
     box.append(d);
+    // Jouw prijsjes als badges (zodra de quizmaster de prijsjes toont)
+    if (v.badges && v.badges.length) {
+      const bx = el("div"); bx.style.cssText = "margin:12px 0;";
+      bx.append(el("h3", "", "🏅 Jouw prijsjes"));
+      v.badges.forEach((b, i) => {
+        const c = el("div"); c.style.cssText = `background:#1e293b; border:2px solid #fbbf24; border-radius:14px; padding:10px 12px; margin:8px 0; display:flex; align-items:center; gap:12px; text-align:left; animation: badgePop 0.7s cubic-bezier(.2,1.6,.4,1) ${0.2 + i * 0.3}s both;`;
+        const em = el("div", "", b.emoji); em.style.fontSize = "38px";
+        const tx = el("div"); tx.append(el("div", "", b.title), el("div", "note", b.detail || "")); tx.firstChild.style.cssText = "font-weight:bold; color:#fbbf24;";
+        c.append(em, tx); bx.append(c);
+      });
+      box.append(bx);
+      try { QuizFX.ding(); } catch (e) { /* geen geluid */ }
+    }
+    // Je eigen overwinningskaart: strak, en bedoeld om direct een screenshot van te maken voor de familie-app
+    if (v.card) {
+      const img = el("img"); img.alt = "Overwinningskaart"; img.style.cssText = "display:block; width:100%; max-width:420px; margin:14px auto; border-radius:18px; box-shadow:0 8px 30px rgba(0,0,0,0.5);";
+      box.append(img, el("p", "note", "📸 Maak een screenshot van je kaart, of houd hem ingedrukt om hem te bewaren of te delen."));
+      QuizFX.trophyCard(v.card).then((b) => { if (b) img.src = URL.createObjectURL(b); });
+    }
     // Uitslag als plaatje delen (pas na de ontknoping, anders zou het de spanning verklappen).
     // Het plaatje wordt vooraf gemaakt: de iPhone staat delen alleen toe meteen na de tik, niet na lang rekenen.
     const share = el("button", "btn-primary", "📤 Deel de uitslag");
@@ -457,7 +612,7 @@ const BUILD = {
     if (shareCache.key !== key) {
       shareCache.key = key; shareCache.blob = null;
       const date = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
-      shareCache.ready = QuizFX.resultImage({ title: "Familiequiz", subtitle: date, rows }).then((b) => { if (shareCache.key === key) shareCache.blob = b; return b; }).catch(() => null);
+      shareCache.ready = QuizFX.resultImage({ title: QuizFX.brandName(), subtitle: date, rows }).then((b) => { if (shareCache.key === key) shareCache.blob = b; return b; }).catch(() => null);
     }
     share.onclick = async () => {
       const blob = shareCache.blob || await shareCache.ready;
@@ -465,7 +620,7 @@ const BUILD = {
       const file = new File([blob], fname, { type: "image/png" });
       try {
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: "Familiequiz", text: "De uitslag van de familiequiz! 🏆" });
+          await navigator.share({ files: [file], title: QuizFX.brandName(), text: `De uitslag van de ${QuizFX.brandName()}! 🏆` });
           msg.textContent = "✔ Gedeeld!";
           return;
         }
@@ -493,9 +648,11 @@ const BUILD = {
     const opts = el("div");
     box.append(opts);
     const canAnswer = v.isBase && v.status === "open" && !v.answered;
+    if (v.status === "open" && !v.answered) opts.className = "ds-stagger"; // antwoorden één voor één erbij
     let selected = v.answered ? v.given : null;
     const buttons = v.options.map((opt, i) => {
       const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
+      b.style.setProperty("--i", i);
       b.disabled = !canAnswer;
       b.onclick = () => { selected = i; paint(); };
       opts.append(b);
@@ -518,7 +675,6 @@ const BUILD = {
     paint();
     box.append(send, err);
     if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is..."));
-    else if (v.status === "showing") { /* antwoorden in beeld, zo meteen kiezen */ }
     else if (v.status !== "open") box.append(el("p", "note", "De vraag is gesloten."));
     else if (!v.isBase) box.append(el("p", "note", "Overleg met je team. De basistelefoon dient het antwoord in."));
   },
@@ -798,6 +954,7 @@ const BUILD = {
 
   // ----- 30 Seconds -----
   thirty(box, v) {
+    if (v.status === "select") return BUILD.thirtySelect(box, v);
     box.append(el("h3", "", `⏱️ 30 Seconds · beurt ${v.turn} van ${v.total}`));
     if (v.role === "explainer") {
       if (v.words) {
@@ -811,6 +968,55 @@ const BUILD = {
     } else {
       box.append(bigEl("🤫"), el("p", "note", v.team ? `Team ${v.team} is aan de beurt (${v.explainer}). Niet meeroepen!` : "Wachten…"));
     }
+    return noop;
+  },
+
+  // ----- 30 Seconds: de basistelefoon tikt aan wie er gaan uitleggen -----
+  // Is het team kleiner dan het aantal beurten, dan krijgt iedereen één beurt en tik je aan wie nog een keer mag.
+  thirtySelect(box, v) {
+    const n = v.per, small = v.members.length < n;
+    box.append(el("h3", "", "⏱️ 30 Seconds: wie legt er uit?"));
+    const nameOf = (id) => (v.members.find((m) => m.memberId === id) || {}).label || "?";
+    if (v.picked) {
+      box.append(bigEl("✅"), el("p", "bigtxt", v.picked.map(nameOf).join(" · ")),
+        el("p", "note", n === 1 ? "Dit is jullie verteller. Wacht op de andere teams." : "Dit zijn jullie vertellers, in deze volgorde. Wacht op de andere teams."));
+      if (v.isBase) { const again = el("button", "btn-option", "✏️ Toch anders kiezen"); again.style.textAlign = "center"; again.onclick = () => socket.emit("thirty_pick", { stepId: v.id, picks: null }, () => {}); box.append(again); }
+      return noop;
+    }
+    if (!v.isBase) {
+      box.append(bigEl("🗣️"), el("p", "note", `Overleg met je team: ${n === 1 ? "wie legt er uit" : `welke ${n} teamleden leggen er uit`}? De basistelefoon tikt de namen aan.`));
+      return noop;
+    }
+    box.append(el("p", "note", small
+      ? `Jullie hebben ${n} beurten en ${v.members.length} ${v.members.length === 1 ? "speler" : "spelers"}: iedereen legt uit, en tik aan wie nog een keer mag. Tik in de volgorde waarin jullie aan de beurt komen.`
+      : `Tik ${n === 1 ? "één naam" : `${n} namen`} aan, in de volgorde waarin jullie aan de beurt komen.`));
+    let picks = [];
+    const list = el("div");
+    const msg = el("p", "note");
+    const send = el("button", "btn-primary", "");
+    const count = (id) => picks.filter((x) => x === id).length;
+    const draw = () => {
+      list.replaceChildren(...v.members.map((m) => {
+        const c = count(m.memberId);
+        const order = picks.map((x, i) => (x === m.memberId ? i + 1 : 0)).filter(Boolean);
+        const b = el("button", "btn-option", (c ? `${order.join(" en ")}.  ` : "") + m.label + (c > 1 ? `  (${c}×)` : ""));
+        b.style.cssText = c ? "background:#16a34a; color:#fff; font-weight:bold;" : "";
+        b.onclick = () => {
+          // nog een tik = nog een beurt (als dat mag), anders weer weghalen
+          if (c < v.maxEach && picks.length < n) picks.push(m.memberId);
+          else picks = picks.filter((x) => x !== m.memberId);
+          draw();
+        };
+        return b;
+      }));
+      const left = n - picks.length;
+      const missing = small ? v.members.filter((m) => count(m.memberId) < Math.max(1, v.minEach)).length : 0;
+      send.disabled = left !== 0 || missing > 0;
+      send.textContent = left > 0 ? `Nog ${left} ${left === 1 ? "beurt" : "beurten"} te kiezen` : missing ? "Iedereen moet minstens één keer" : "✔ Bevestig de vertellers";
+    };
+    send.onclick = () => socket.emit("thirty_pick", { stepId: v.id, picks }, (res) => { if (!res || !res.ok) msg.textContent = (res && res.message) || "Dat lukte niet. Probeer het opnieuw."; });
+    draw();
+    box.append(list, send, msg);
     return noop;
   },
 
@@ -976,6 +1182,7 @@ function flash(times) {
 const buzz = (pattern) => {
   if (!prefs.vibrate) return;
   const p = Array.isArray(pattern) ? pattern : [pattern];
+  try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) { /* geen trilmotor of niet toegestaan (iPhone) */ }
   flash(Math.ceil(p.length / 2));
 };
 function submittedNow(v) {
@@ -1028,7 +1235,7 @@ function viewKey(v) {
     case "draw": return [v.id, v.status, v.role, v.turn, v.answered].join("|");
     case "logo": return [v.id, v.status, v.answered, v.isBase].join("|");
     case "demo_draw": case "demo_thirty": return [v.type, v.id, v.status].join("|");
-    case "thirty": return [v.id, v.status, v.role, v.turn, v.words ? 1 : 0].join("|");
+    case "thirty": return [v.id, v.status, v.role, v.turn, v.words ? 1 : 0, v.per || 0, (v.picked || []).join(","), (v.members || []).map((m) => m.memberId).join(",")].join("|");
     case "joker": return [v.id, v.isBase].join("|");
     case "teamphoto": return [v.id, v.isBase, v.photo, v.skipped].join("|");
     case "final": return [v.id, v.status, v.answered, v.wager !== null, v.isBase, v.result ? 1 : 0].join("|");
@@ -1044,7 +1251,11 @@ function mount(v) {
   if (mounted.key !== key) {
     window.__drawHandler = null;
     box.replaceChildren();
-    mounted = { key, update: (BUILD[v.type] || BUILD.lobby)(box, v) || noop };
+    // nieuw scherm (andere vraag of ronde): zacht invagen
+    const screen = v.type + "|" + (v.id || "");
+    if (mounted.screen !== screen) { box.classList.remove("ds-in"); void box.offsetWidth; box.classList.add("ds-in"); }
+    mounted.screen = screen;
+    mounted = { key, screen, update: (BUILD[v.type] || BUILD.lobby)(box, v) || noop };
   }
   mounted.update(v);
 }
@@ -1086,7 +1297,21 @@ socket.on("state_update", (state) => {
   lastState = state;
   QuizFX.applyTheme(state.theme);
   QuizFX.setTexts(state.texts);
+  QuizFX.setBrand(state.brand);
   document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = QuizFX.t(e.dataset.t); });
+  if (!me.teamId) {
+    // Persoonlijk aangemeld, nog niet in een team: wachtscherm
+    cheatActive = false;
+    showScreen("game-screen");
+    $("round-badge").textContent = QuizFX.brandName();
+    $("team-badge").textContent = me.label;
+    $("team-badge").style.background = "#475569";
+    document.body.classList.remove("teamed");
+    $("team-panel").classList.add("hidden");
+    $("submitted-flag").classList.add("hidden");
+    mount(state.view);
+    return;
+  }
   renderTeamCard();
   const v = state.view;
   cheatActive = !!(v && v.cheat) && !state.paused && state.phase === "PLAY";
@@ -1098,8 +1323,10 @@ socket.on("state_update", (state) => {
     badge.style.background = info.secs <= 5 && info.running ? "#dc2626" : "#475569";
   });
 
+  QuizFX.setPauseTimer(state.pauseTimer);
   if (state.paused && state.phase === "PLAY") {
     showScreen("pause-screen");
+    renderDilemmaPhone(state.dilemma);
     if (!prevPaused) $("pause-funfact").textContent = `"${funFacts[Math.floor(Math.random() * funFacts.length)]}"`;
     prevPaused = true;
     return;
@@ -1122,7 +1349,7 @@ socket.on("state_update", (state) => {
   }
 
   showScreen("game-screen");
-  $("round-badge").textContent = state.roundName || "Familiequiz";
+  $("round-badge").textContent = state.roundName || QuizFX.brandName();
   $("team-badge").textContent = me.teamName;
   $("team-badge").style.background = me.color || "#2563eb";
   // het scherm kleurt subtiel mee in de teamkleur
@@ -1131,3 +1358,19 @@ socket.on("state_update", (state) => {
   $("team-panel").classList.toggle("hidden", !["lobby", "info", "roundresult"].includes(v.type));
   mount(v);
 });
+
+// ---------------- Pauzedilemma: A of B kiezen (geen punten); na het stemmen zie je de verdeling ----------------
+function renderDilemmaPhone(d) {
+  $("pause-dilemma").classList.toggle("hidden", !d);
+  if (!d) return;
+  $("dil-q").textContent = d.text;
+  const total = (d.counts && (d.counts.a + d.counts.b)) || 0;
+  for (const k of ["a", "b"]) {
+    const b = $("dil-btn-" + k);
+    const n = d.counts ? d.counts[k] : null;
+    b.textContent = `${k.toUpperCase()}: ${k === "a" ? d.a : d.b}${n !== null && total ? `  (${Math.round(n / total * 100)}%)` : ""}`;
+    b.style.outline = d.mine === k ? "3px solid #fbbf24" : "none";
+    b.onclick = () => socket.emit("vote_dilemma", { choice: k }, () => {});
+  }
+  $("dil-res").textContent = d.mine ? "Jouw keuze staat erin. Je kunt nog van mening veranderen." : "Tik op A of B: iedereen kiest, geen punten!";
+}

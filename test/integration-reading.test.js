@@ -6,11 +6,11 @@ const { startServer, phone } = require('../test-helpers/harness');
 const app = startServer({});
 const { T, host, remote, sleep, last } = app;
 
-test('leestijd: eerst de vraag, dan de antwoorden, dan pas kiezen', async () => {
+test('leestijd: eerst alleen de vraag, daarna staan de antwoorden er en kan er meteen geantwoord worden', async () => {
   host.send('set_max_teams', { n: 3 });
-  host.send('update_settings', { readSeconds: 1, previewSeconds: 1 });
-  assert.equal(remote().settings.readSeconds, 1);
-  assert.equal(remote().settings.previewSeconds, 1);
+  assert.equal(remote().settings.readSeconds, 0, 'standaard komen de antwoorden direct achter de vraag aan');
+  assert.equal(remote().settings.previewSeconds, undefined, 'de tussenfase bestaat niet meer');
+  host.send('update_settings', { readSeconds: 1 }); // alleen om de test sneller te maken
   host.send('host_main');
   const a = await phone(app, 'a', { team: 'Alfa', label: 'Anna' });
   host.send('host_main'); // start
@@ -28,11 +28,8 @@ test('leestijd: eerst de vraag, dan de antwoorden, dan pas kiezen', async () => 
   assert.equal(T.ss(mc).status, 'reading', 'tijdens de pauze gaat de vraag niet open');
   host.send('toggle_pause');
   await sleep(1300);
-  assert.equal(T.ss(mc).status, 'showing', 'na 1 s: de antwoorden in beeld');
-  assert.equal(last('a').view.status, 'showing');
-  assert.equal((await a.call('submit_answer', { stepId: mc.id, value: 0 })).ok, false, 'nog niet kiezen');
-  await sleep(1300);
-  assert.equal(T.ss(mc).status, 'open', 'daarna gaat de vraag vanzelf open');
+  assert.equal(T.ss(mc).status, 'open', 'na de leestijd staan de antwoorden er en kan er meteen geantwoord worden');
+  assert.equal(last('a').view.status, 'open');
   assert.equal((await a.call('submit_answer', { stepId: mc.id, value: 0 })).ok, true);
 
   // terug naar deze vraag: geen nieuwe leestijd

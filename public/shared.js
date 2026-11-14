@@ -188,6 +188,34 @@ window.QuizFX = (function () {
     };
     requestAnimationFrame(tick);
   }
+  // Kleine confetti-uitbarsting vanuit het midden van een element (bijv. het goede antwoord). Alleen CSS-animaties
+  // via de Web Animations API; ruimt zichzelf na 2 seconden op.
+  function sparkBurst(target, pieces) {
+    if (!target || !target.getBoundingClientRect || !document.body.animate) return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = target.getBoundingClientRect();
+    const cs = getComputedStyle(document.body);
+    const cols = ["--primary", "--success", "--primary-glow", "--fg", "--accent"].map((v) => cs.getPropertyValue(v).trim() || "#fbbf24");
+    const layer = document.createElement("div");
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.cssText = `position:fixed;left:${r.left + r.width / 2}px;top:${r.top + r.height / 2}px;width:0;height:0;z-index:96;pointer-events:none;`;
+    const n = pieces || 34, scale = Math.max(1, r.width / 400);
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement("i");
+      const w = (6 + (i % 4) * 2) * scale;
+      p.style.cssText = `position:absolute;left:0;top:0;width:${w}px;height:${w * 0.45}px;border-radius:2px;background:${cols[i % cols.length]};`;
+      const a = (i / n) * Math.PI * 2 + (i % 3) * 0.2, d = (120 + ((i * 37) % 140)) * scale;
+      const x = Math.cos(a) * d, y = Math.sin(a) * d * 0.7 - 40 * scale;
+      p.animate([
+        { transform: "translate(0,0) rotate(0) scale(0.6)", opacity: 1 },
+        { transform: `translate(${x}px,${y}px) rotate(${(i % 2 ? 1 : -1) * 270}deg) scale(1)`, opacity: 1, offset: 0.45 },
+        { transform: `translate(${x}px,${y + 140 * scale}px) rotate(${(i % 2 ? 1 : -1) * 540}deg) scale(1)`, opacity: 0 }
+      ], { duration: 1800, easing: "cubic-bezier(0.15, 0.7, 0.3, 1)", fill: "forwards" });
+      layer.appendChild(p);
+    }
+    document.body.appendChild(layer);
+    setTimeout(() => layer.remove(), 2000);
+  }
   function launchConfetti() {
     if (typeof confetti !== "function") return simpleConfetti();
     const end = Date.now() + 7000;
@@ -206,7 +234,7 @@ window.QuizFX = (function () {
     const end = Date.now() + info.remainingMs;
     const tickFn = () => {
       const left = info.running ? Math.max(0, end - Date.now()) : info.remainingMs;
-      onTick({ secs: Math.ceil(left / 1000), fraction: Math.min(1, left / total), running: info.running });
+      onTick({ secs: Math.ceil(left / 1000), fraction: Math.min(1, left / total), running: info.running, leftMs: left, totalMs: total });
       if (left <= 0 && clocks[key]) { clearInterval(clocks[key]); delete clocks[key]; }
     };
     tickFn();
@@ -268,7 +296,7 @@ window.QuizFX = (function () {
       wrap.className = "blurbox";
       wrap.dataset.src = (media && media.src) || "";
       // Het kader krijgt de verhouding van de foto zelf (staand, liggend of vierkant), binnen de ruimte op het scherm
-      wrap.style.cssText = "width:min(60vw,900px); height:min(34vh,480px); margin:0 auto;";
+      wrap.style.cssText = "width:min(80vw,1100px,calc(52vh * 1.6)); height:52vh; margin:0 auto;"; // zelfde hoogte als straks met foto
       const img = document.createElement("img");
       img.onload = () => {
         const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 16 / 9;
@@ -293,22 +321,45 @@ window.QuizFX = (function () {
     return () => { h += 0x6d2b79f5; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   }
   function renderLogo(box, media, hide, revealed, label) {
-    box.replaceChildren();
-    const wrap = document.createElement("div");
-    wrap.className = "blurbox logobox";
-    wrap.style.cssText = "width:min(46vw,640px); height:min(36vh,420px); margin:0 auto; background:#fff;";
-    box.appendChild(wrap);
-    const canvas = document.createElement("canvas");
-    wrap.appendChild(canvas);
+    // Zonder knipperen: hetzelfde logo niet opnieuw tekenen, en bij de onthulling het oude beeld laten staan
+    // tot het nieuwe klaar is. Alleen bij een ánder logo wordt het vak eerst leeggemaakt (anders zie je even
+    // het vorige, al onthulde logo).
+    const src = media ? media.src : "";
+    const sig = `${src}|${hide}|${revealed ? 1 : 0}`;
+    let wrap = box.querySelector(".logobox");
+    if (wrap && wrap.dataset.sig === sig) return;
+    if (!wrap || wrap.dataset.src !== src) {
+      box.replaceChildren();
+      wrap = document.createElement("div");
+      wrap.className = "blurbox logobox";
+      // Tot het logo geladen is een neutraal kader; daarna krijgt het kader de verhouding van het logo zelf (zoals bij foto blur)
+      wrap.style.cssText = "width:min(46vw,640px); height:min(36vh,420px); margin:0 auto; background:#fff;";
+      wrap.dataset.src = src;
+      box.appendChild(wrap);
+    }
+    wrap.dataset.sig = sig;
     const img = new Image();
     img.onload = () => {
-      const W = 900, H = Math.round(900 * (img.height / img.width)) || 600;
+      if (wrap.dataset.sig !== sig) return; // intussen alweer iets anders gevraagd
+      const canvas = document.createElement("canvas");
+      // Het kader volgt de verhouding van het logo (breed, vierkant of hoog), met een smalle witte rand eromheen.
+      // Heel brede of heel hoge logo's worden begrensd (4:1 en 1:1,6), zodat het kader nooit een streepje wordt.
+      const PAD = 36, W = 900;
+      const natural = img.width && img.height ? img.width / img.height : 1.5;
+      const inner = Math.min(4, Math.max(0.625, natural));
+      const H = Math.round((W - 2 * PAD) / inner) + 2 * PAD;
       canvas.width = W; canvas.height = H;
       const c = canvas.getContext("2d");
       c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
-      c.drawImage(img, 0, 0, W, H);
+      // onvervormd in het midden (bij een begrensde verhouding blijft er boven/onder of links/rechts wit over)
+      const bw = W - 2 * PAD, bh = H - 2 * PAD, sc = Math.min(bw / (img.width || bw), bh / (img.height || bh));
+      const dw = (img.width || bw) * sc, dh = (img.height || bh) * sc;
+      c.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      const ratio = W / H;
+      wrap.style.cssText = `aspect-ratio:${ratio.toFixed(4)}; height:auto; width:min(72vw, calc(44vh * ${ratio.toFixed(4)})); margin:0 auto; background:#fff;`;
       if (!revealed) {
-        const cols = 6, rows = Math.max(3, Math.round(6 * H / W));
+        // ongeveer vierkante tegels, hoe breed of hoog het logo ook is
+        const rows = Math.min(8, Math.max(3, Math.round(Math.sqrt(30 / ratio)))), cols = Math.min(12, Math.max(3, Math.round(rows * ratio)));
         const rnd = seeded(media.src);
         const tiles = [];
         for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) tiles.push([q, r]);
@@ -317,9 +368,10 @@ window.QuizFX = (function () {
         c.fillStyle = "#e2e8f0";
         tiles.slice(0, n).forEach(([q, r]) => c.fillRect(Math.floor(q * W / cols), Math.floor(r * H / rows), Math.ceil(W / cols), Math.ceil(H / rows)));
       }
+      wrap.replaceChildren(canvas); // pas nu wisselen: geen leeg moment
     };
-    img.onerror = () => { wrap.replaceChildren(placeholder("🏷️", label || "Logo ontbreekt")); };
-    img.src = media ? media.src : "";
+    img.onerror = () => { if (wrap.dataset.sig === sig) wrap.replaceChildren(placeholder("🏷️", label || "Logo ontbreekt")); };
+    img.src = src;
   }
 
   // Tekening (lijst streken met punten 0..1000) op een canvas schilderen
@@ -404,7 +456,7 @@ window.QuizFX = (function () {
   function showWinners(scores, banner, winnerText) {
     const winners = scores.filter((s) => s.rank === 1).map((s) => s.name);
     if (!winners.length) return;
-    winnerText.textContent = TEXTS[winners.length > 1 ? "einde.winnaars" : "einde.winnaar"] ? t(winners.length > 1 ? "einde.winnaars" : "einde.winnaar", { winnaar: winners.join(" & ") }) : `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE FAMILIEQUIZ! 🏆`;
+    winnerText.textContent = TEXTS[winners.length > 1 ? "einde.winnaars" : "einde.winnaar"] ? t(winners.length > 1 ? "einde.winnaars" : "einde.winnaar", { winnaar: winners.join(" & ") }) : `🏆 ${winners.join(" & ")} ${winners.length > 1 ? "WINNEN" : "WINT"} DE ${brandName().toLocaleUpperCase("nl-NL")}! 🏆`;
     banner.classList.remove("hidden");
   }
   // Onthult de ranglijst van laatste naar eerste plaats (of meteen, met instant)
@@ -437,8 +489,21 @@ window.QuizFX = (function () {
     return () => timers.forEach(clearTimeout);
   }
 
-  // Thema: kleuren via themes.css, plus vallende sneeuw of fonkels
-  const FX = { winter: ["❄", "❅", "❆"], kerst: ["❄", "❅", "✨"], oudennieuw: ["✨", "⭐", "🎆"], halloween: ["🦇", "🍂"], zomer: [] };
+  // Thema: kleuren via themes.css en design.css, plus een laag met deeltjes:
+  //   fall = zachte vallende bolletjes (of tekens), twinkle = fonkels die aan- en uitgaan,
+  //   beams = zwaaiende lichtbundels (tv-show, disco), chips = gekleurde confettisnippers.
+  const FX = {
+    standaard: { mode: "fall", dots: true, n: 20 },
+    winter: { mode: "fall", chars: ["❄", "❅", "❆"], dots: true },
+    kerst: { mode: "fall", chars: ["❄", "❅", "✨"], dots: true },
+    oudennieuw: { mode: "twinkle", chars: ["✨", "⭐"], dots: true },
+    zomer: { mode: "twinkle", dots: true, n: 24 },
+    halloween: { mode: "fall", chars: ["🦇", "🍂"] },
+    tvshow: { mode: "twinkle", dots: true, beams: ["#3b8cf2", "#e8318f"], n: 24 },
+    feest: { mode: "fall", chips: ["#ffcf3f", "#ff4f9a", "#38e1ff", "#2ee6a6", "#a78bfa"] },
+    sinterklaas: { mode: "fall", dots: true, chars: ["🍪"], n: 28 },
+    disco: { mode: "twinkle", dots: true, beams: ["#ff4fd8", "#22d3ee", "#a855f7"], n: 30 }
+  };
   let currentTheme = null;
   function applyTheme(theme) {
     theme = theme || "standaard";
@@ -446,22 +511,50 @@ window.QuizFX = (function () {
     currentTheme = theme;
     document.body.dataset.theme = theme;
     document.querySelectorAll(".fx-layer").forEach((x) => x.remove());
-    const chars = FX[theme];
-    if (!chars || !chars.length) return;
+    const fx = FX[theme];
+    if (!fx) return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const tv = document.body.classList.contains("tv");
+    if (theme === "standaard" && /bediening/.test(location.pathname)) return; // de bediening blijft rustig
     const layer = document.createElement("div");
-    layer.className = "fx-layer" + (theme === "oudennieuw" ? " twinkle" : "");
-    const n = document.body.classList.contains("tv") ? 36 : 16;
+    layer.className = "fx-layer" + (fx.mode === "twinkle" ? " twinkle" : "");
+    layer.setAttribute("aria-hidden", "true");
+    (tv ? fx.beams || [] : []).forEach((c, i, all) => {
+      const b = document.createElement("i");
+      b.className = "beam";
+      b.style.left = (12 + (i * 70) / Math.max(1, all.length - 1)) + "%";
+      b.style.background = `linear-gradient(to bottom, ${c}55, transparent)`;
+      b.style.animationDelay = (-i * 3.2) + "s";
+      layer.appendChild(b);
+    });
+    const n = tv ? (fx.n || 32) : Math.min(16, fx.n || 16);
     for (let i = 0; i < n; i++) {
       const f = document.createElement("span");
-      f.textContent = chars[i % chars.length];
+      const useChar = fx.chars && (!fx.dots || i % 3 === 0);
+      if (fx.chips) {
+        f.className = "chip";
+        const w = 6 + Math.random() * 8;
+        f.style.width = w + "px"; f.style.height = w * 0.45 + "px";
+        f.style.background = fx.chips[i % fx.chips.length];
+      } else if (useChar) {
+        f.textContent = fx.chars[i % fx.chars.length];
+        f.style.fontSize = (10 + Math.random() * 22) + "px";
+        if (theme === "kerst" || theme === "winter") f.style.color = "#fff";
+      } else {
+        f.className = "dot";
+        const s = 2 + Math.random() * 4;
+        f.style.width = s + "px"; f.style.height = s + "px";
+        f.style.opacity = String(0.35 + Math.random() * 0.5);
+        if (s > 4.5) f.style.filter = "blur(1px)";
+      }
       f.style.left = Math.random() * 100 + "vw";
-      f.style.fontSize = (10 + Math.random() * 22) + "px";
-      if (theme === "oudennieuw") { f.style.top = Math.random() * 100 + "vh"; f.style.animationDuration = (1.5 + Math.random() * 3) + "s"; }
-      else f.style.animationDuration = (8 + Math.random() * 12) + "s";
-      f.style.animationDelay = (-Math.random() * 15) + "s";
-      f.style.color = theme === "kerst" || theme === "winter" ? "#fff" : "";
+      f.style.setProperty("--drift", ((Math.random() - 0.5) * 120).toFixed(0) + "px");
+      if (fx.mode === "twinkle") { f.style.top = Math.random() * 100 + "vh"; f.style.animationDuration = (2.5 + Math.random() * 4) + "s"; }
+      else f.style.animationDuration = (9 + Math.random() * 12) + "s";
+      f.style.animationDelay = (-Math.random() * 20) + "s";
       layer.appendChild(f);
     }
+    if (tv) { const fade = document.createElement("i"); fade.className = "fade"; layer.appendChild(fade); }
     document.body.prepend(layer);
   }
 
@@ -469,6 +562,133 @@ window.QuizFX = (function () {
   let TEXTS = {};
   const setTexts = (t) => { if (t) TEXTS = t; };
   const t = (key, vars) => String(TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] !== undefined ? vars[k] : m));
+
+  // ---------- Naam, logo en aftelklok (pre-show) ----------
+  // De server stuurt { name, subtitle, showName, logo, start: { label, at } }. Elementen met data-brand="groot|klein|tel"
+  // krijgen logo + naam; elementen met data-preshow tonen de aftelklok. Alles werkt met de klok van de quizlaptop.
+  let brand = { name: "Familiequiz", subtitle: "", showName: true, logo: null, start: null };
+  let clockOffset = 0;
+  // Tekst uit de Excel, of de standaardtekst als dit scherm (zoals de bediening) de teksten niet meekrijgt
+  const tDef = (key, vars, def) => (key in TEXTS ? t(key, vars) : def);
+  const baseTitle = (String(document.title || "").split(" - ")[1] || "").trim();
+  function syncClock(sock) {
+    const t0 = Date.now();
+    sock.emit("clock", null, (srv) => { if (typeof srv === "number") { const t1 = Date.now(); clockOffset = srv + (t1 - t0) / 2 - t1; tickPreshow(); } });
+  }
+  function setBrand(b) {
+    if (!b || typeof b !== "object") return;
+    if (b.texts) for (const [k, v] of Object.entries(b.texts)) if (!(k in TEXTS)) TEXTS[k] = v;
+    brand = b;
+    document.title = baseTitle ? `${b.name} - ${baseTitle}` : b.name;
+    const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if (meta) meta.setAttribute("content", b.short || b.name);
+    renderBrand();
+    tickPreshow();
+  }
+  const brandName = () => brand.name || "Familiequiz";
+  const brandLogo = () => brand.logo;
+  // Vult alle [data-brand]-elementen; alleen opnieuw opbouwen als er iets veranderd is. Soorten:
+  //  groot  = alleen het logo (geen logo: de naam)          klein = logo linksboven op de tv (geen logo: de naam)
+  //  lobby  = logo + titel van het aanmeldscherm + ondertitel tel   = logo + naam + ondertitel (telefoon)
+  // Staat quiz.logo.naam op "nee" en is er een logo, dan alleen het logo (de naam zit dan al in het logo).
+  function renderBrand(root) {
+    (root || document).querySelectorAll("[data-brand]").forEach((box) => {
+      const kind = box.dataset.brand;
+      const withText = !brand.logo || ((kind === "lobby" || kind === "tel") && brand.showName);
+      const text = !withText ? "" : kind === "lobby" ? t("lobby.titel") : brandName();
+      const sub = (kind === "lobby" || kind === "tel") && withText ? brand.subtitle || "" : "";
+      const key = JSON.stringify([brand.logo, text, sub]);
+      if (box.dataset.brandKey === key) return;
+      box.dataset.brandKey = key;
+      box.replaceChildren();
+      box.classList.add("brand", "brand-" + kind);
+      if (brand.logo) { const img = document.createElement("img"); img.className = "brand-logo"; img.src = brand.logo; img.alt = brandName(); box.append(img); }
+      if (text) {
+        const txt = document.createElement("div"); txt.className = "brand-text";
+        const n = document.createElement("div"); n.className = "brand-name"; n.textContent = text; txt.append(n);
+        if (sub) { const el = document.createElement("div"); el.className = "brand-sub"; el.textContent = sub; txt.append(el); }
+        box.append(txt);
+      }
+    });
+  }
+  // Aftelklok: meer dan een uur van tevoren "We beginnen om 19:30", het laatste uur een lopende klok, daarna "bijna beginnen"
+  function preshowState() {
+    if (!brand.start || !brand.start.at) return null;
+    const left = brand.start.at - (Date.now() + clockOffset);
+    if (left <= 0) return { label: tDef("aftel.bijna", null, "We gaan bijna beginnen!"), time: "" , done: true };
+    if (left > 3600e3) return { label: tDef("aftel.om", { tijd: brand.start.label }, `We beginnen om ${brand.start.label}`), time: "" };
+    const secs = Math.ceil(left / 1000), mm = Math.floor(secs / 60), ss = secs % 60;
+    return { label: tDef("aftel.over", null, "De quiz begint over"), time: `${mm}:${String(ss).padStart(2, "0")}` };
+  }
+  function tickPreshow() {
+    const st = preshowState();
+    document.querySelectorAll("[data-preshow]").forEach((box) => {
+      box.classList.toggle("hidden", !st);
+      if (!st) return;
+      if (!box.firstChild) { const a = document.createElement("div"); a.className = "ps-label"; const b = document.createElement("div"); b.className = "ps-time"; box.append(a, b); box.classList.add("preshow"); }
+      box.classList.toggle("ps-done", !!st.done);
+      if (box.firstChild.textContent !== st.label) box.firstChild.textContent = st.label;
+      box.lastChild.textContent = st.time;
+      box.lastChild.classList.toggle("hidden", !st.time);
+    });
+  }
+  // Pauzetimer: "We gaan verder om 20:45 · nog 12:34" in elk [data-pausetimer]-element; daarna "We gaan zo weer verder!".
+  // onDone (bijv. een belletje) klinkt één keer, alleen als de timer hier echt is afgelopen (niet bij herladen erna).
+  // Tekst uit de Excel, of de standaardtekst als dit scherm (zoals de bediening) de teksten niet meekrijgt
+  let pauseT = null, pauseRunningFor = null, pauseDoneFor = null, onPauseDone = null;
+  function setPauseTimer(p, onDone) { pauseT = p && p.until ? p : null; if (onDone !== undefined) onPauseDone = onDone; tickPause(); }
+  function pauseState() {
+    if (!pauseT) return null;
+    const left = pauseT.until - (Date.now() + clockOffset);
+    if (left <= 0) return { label: tDef("pauze.timer.voorbij", null, "We gaan zo weer verder!"), time: "", done: true };
+    const secs = Math.ceil(left / 1000), mm = Math.floor(secs / 60), ss = secs % 60;
+    return { label: tDef("pauze.timer", { tijd: pauseT.label }, `We gaan verder om ${pauseT.label}`), time: `${tDef("pauze.timer.nog", null, "nog")} ${mm}:${String(ss).padStart(2, "0")}` };
+  }
+  function tickPause() {
+    const st = pauseState();
+    document.querySelectorAll("[data-pausetimer]").forEach((box) => {
+      box.classList.toggle("hidden", !st);
+      if (!st) return;
+      if (!box.firstChild) { const a = document.createElement("div"); a.className = "ps-label"; const b = document.createElement("div"); b.className = "ps-time"; box.append(a, b); box.classList.add("preshow"); }
+      box.classList.toggle("ps-done", !!st.done);
+      if (box.firstChild.textContent !== st.label) box.firstChild.textContent = st.label;
+      box.lastChild.textContent = st.time;
+      box.lastChild.classList.toggle("hidden", !st.time);
+    });
+    if (!pauseT) return;
+    if (st && !st.done) pauseRunningFor = pauseT.until;
+    else if (st && st.done && pauseRunningFor === pauseT.until && pauseDoneFor !== pauseT.until) { pauseDoneFor = pauseT.until; if (onPauseDone) try { onPauseDone(); } catch (e) { /* geen geluid */ } }
+  }
+  setInterval(() => { tickPreshow(); tickPause(); }, 1000);
+
+  // ---------- Achtergrondmuziek en opening-jingle (bestanden in public/media/muziek/) ----------
+  // Muziek zacht in- en uitfaden; speelt alleen op het toestel waar de quizgeluiden heen gaan (tv of bediening).
+  let bgEl = null, bgWant = false, bgTimer = null;
+  const BG_VOLUME = 0.35;
+  function setBackgroundMusic(src, want) {
+    if (!src) want = false;
+    if (want && (!bgEl || bgEl._src !== src)) {
+      if (bgEl) { try { bgEl.pause(); } catch (e) { /* al gestopt */ } }
+      bgEl = new Audio(src); bgEl.loop = true; bgEl.preload = "auto"; bgEl.volume = 0; bgEl._src = src;
+    }
+    if (!bgEl || want === bgWant && (want ? !bgEl.paused : bgEl.paused)) { bgWant = want; return; }
+    bgWant = want;
+    if (want && bgEl.paused) bgEl.play().catch(() => {}); // lukt pas na één klik/druk op OK: retryMusic() probeert het dan opnieuw
+    clearInterval(bgTimer);
+    bgTimer = setInterval(() => {
+      const target = bgWant ? BG_VOLUME : 0, v = bgEl.volume, step = 0.025;
+      if (Math.abs(v - target) <= step) { bgEl.volume = target; if (!bgWant) bgEl.pause(); clearInterval(bgTimer); return; }
+      bgEl.volume = Math.max(0, Math.min(1, v + (target > v ? step : -step)));
+    }, 60);
+  }
+  function retryMusic() { if (bgWant && bgEl && bgEl.paused) bgEl.play().catch(() => {}); }
+  // Opening: eigen jingle als die er is, anders de ingebouwde fanfare. De achtergrondmuziek gaat even weg.
+  function playOpening(src) {
+    if (bgEl && !bgEl.paused) { bgWant = false; bgEl.volume = 0; bgEl.pause(); }
+    if (!src) { try { drumroll(1.4); setTimeout(() => fanfare(), 1500); } catch (e) { /* geen geluid */ } return; }
+    const a = new Audio(src); a.volume = 1;
+    a.play().catch(() => { try { fanfare(); } catch (e) { /* geen geluid */ } });
+  }
 
   // Scherm wakker houden (tv, bediening en telefoons). Wake Lock werkt alleen via https of localhost; op het
   // lokale wifi-adres (http://192.168...) dus niet. Dan als reserve een onzichtbaar, stil "filmpje" dat de browser
@@ -564,8 +784,12 @@ window.QuizFX = (function () {
   // het geluid hier niet (de tv stuurt het dan door naar de bediening). Ook interne aanroepen gaan via de route.
   let soundRoute = null;
   function setSoundRoute(fn) { soundRoute = typeof fn === "function" ? fn : null; }
+  // Eigen geluidsbestanden (public/media/sounds/<naam>.mp3 enz.) vervangen het zelfgemaakte geluid met dezelfde naam
+  let soundFiles = {};
+  function setSoundFiles(map) { soundFiles = map && typeof map === "object" ? map : {}; }
   const routed = (name, fn) => function (...args) {
     try { if (soundRoute && soundRoute(name, args) === false) return; } catch (e) { /* dan gewoon hier */ }
+    if (soundFiles[name]) { try { const a = new Audio(soundFiles[name]); a.play().catch(() => fn.apply(this, args)); return; } catch (e) { /* terugvallen op het zelfgemaakte geluid */ } }
     return fn.apply(this, args);
   };
   buzzer = routed("buzzer", buzzer); triumph = routed("triumph", triumph); ding = routed("ding", ding);
@@ -574,6 +798,49 @@ window.QuizFX = (function () {
   reveal = routed("reveal", reveal); heartbeat = routed("heartbeat", heartbeat); applause = routed("applause", applause);
   drumroll = routed("drumroll", drumroll); sadTrombone = routed("sadTrombone", sadTrombone); cheer = routed("cheer", cheer);
 
+  // ---- Overwinningskaart: een strakke kaart per team om te screenshotten of te delen (1080×1350) ----
+  async function trophyCard(card) {
+    const W = 1080, H = 1350;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const c = cv.getContext("2d");
+    const accent = /^#[0-9a-f]{6}$/i.test(card.color || "") ? card.color : (card.rank === 1 ? "#fbbf24" : "#38bdf8");
+    const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+    // Letter kleiner maken tot de tekst past. font = "[gewicht] <px>px <familie>", bijv. "bold 88px Poppins".
+    // (Eerder ging dit mis bij een gewicht ervoor: de tekst werd dan in de vorige, veel te grote letter getekend.)
+    const fit = (text, font, maxW) => {
+      const m = /^(.*?)(\d+)px (.*)$/.exec(font);
+      if (!m) { c.font = font; return; }
+      let px = Number(m[2]);
+      do { c.font = `${m[1]}${px}px ${m[3]}`; px -= 2; } while (c.measureText(text).width > maxW && px > 16);
+    };
+    const FAM = "Poppins, system-ui, -apple-system, Segoe UI, sans-serif";
+    let g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#0c1017"); g.addColorStop(1, "#1b1b44"); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    const rg = c.createRadialGradient(W / 2, 520, 40, W / 2, 520, 700); rg.addColorStop(0, rgba(accent, 0.38)); rg.addColorStop(1, "rgba(0,0,0,0)"); c.fillStyle = rg; c.fillRect(0, 0, W, H);
+    c.strokeStyle = rgba(accent, 0.85); c.lineWidth = 8; c.beginPath(); c.roundRect ? c.roundRect(40, 40, W - 80, H - 80, 56) : c.rect(40, 40, W - 80, H - 80); c.stroke();
+    c.textAlign = "center"; c.fillStyle = "#fbbf24";
+    c.font = `bold 60px ${FAM}`; fit(String(card.title || brandName()).toUpperCase(), `bold 60px ${FAM}`, W - 200); c.fillText(String(card.title || brandName()).toUpperCase(), W / 2, 150);
+    c.font = `130px ${FAM}`; c.fillText(card.rank === 1 ? "🏆" : card.rank === 2 ? "🥈" : card.rank === 3 ? "🥉" : "🎖️", W / 2, 300);
+    // teamfoto (rond) of beginletter
+    // Alles past altijd binnen de rand: vaste zones van boven naar beneden, en de regels onderaan delen de ruimte
+    const R = 138, cx = W / 2, cy = 500;
+    let photo = null;
+    if (card.photo) photo = await new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = card.photo; });
+    c.save(); c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.closePath(); c.clip();
+    if (photo) { const s2 = Math.max(2 * R / photo.width, 2 * R / photo.height); c.drawImage(photo, cx - photo.width * s2 / 2, cy - photo.height * s2 / 2, photo.width * s2, photo.height * s2); }
+    else { c.fillStyle = accent; c.fillRect(cx - R, cy - R, 2 * R, 2 * R); c.fillStyle = "#0b1020"; c.font = `bold 150px ${FAM}`; c.fillText(String(card.name || "?").trim().charAt(0).toUpperCase(), cx, cy + 52); }
+    c.restore(); c.lineWidth = 12; c.strokeStyle = accent; c.beginPath(); c.arc(cx, cy, R + 6, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = "#ffffff"; fit(String(card.name), `bold 88px ${FAM}`, W - 180); c.fillText(String(card.name), W / 2, 735);
+    c.fillStyle = rgba("#ffffff", 0.75); fit(String(card.place || ""), `600 44px ${FAM}`, W - 200); c.fillText(card.place || "", W / 2, 800);
+    c.fillStyle = "#fbbf24"; fit(`${card.score} punten`, `bold 108px ${FAM}`, W - 220); c.fillText(`${card.score} punten`, W / 2, 925);
+    // statistiekregels: tot 6 regels tussen y=990 en y=1215; meer regels = kleinere regelafstand en letter
+    const stats = (card.stats || []).slice(0, 6);
+    const lh = stats.length > 1 ? Math.min(52, 225 / (stats.length - 1)) : 52;
+    const fs = Math.max(22, Math.min(38, Math.round(lh * 0.74)));
+    c.fillStyle = rgba("#ffffff", 0.82);
+    stats.forEach((line, i) => { fit(String(line), `500 ${fs}px ${FAM}`, W - 200); c.fillText(String(line), W / 2, 990 + i * lh); });
+    c.fillStyle = rgba("#ffffff", 0.5); fit(`${card.date || ""} · ${brandName()}`, `500 30px ${FAM}`, W - 200); c.fillText(`${card.date || ""} · ${brandName()}`, W / 2, H - 72);
+    return new Promise((res) => cv.toBlob(res, "image/png"));
+  }
   // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
   function avatar(name, photo, size, color) {
     const a = document.createElement(photo ? "img" : "span");
@@ -587,15 +854,21 @@ window.QuizFX = (function () {
   const loadImg = (src) => new Promise((resolve) => { if (!src) return resolve(null); const i = new Image(); i.onload = () => resolve(i); i.onerror = () => resolve(null); i.src = src; });
   async function resultImage({ title, subtitle, rows }) {
     try { await document.fonts.load("bold 60px Quizfont"); } catch (e) { /* standaardletter */ }
-    const W = 1080, rowH = 150, top = 330, H = Math.min(2400, top + rows.length * rowH + 140);
+    const logo = brand.logo ? await loadImg(brand.logo) : null;
+    const lh = logo ? 120 : 0; // ruimte voor het logo bovenaan
+    const W = 1080, rowH = 150, top = 330 + lh, H = Math.min(2400, top + rows.length * rowH + 140);
     const c = document.createElement("canvas"); c.width = W; c.height = H;
     const g = c.getContext("2d");
     const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#1e1b4b"); bg.addColorStop(1, "#0f172a");
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
     const font = (px) => `bold ${px}px Quizfont, "Segoe UI", Roboto, sans-serif`;
-    g.textAlign = "center"; g.fillStyle = "#fbbf24"; g.font = font(78); g.fillText("🏆 " + (title || "Familiequiz"), W / 2, 130);
-    g.fillStyle = "#cbd5e1"; g.font = font(40); g.fillText(subtitle || "", W / 2, 200);
-    g.fillStyle = "#38bdf8"; g.font = font(44); g.fillText("Einduitslag", W / 2, 280);
+    if (logo) { const s = Math.min(130 / logo.width, 130 / logo.height); g.drawImage(logo, W / 2 - logo.width * s / 2, 30, logo.width * s, logo.height * s); }
+    g.textAlign = "center"; g.fillStyle = "#fbbf24"; g.font = font(78);
+    const head = (logo ? "" : "🏆 ") + (title || brandName());
+    for (let px = 78; px > 40 && g.measureText(head).width > W - 80; px -= 4) g.font = font(px - 4); // lange naam: kleiner
+    g.fillText(head, W / 2, 130 + lh);
+    g.fillStyle = "#cbd5e1"; g.font = font(40); g.fillText(subtitle || "", W / 2, 200 + lh);
+    g.fillStyle = "#38bdf8"; g.font = font(44); g.fillText("Einduitslag", W / 2, 280 + lh);
     const imgs = await Promise.all(rows.map((r) => loadImg(r.photo)));
     rows.forEach((r, i) => {
       const y = top + i * rowH;
@@ -622,14 +895,14 @@ window.QuizFX = (function () {
       g.fillText(name, 350, y + 80);
       g.textAlign = "right"; g.fillStyle = "#fbbf24"; g.font = font(50); g.fillText(`${r.score}`, W - 100, y + 82);
     });
-    g.textAlign = "center"; g.fillStyle = "#64748b"; g.font = font(30); g.fillText("Familiequiz · bedankt voor het meespelen!", W / 2, H - 50);
+    g.textAlign = "center"; g.fillStyle = "#64748b"; g.font = font(30); g.fillText(`${brandName()} · bedankt voor het meespelen!`, W / 2, H - 50);
     return new Promise((resolve) => c.toBlob(resolve, "image/png"));
   }
   // Delen via het deelmenu van de telefoon (WhatsApp e.d.); kan dat niet, dan downloaden
   async function shareImage(blob, filename, text) {
     const file = new File([blob], filename, { type: "image/png" });
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Familiequiz", text }); return "shared"; }
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: brandName(), text }); return "shared"; }
     } catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
@@ -637,7 +910,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
@@ -695,11 +968,32 @@ window.QuizSpotify = (function () {
     try { json = await r.json(); } catch (e) { /* 204 zonder inhoud */ }
     return { status: r.status, json, retryAfter: Number(r.headers && r.headers.get && r.headers.get("retry-after")) || 0 };
   }
-  async function find(title, artist) {
+  // Alleen het originele nummer: remixen, live-versies, karaoke, covers en dergelijke worden overgeslagen, en bij
+  // meerdere kandidaten wint de beste titel- en artiestmatch, met voorkeur voor het jaar van het origineel.
+  const normTxt = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const VARIANT = /\b(remix|remixed|mix|live|karaoke|cover|version|versie|edit|acoustic|akoestisch|instrumental|tribute|sped up|slowed|reverb|nightcore|rework|bootleg|re recorded|rerecorded|medley|demo|session|unplugged|8d|lofi|lo fi|originally performed|made famous|in the style of)\b/;
+  function pickOriginal(items, title, artist, year) {
+    const t = normTxt(title), a = normTxt(artist), wantVariant = VARIANT.test(t);
+    let best = null, bestScore = -Infinity;
+    for (const it of items || []) {
+      const name = normTxt(it.name), album = normTxt(it.album && it.album.name);
+      if (!wantVariant && (VARIANT.test(name) || VARIANT.test(album))) continue; // geen remix of live-versie
+      const artists = (it.artists || []).map((x) => normTxt(x.name)).join(" ");
+      let s = (it.popularity || 0) / 2;
+      s += name === t ? 40 : (name.startsWith(t) || t.startsWith(name)) ? 15 : -40;
+      s += a && artists.includes(a) ? 30 : a && a.split(" ").some((w) => w.length > 2 && artists.includes(w)) ? 10 : -30;
+      if (it.album && it.album.album_type === "compilation") s -= 15;
+      const y = it.album && it.album.release_date ? Number(String(it.album.release_date).slice(0, 4)) : null;
+      if (year && y) s += Math.abs(y - year) <= 1 ? 20 : y > year ? -Math.min(40, (y - year) * 3) : -5;
+      if (s > bestScore) { best = it; bestScore = s; }
+    }
+    return best;
+  }
+  async function find(title, artist, year) {
     const clean = String(title).replace(/\(.*?\)/g, "").replace(/\.\.\./g, "").trim();
     for (const q of [`track:"${clean}" artist:"${artist}"`, `${clean} ${artist}`]) {
-      const r = await api("GET", `/search?q=${encodeURIComponent(q)}&type=track&limit=1&market=NL`);
-      const item = r.json && r.json.tracks && r.json.tracks.items && r.json.tracks.items[0];
+      const r = await api("GET", `/search?q=${encodeURIComponent(q)}&type=track&limit=10&market=NL`);
+      const item = pickOriginal(r.json && r.json.tracks && r.json.tracks.items, clean, artist, Number(year) || null);
       if (item) return item;
       if (r.status === 401 || r.status === 403) return null;
     }

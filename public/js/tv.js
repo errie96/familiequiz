@@ -4,7 +4,19 @@ const socket = io();
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const VIEWS = ["v-welcome", "v-demodraw", "v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-teamphoto", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
-function showView(id) { VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id)); if (typeof scheduleFit === "function") scheduleFit(); }
+// Eén vaste overgang voor alle schermen: kort invagen (opacity + translate, los van de schaalberekening). Alleen als het
+// scherm echt wisselt; een update van hetzelfde scherm animeert niet opnieuw.
+let curView = null;
+function showView(id) {
+  VIEWS.forEach((v) => $(v).classList.toggle("hidden", v !== id));
+  if (curView !== id) {
+    curView = id;
+    const v = $(id);
+    v.classList.remove("view-in"); void v.offsetWidth; v.classList.add("view-in");
+    setTimeout(() => v.classList.remove("view-in"), 700);
+  }
+  if (typeof scheduleFit === "function") scheduleFit();
+}
 
 // ---------- Geluid: de browser wil eerst één klik of toetsdruk ----------
 let audioUnlocked = false;
@@ -14,12 +26,39 @@ function unlock() {
   QuizFX.unlockAudio();
   $("audio-banner").classList.add("hidden");
   document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
+  QuizFX.retryMusic();
+  socket.emit("tv_audio", { ok: true }); // de bediening ziet nu in de checklist dat de tv geluid heeft
 }
 ["click", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, unlock));
 const allAudio = () => Array.from(document.querySelectorAll("audio"));
 
-socket.on("connect", () => { socket.emit("register_tv"); $("tv-offline").classList.add("hidden"); });
-socket.on("disconnect", () => $("tv-offline").classList.remove("hidden"));
+// Verbinding weg: pas na 1,5 seconde de kaart tonen (een korte hapering hoeft niemand te zien)
+let offlineTimer = null;
+function showOffline(on) {
+  clearTimeout(offlineTimer);
+  if (!on) return $("tv-offline").classList.remove("show");
+  $("off-title").textContent = QuizFX.t("tv.verbinding.titel").replace(/^tv\.verbinding\.titel$/, "Even geduld…");
+  $("off-text").textContent = QuizFX.t("tv.verbinding.tekst").replace(/^tv\.verbinding\.tekst$/, "We zijn zo terug!");
+  offlineTimer = setTimeout(() => $("tv-offline").classList.add("show"), 1500);
+}
+socket.on("connect", () => { socket.emit("register_tv"); showOffline(false); QuizFX.syncClock(socket); if (audioUnlocked) socket.emit("tv_audio", { ok: true }); });
+// ---------- Opening (quizmaster drukt op Start, of "Opening testen" in de bediening) ----------
+let lastTv = null, openingTimer = null;
+socket.on("opening", (info) => {
+  const o = $("opening");
+  if (info && info.hold) holdScreen(info.ms || 6000); // bij de start: het eerste scherm komt pas na de opening
+  $("op-title").textContent = QuizFX.t("opening.tekst").replace(/^opening\.tekst$/, "De quiz gaat beginnen!");
+  const sub = (lastTv && lastTv.brand && lastTv.brand.subtitle) || "";
+  $("op-sub").textContent = sub;
+  QuizFX.renderBrand(o);
+  o.classList.remove("show"); void o.offsetWidth; o.classList.add("show");
+  if (!lastTv || (lastTv.soundOut || "tv") === "tv") QuizFX.playOpening(lastTv && lastTv.ambience ? lastTv.ambience.opening : null);
+  setTimeout(() => { try { QuizFX.launchConfetti(); } catch (e) { /* geen confetti */ } }, 1700);
+  clearTimeout(openingTimer);
+  openingTimer = setTimeout(() => o.classList.remove("show"), 6000);
+});
+socket.on("disconnect", () => showOffline(true));
+fetch("/api/brand").then((r) => r.json()).then((b) => QuizFX.setBrand(b)).catch(() => {}); // logo al vóór de eerste stand
 QuizFX.wantAwake(); // tv mag niet in slaap vallen
 socket.on("play_audio", () => allAudio().forEach((a) => { a.currentTime = 0; a.play().catch(() => {}); }));
 
@@ -87,6 +126,7 @@ function teamChip(name, opts) {
   const o = opts || {};
   const st = TEAMSTYLE[name] || {};
   const c = el("span", "tchip" + (o.done ? " done" : "") + (o.off ? " off" : ""));
+  c.dataset.team = name;
   c.style.cssText = `display:inline-flex; align-items:center; gap:0.45em; padding-left:0.25em; border:0.18em solid ${st.color || "transparent"};` + (o.bg ? `background:${o.bg};` : "");
   c.append(QuizFX.avatar(name, st.photo, "1.7em", st.color), document.createTextNode(o.text !== undefined ? o.text : (o.done ? "✓ " : "") + name));
   const key = chipStep + "|" + name;
@@ -105,33 +145,117 @@ function chips(box, list, showStatus, label) {
   list.forEach((t) => box.appendChild(teamChip(t.name, { done: showStatus && t.answered, off: t.connected === false, text: (showStatus && t.answered ? "✓ " : "") + t.name + (label ? label(t) : "") })));
 }
 function lettersGrid(box, options, correct, extraFn) {
+  // Alleen opnieuw opbouwen als er echt iets verandert (andere opties of het antwoord). Elke nieuwe stand van de server
+  // (bijvoorbeeld een team dat antwoordt) riep dit aan; de nieuwe .qo-elementen speelden dan hun binnenkomst-animatie
+  // opnieuw af, waardoor de antwoorden even wegvielen en weer terugkwamen.
+  const sig = JSON.stringify([options, correct]);
+  if (box.dataset.sig === sig && box.firstChild && box.firstChild.className === "qgrid") return;
+  box.dataset.sig = sig;
   box.replaceChildren();
   const grid = el("div", "qgrid");
+  let burstAt = null;
   options.forEach((opt, i) => {
     const fresh = correct === i && !animSeen.has(chipStep + "|correct");
     const d = el("div", "qo" + (correct === i ? " correct" : "") + (fresh ? " fresh" : "") + (Number.isInteger(correct) && correct !== i ? " dim" : ""));
-    if (fresh) { animSeen.add(chipStep + "|correct"); if (QuizFX.ding) QuizFX.ding(); }
+    if (fresh) { animSeen.add(chipStep + "|correct"); if (QuizFX.ding) QuizFX.ding(); burstAt = d; }
     const l = el("b", "letter", QuizFX.letter(i));
-    d.append(l, document.createTextNode(opt));
-    if (correct === i) d.append(el("b", "", "  ✅"));
+    const txt = el("span", "qo-text");
+    txt.append(l, document.createTextNode(opt));
+    if (correct === i) txt.append(el("b", "", "  ✅"));
+    d.append(txt);
     grid.appendChild(d);
   });
   box.appendChild(grid);
+  // goed antwoord: een kleine confetti-uitbarsting vanuit het vak (na het passend maken van het scherm)
+  if (burstAt && QuizFX.sparkBurst) setTimeout(() => { if (burstAt.isConnected) QuizFX.sparkBurst(burstAt); }, 350);
 }
 const medal = (rank) => (rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`);
+// Stand: bij een nieuwe stand schuiven de teams van hun oude naar hun nieuwe plek en tellen de punten op
+const lastStand = new WeakMap(); // ul -> { sig, order: [naam], score: { naam: punten } }
 function standingsList(ul, rows) {
+  rows = rows || [];
+  const sig = JSON.stringify(rows.map((r) => [r.name, r.score, r.rank]));
+  const prev = lastStand.get(ul);
+  if (prev && prev.sig === sig && ul.childElementCount) return; // niets veranderd: niet opnieuw animeren
   ul.replaceChildren();
-  (rows || []).forEach((row) => {
-    const li = el("li");
+  const lis = rows.map((row) => {
+    const li = el("li", row.rank <= 3 ? `top${row.rank}` : "");
     li.append(el("span", "", `${medal(row.rank)}  ${row.name}`));
-    const b = el("b", "", `${row.score} pt`);
-    b.style.color = "#38bdf8";
+    const b = el("b", "st-score", `${row.score} pt`);
     li.append(b);
     ul.appendChild(li);
+    const was = prev && prev.score[row.name];
+    if (prev && Number.isFinite(was) && was !== row.score) countFrom(b, was, row.score, " pt", 1200, 500);
+    return li;
   });
+  if (prev) flipRows(lis, rows.map((r) => prev.order.indexOf(r.name)));
+  else lis.forEach((li, i) => li.style.setProperty("--i", i));
+  ul.classList.toggle("ds-stagger", !prev);
+  lastStand.set(ul, { sig, order: rows.map((r) => r.name), score: Object.fromEntries(rows.map((r) => [r.name, r.score])) });
+}
+// Getal laten oplopen (of aflopen) van "from" naar "to"
+function countFrom(node, from, to, suffix = "", ms = 1000, delay = 0) {
+  node.textContent = `${from}${suffix}`;
+  setTimeout(() => {
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+      node.textContent = `${p >= 1 ? to : Math.round(from + (to - from) * e)}${suffix}`;
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, delay);
 }
 let lastSecs = null;
 let curTimer = null;
+// Klokje bovenin: een ring die leegloopt (groen → amber → rood) met het aantal seconden, dat bij elke seconde even "tikt"
+const RING_C = 2 * Math.PI * 15.5;
+function timerRing(info) {
+  const box = $("tv-timer");
+  if (!box.querySelector(".tring")) {
+    box.innerHTML = `<svg class="tring" viewBox="0 0 36 36" aria-hidden="true"><circle class="tr-bg" cx="18" cy="18" r="15.5"/><circle class="tr-fg" cx="18" cy="18" r="15.5" stroke-dasharray="${RING_C.toFixed(2)}"/></svg><b class="tr-num"></b><span class="tr-s">s</span>`;
+  }
+  box.querySelector(".tr-fg").style.strokeDashoffset = (RING_C * (1 - Math.max(0, Math.min(1, info.fraction)))).toFixed(2);
+  const num = box.querySelector(".tr-num");
+  if (num.textContent !== String(info.secs)) {
+    num.textContent = String(info.secs);
+    if (num.animate && info.running) num.animate([{ transform: "scale(1.25)", opacity: 0.5 }, { transform: "scale(1)", opacity: 1 }], { duration: 350, easing: "ease-out" });
+  }
+}
+// Pauzedilemma: de vraag met twee opties en live (anonieme) balkjes; geen punten
+let dilemmaShown = null;
+function renderDilemma(d) {
+  $("pause-dilemma").classList.toggle("hidden", !d || !d.text);
+  $("v-pause").classList.toggle("has-dilemma", !!(d && d.text));
+  if (!d || !d.text) { dilemmaShown = null; return; }
+  if (dilemmaShown !== d.text) {
+    dilemmaShown = d.text;
+    $("dil-q").textContent = d.text; $("dil-a").textContent = d.a; $("dil-b").textContent = d.b;
+    QuizFX.whoosh();
+  }
+  const total = Math.max(1, d.total || 0);
+  for (const k of ["a", "b"]) {
+    $("dil-bar-" + k).style.width = `${Math.round(((d.counts && d.counts[k]) || 0) / total * 100)}%`;
+    $("dil-num-" + k).textContent = d.total ? `${(d.counts && d.counts[k]) || 0}` : "";
+  }
+  $("dil-total").textContent = d.total ? `${d.total} ${d.total === 1 ? "stem" : "stemmen"}` : "Kies A of B op je telefoon!";
+  scheduleFit();
+}
+// Timerbalk: één vloeiende, lineaire animatie voor de hele resterende tijd. Elke nieuwe stand van de server zet de klok
+// opnieuw, maar de balk wordt alleen bijgesteld bij een afwijking van meer dan 0,4 s: geen sprongetjes meer.
+let barAnim = null;
+function setTimerBar(info) {
+  const fill = $("tv-timerfill");
+  if (!info.running) { barAnim = null; fill.style.transition = "none"; fill.style.width = `${(info.fraction * 100).toFixed(2)}%`; return; } // pauze: blijft staan
+  const endAt = Date.now() + info.leftMs;
+  if (barAnim && Math.abs(barAnim.endAt - endAt) < 400) return;
+  barAnim = { endAt };
+  fill.style.transition = "none";
+  fill.style.width = `${(info.fraction * 100).toFixed(2)}%`;
+  void fill.offsetWidth;
+  fill.style.transition = `width ${Math.max(0, Math.round(info.leftMs))}ms linear, background 0.4s`;
+  fill.style.width = "0%";
+}
 function bigTimer(info, el2) {
   if (el2) el2.textContent = info ? info.secs : "";
 }
@@ -150,6 +274,10 @@ function renderInfo(s) {
   $("info-emoji").textContent = s.emoji || "";
   $("info-title").textContent = s.title;
   $("info-text").textContent = s.text || "";
+  // Het rondeoverzicht als nette tegels in plaats van één lange regel met bolletjes
+  const parts = s.id === "rounds_overview" ? String(s.text || "").split("•").map((x) => x.trim()).filter(Boolean) : [];
+  $("info-text").classList.toggle("round-tiles", parts.length > 2);
+  if (parts.length > 2) $("info-text").replaceChildren(...parts.map((x) => { const m = /^(\d+)\.\s*(\S+)\s+(.*)$/.exec(x); const t = el("div", "round-tile"); if (m) t.append(el("span", "rt-no", m[1]), el("span", "rt-emoji", m[2]), el("span", "rt-name", m[3])); else t.textContent = x; return t; }));
   p.classList.toggle("hidden", !s.roundIntro);
   if (s.roundIntro) {
     p.replaceChildren(document.createTextNode(QuizFX.t("tussen.punten", { punten: s.points })));
@@ -173,6 +301,25 @@ function renderInfo(s) {
 }
 
 let readShown = null;
+// De antwoorden vliegen één keer per vraag binnen: A en C van links, B en D van rechts, met overshoot en een lichte draai,
+// en een oplopende plop per antwoord. Via de Web Animations API, zodat het niet afhangt van klassen of timers.
+let flownStep = null;
+function flyIn(opts, stepId) {
+  if (flownStep === stepId) return;
+  flownStep = stepId;
+  const grid = opts.firstChild;
+  const kids = grid && grid.children ? Array.from(grid.children) : [];
+  const reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  kids.forEach((q, i) => {
+    if (!reduce && typeof q.animate === "function") {
+      q.animate([
+        { opacity: 0, transform: `translateX(${i % 2 ? 14 : -14}vw) scale(0.82) rotate(${i % 2 ? 3 : -3}deg)` },
+        { opacity: 1, transform: "none" }
+      ], { duration: 750, delay: i * 160, easing: "cubic-bezier(.2,1.45,.4,1)", fill: "backwards" });
+    }
+    setTimeout(() => { try { QuizFX.pop(i); } catch (e) { /* geen geluid */ } }, i * 160 + 90);
+  });
+}
 function renderMc(s) {
   showView("v-mc");
   $("mc-cat").classList.toggle("hidden", !s.category || s.test);
@@ -208,18 +355,14 @@ function renderMc(s) {
     readShown = s.id + "|read";
     lettersGrid(opts, s.options, null);
     opts.classList.add("opts-hidden");
-    opts.classList.remove("opts-in");
     $("mc-teams").replaceChildren();
     return;
   }
   opts.classList.remove("opts-hidden");
-  if (readShown === s.id + "|read") {
-    readShown = s.id + "|shown"; // net in beeld: alleen de antwoorden laten binnenkomen, niet de vraag
-    opts.classList.remove("opts-in"); void opts.offsetWidth; opts.classList.add("opts-in");
-    setTimeout(() => opts.classList.remove("opts-in"), 1400);
-    QuizFX.whoosh();
-  }
+  readShown = s.id + "|shown";
   lettersGrid($("mc-options"), s.options, s.answer);
+  flyIn(opts, s.id); // de antwoorden vliegen binnen (één keer per vraag)
+  showPicks(opts, s);
   $("mc-explain").textContent = s.status === "closed" && s.explanation ? `💡 ${s.explanation}` : "";
   if (s.status === "closed" && s.results) {
     const resKey = chipStep + "|mcresult";
@@ -270,6 +413,8 @@ function renderSong(s) {
     $("song-title").textContent = QuizFX.t("muziek.zoeken");
     $("song-sub").textContent = "";
     $("song-teams").replaceChildren();
+    $("song-lines").replaceChildren(); linesKey = null;
+    $("v-song").classList.remove("has-lines");
     return;
   }
   const key = s.id;
@@ -279,15 +424,134 @@ function renderSong(s) {
     if (a && !audioUnlocked) a.play().catch(() => {});
   }
   const rev = s.status === "revealed";
-  $("song-title").textContent = rev ? QuizFX.t(s.done ? "muziek.klaar" : "muziek.onthuld") : QuizFX.t("muziek.vraag");
+  $("v-song").classList.add("has-lines");
   $("song-title").style.fontSize = "";
-  $("song-emoji").textContent = rev ? (s.done ? "🏁" : "📱") : "🎵";
+  $("song-title").textContent = rev
+    ? (s.song ? `🎵 ${s.song.title} · ${s.song.artist} · ${s.song.year}` : QuizFX.t("muziek.onthuld")) + (s.done ? "  🏁" : "")
+    : "🎵 " + QuizFX.t("muziek.vraag");
   $("song-sub").textContent = rev
-    ? QuizFX.t(s.done ? "muziek.klaar.tekst" : "muziek.onthuld.tekst", { doel: s.target })
+    ? (s.done ? QuizFX.t("muziek.klaar") + " " + QuizFX.t("muziek.klaar.tekst", { doel: s.target }) : (s.test ? "Oefenliedje: zo gaat het straks. " : "") + QuizFX.t("muziek.onthuld.tekst", { doel: s.target }))
     : QuizFX.t("muziek.uitleg", { doel: s.target });
-  const box = $("song-teams");
+  renderTimelines(s);
+}
+
+// ---- De tijdlijnen op de tv ----
+// Elk team een rij kaarten (jaartal groot, artiest boven, titel onder). Een ingediende kaart ligt dicht (quizlogo boven)
+// eerst helemaal rechts; als iedereen heeft ingediend schuift hij naar de gekozen plek. Bij "Toon het antwoord" draaien de kaarten één voor één om: goed blijft liggen, fout valt weg.
+const HCOLORS = [["#f472b6", "#fb7185"], ["#fbbf24", "#f59e0b"], ["#34d399", "#10b981"], ["#60a5fa", "#38bdf8"], ["#c084fc", "#a78bfa"], ["#fb923c", "#f97316"], ["#a3e635", "#84cc16"], ["#22d3ee", "#2dd4bf"]];
+const hHash = (str) => { let h = 0; for (const ch of String(str)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
+let linesKey = null, revealTimers = [], droppedIn = new Set();
+const PLACE_DELAY_MS = 2000; // zo lang na de laatste inzending blijven de dichte kaarten rechts liggen
+let allInAt = new Map(), placeTimer = null, lastLines = null;
+function hFront(card) {
+  const f = el("div", "hface hfront");
+  const c = HCOLORS[hHash(card.id || card.title) % HCOLORS.length];
+  f.style.background = `linear-gradient(145deg, ${c[0]}, ${c[1]})`;
+  f.append(el("div", "ha", card.artist || ""), el("div", "hy", String(card.year)), el("div", "ht", card.title || ""));
+  return f;
+}
+function hBack() {
+  const b = el("div", "hface hback");
+  const logo = QuizFX.brandLogo();
+  if (logo) { const img = document.createElement("img"); img.src = logo; img.alt = ""; b.append(img); } else b.append(el("div", "hq", "?"));
+  return b;
+}
+function hOpenCard(card) { const slot = el("div", "hslot"); const c = el("div", "hcard"); c.append(hFront(card)); slot.append(c); return slot; }
+function hPendingCard(song) {
+  // voor- en achterkant; de voorkant (het liedje) zit er pas in bij het onthullen
+  const slot = el("div", "hslot pending"); const c = el("div", "hcard");
+  c.append(song ? hFront(song) : el("div", "hface hfront"), hBack());
+  slot.append(c);
+  return slot;
+}
+function renderTimelines(s) {
+  const box = $("song-lines");
+  const rev = s.status === "revealed";
+  // Maat van de kaarten: vooraf vastgelegd voor de hele ronde, zodat de tijdlijnen tijdens het spel niet krimpen.
+  // Breedte voor het doel (zoveel kaarten kan een tijdlijn hooguit worden) plus de dichte kaart; past in de hoogte (aantal teams).
+  const rows = Math.max(1, s.teams.length);
+  const goal = s.test ? 0 : Number(s.target) || 0;
+  const most = Math.max(4, goal + 1, ...s.teams.map((t) => t.timeline.length + 1));
+  const vh = window.innerHeight / 100, vw = window.innerWidth / 100;
+  const size = Math.max(40, Math.min(16 * vh, (76 * vh) / rows - 2.2 * vh, (72 * vw) / (most * 1.07)));
+  box.style.setProperty("--hc", `${size.toFixed(1)}px`);
+  box.style.setProperty("--hgap", `${Math.min(1.4 * vh, size * 0.12).toFixed(1)}px`);
+  // Ingediende kaarten liggen eerst dicht tegen de rechterrand van de rij; 2 seconden nadat alle (verbonden) teams
+  // hebben ingediend, schuiven ze naar de plek die het team koos. Bij "Toon het antwoord" draaien ze om.
+  const live = s.teams.filter((t) => t.connected);
+  const everyoneIn = (live.length ? live : s.teams).every((t) => t.slot !== null) && s.teams.some((t) => t.slot !== null);
+  if (!everyoneIn || rev) allInAt.delete(s.id);
+  else if (!allInAt.has(s.id)) allInAt.set(s.id, Date.now());
+  const wait = everyoneIn && !rev ? PLACE_DELAY_MS - (Date.now() - allInAt.get(s.id)) : 0;
+  const allIn = rev || (everyoneIn && wait <= 0);
+  lastLines = s;
+  clearTimeout(placeTimer);
+  if (everyoneIn && !rev && wait > 0) placeTimer = setTimeout(() => { if (lastLines && lastLines.id === s.id) renderTimelines(lastLines); }, wait + 20);
+  const key = [s.id, s.status, rows, allIn ? 1 : 0, rev ? "" : s.teams.map((t) => `${t.slot}|${t.timeline.length}|${t.connected ? 1 : 0}`).join(",")].join("#");
+  if (key === linesKey) return;
+  const wasOpen = linesKey && linesKey.startsWith(s.id + "#open");
+  linesKey = key;
+  revealTimers.forEach(clearTimeout); revealTimers = [];
+  // FLIP: oude plek van elke kaart onthouden, zodat de dichte kaart zichtbaar naar zijn plek schuift
+  const oldRects = new Map();
+  box.querySelectorAll(".hslot[data-k]").forEach((n) => oldRects.set(n.dataset.k, n.getBoundingClientRect()));
   box.replaceChildren();
-  s.teams.forEach((t) => box.appendChild(teamChip(t.name, { done: t.answered, off: !t.connected })));
+  const pendings = [];
+  s.teams.forEach((t) => {
+    const st = TEAMSTYLE[t.name] || {};
+    const row = el("div", "hrow" + (t.connected ? "" : " off"));
+    row.style.setProperty("--tc", st.color || "#64748b");
+    const who = el("div", "hteam");
+    const txt = el("div");
+    const count = el("div", "hcount", `${t.timeline.length} / ${s.target}`);
+    txt.append(el("div", "hname", t.name), count);
+    who.append(QuizFX.avatar(t.name, st.photo, `${Math.min(size * 0.8, 7 * vh).toFixed(0)}px`, st.color), txt);
+    const cards = el("div", "hcards");
+    // Bij het onthullen eerst de stand van vlak ervoor opbouwen: de goede kaart zit dan al in de tijdlijn, die halen we er even uit
+    const r = rev ? t.result : null;
+    const inLine = !!(r && r.ok && s.song && t.timeline[r.slot] && t.timeline[r.slot].id === s.song.id);
+    const base = inLine ? t.timeline.filter((_, i) => i !== r.slot) : t.timeline;
+    if (inLine) count.textContent = `${base.length} / ${s.target}`;
+    const chosen = rev ? (r ? r.slot : null) : t.slot;
+    const slot = chosen === null ? null : allIn ? chosen : base.length; // nog niet iedereen: dicht helemaal rechts
+    base.forEach((c, i) => { if (slot === i) cards.append(mkPending()); const o = hOpenCard(c); o.dataset.k = t.name + "|" + c.id; cards.append(o); });
+    if (slot !== null && slot >= base.length) cards.append(mkPending());
+    function mkPending() {
+      const p = hPendingCard(rev ? s.song : null);
+      p.dataset.k = t.name + "|?";
+      if (!allIn) p.classList.add("parked"); // tegen de rechterrand, los van de tijdlijn
+      const k = s.id + "|" + t.name;
+      if (!rev && !droppedIn.has(k)) { droppedIn.add(k); p.classList.add("drop-in"); try { QuizFX.pop(droppedIn.size); } catch (e) { /* geen geluid */ } }
+      if (rev) pendings.push({ el: p, ok: !!(r && r.ok), keep: inLine, count, total: t.timeline.length });
+      return p;
+    }
+    row.append(who, cards);
+    box.append(row);
+  });
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (oldRects.size && !reduce) {
+    box.querySelectorAll(".hslot[data-k]").forEach((n) => {
+      const o = oldRects.get(n.dataset.k); if (!o) return;
+      const nw = n.getBoundingClientRect(), dx = o.left - nw.left, dy = o.top - nw.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      n.classList.remove("drop-in");
+      n.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 650, easing: "cubic-bezier(0.34, 1.3, 0.64, 1)" });
+    });
+  }
+  if (!rev) { scheduleFit(); return; }
+  // Onthullen: één voor één omdraaien (team voor team), met een tromslag ervoor
+  const startAt = wasOpen && !reduce ? 700 : 100, gap = reduce ? 0 : Math.max(450, Math.min(900, 3600 / Math.max(1, pendings.length)));
+  if (wasOpen && !reduce) { try { QuizFX.drumHit(); } catch (e) { /* geen geluid */ } }
+  pendings.forEach((p, i) => {
+    revealTimers.push(setTimeout(() => {
+      p.el.classList.add("flipped", p.ok ? "good" : "bad");
+      if (wasOpen) { try { p.ok ? QuizFX.ding() : QuizFX.buzzer(); } catch (e) { /* geen geluid */ } }
+      if (p.keep) p.count.textContent = `${p.total} / ${s.target}`;
+      // fout: na even kijken valt de kaart van tafel; goed (ook bij het oefenliedje) blijft liggen
+      if (!p.ok) revealTimers.push(setTimeout(() => p.el.classList.add("gone"), reduce ? 0 : 1700));
+    }, startAt + i * gap));
+  });
+  scheduleFit();
 }
 
 function renderPrice(s) {
@@ -317,6 +581,55 @@ socket.on("draw_ops_tv", (data) => {
   });
   if (liveCanvas[data.team]) QuizFX.paintStrokes(liveCanvas[data.team], st);
 });
+// Tekeningen van alle teams: de maat hangt alleen af van het aantal teams, niet van de tekst eronder. Zo zijn ze
+// tijdens het tekenen, het nakijken en de uitslag precies even groot.
+// Meerkeuze met "antwoord meteen tonen": de teamfoto's vliegen van het rijtje onder de vraag naar het vakje dat
+// het team koos (één keer; bij een volgende stand staan ze er gewoon).
+function showPicks(opts, s) {
+  const grid = opts.querySelector(".qgrid");
+  if (!grid) return;
+  const picks = s.status === "closed" && Array.isArray(s.picks) ? s.picks : [];
+  const key = JSON.stringify(picks);
+  if (grid.dataset.picks === key) return;
+  grid.dataset.picks = key;
+  grid.querySelectorAll(".qo-picks").forEach((x) => x.remove());
+  grid.classList.toggle("has-picks", picks.length > 0);
+  if (!picks.length) return;
+  const fresh = !animSeen.has(chipStep + "|picks");
+  animSeen.add(chipStep + "|picks");
+  const from = {};
+  if (fresh) $("mc-teams").querySelectorAll(".tchip[data-team] .team-avatar").forEach((a) => { from[a.parentNode.dataset.team] = a.getBoundingClientRect(); });
+  const cells = [...grid.querySelectorAll(".qo")];
+  const made = [];
+  picks.forEach((p) => {
+    const cell = cells[p.choice];
+    if (!cell) return;
+    let box = cell.querySelector(".qo-picks");
+    if (!box) { box = el("span", "qo-picks"); cell.append(box); }
+    const st = TEAMSTYLE[p.name] || {};
+    const av = QuizFX.avatar(p.name, st.photo, "1.7em", st.color);
+    av.title = p.name;
+    box.append(av);
+    box.classList.toggle("many", box.children.length > 4); // veel teams in één vak: de foto's liggen iets over elkaar
+    made.push([p.name, av]);
+  });
+  if (!fresh) return;
+  requestAnimationFrame(() => made.forEach(([name, av], k) => {
+    const a = from[name], b = av.getBoundingClientRect();
+    if (!a || !av.animate) return;
+    const dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
+    av.animate([{ transform: `translate(${dx}px, ${dy}px) scale(0.9)`, opacity: 0.6 }, { transform: "translate(0, 0) scale(1.25)", opacity: 1, offset: 0.8 }, { transform: "none", opacity: 1 }],
+      { duration: 900, delay: k * 110, easing: "cubic-bezier(.2,.8,.3,1)", fill: "backwards" });
+  }));
+}
+function fixedGallery(n) {
+  const g = el("div", "gallery fixed");
+  const cols = n <= 4 ? Math.max(1, n) : n <= 8 ? Math.ceil(n / 2) : Math.ceil(n / 3);
+  const h = n <= 4 ? 44 : n <= 8 ? 24 : 16; // hoogte van één tekening in vh
+  g.style.setProperty("--cols", cols);
+  g.style.setProperty("--w", `min(calc(${h}vh * 4 / 3 + 2vw), calc((88vw - ${cols - 1} * 1.5vw) / ${cols}))`);
+  return g;
+}
 function renderDraw(s, state) {
   showView("v-draw");
   const body = $("draw-body");
@@ -326,7 +639,7 @@ function renderDraw(s, state) {
     if (drawKey !== key) {
       drawKey = key; liveStrokes = {}; liveCanvas = {};
       body.replaceChildren();
-      const g = el("div", "gallery");
+      const g = fixedGallery(s.teams.filter((t) => t.strokes).length);
       s.teams.forEach((t) => {
         if (!t.strokes) return;
         liveStrokes[t.name] = t.strokes.map((x) => ({ ...x, p: [...x.p] }));
@@ -335,7 +648,7 @@ function renderDraw(s, state) {
         const cv = el("canvas");
         liveCanvas[t.name] = cv;
         wrap.append(cv);
-        const label = el("div", "draw-label"); label.dataset.team = t.name;
+        const label = el("div", "draw-label gcard-cap"); label.dataset.team = t.name;
         card.append(wrap, label);
         g.append(card);
         requestAnimationFrame(() => QuizFX.paintStrokes(cv, liveStrokes[t.name]));
@@ -359,14 +672,14 @@ function renderDraw(s, state) {
     const drawers = (s.teams || []).filter((t) => t.drawer);
     if (drawers.length) {
       const g = el("div", "team-cards"); g.style.cssText = "justify-content:center; margin:3vh 0;";
-      drawers.forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, (TEAMSTYLE[t.name] || {}).photo, "clamp(70px, 8vw, 150px)", (TEAMSTYLE[t.name] || {}).color), el("div", "", t.name), el("div", "tv-sub", `✏️ ${t.drawer}`)); g.append(c); });
+      drawers.forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, (TEAMSTYLE[t.name] || {}).photo, "clamp(70px, 8vw, 150px)", (TEAMSTYLE[t.name] || {}).color), el("div", "tc-name", t.name), el("div", "tv-sub", `✏️ ${t.drawer}`)); g.append(c); });
       body.append(el("h2", "", "Deze beurt tekenen:"), g, el("p", "tv-sub", "Tekenaars: pak je telefoon erbij. Je woord verschijnt zodra de quizmaster start."));
     }
   } else if (s.status === "drawing") {
     // (wordt hierboven afgehandeld)
   } else if (s.status === "judging" || s.status === "result") {
     $("draw-title").textContent = QuizFX.t("teken.uitslag", { beurt: s.turn, totaal: s.total });
-    const g = el("div", "gallery");
+    const g = fixedGallery(s.teams.filter((t) => t.strokes).length);
     s.teams.forEach((t) => {
       if (!t.strokes) return;
       const card = el("div", "gcard");
@@ -377,7 +690,8 @@ function renderDraw(s, state) {
       const lab = el("div", "", `${t.name}: ${t.word || ""}`); lab.style.fontWeight = "bold";
       const sub = el("div", "", `${t.drawer ? `getekend door ${t.drawer} · ` : ""}${ans}`);
       if (t.ok === true) sub.style.color = "#4ade80"; else if (t.ok === false) sub.style.color = "#f87171";
-      card.append(wrap, lab, sub);
+      const cap = el("div", "gcard-cap"); cap.append(lab, sub);
+      card.append(wrap, cap);
       g.append(card);
       requestAnimationFrame(() => QuizFX.paintStrokes(cv, t.strokes));
     });
@@ -425,9 +739,24 @@ function renderThirty(s) {
   const body = $("th-body");
   body.replaceChildren();
   const who = s.team ? `${s.team} · ${s.explainer}` : "";
-  if (s.status === "ready") {
+  if (s.status === "select") {
+    // Elk team kiest op de basistelefoon wie er gaan uitleggen; een vinkje zodra een team klaar is
+    $("th-title").textContent = "⏱️ 30 Seconds";
+    body.append(el("p", "tv-sub", s.per === 1 ? "Elk team kiest één verteller. Tik hem of haar aan op de basistelefoon." : `Elk team kiest ${s.per} vertellers. Tik ze aan op de basistelefoon.`));
+    const grid = el("div", "th-choose");
+    (s.choosing || []).forEach((t) => {
+      const card = el("div", "th-choose-card" + (t.done ? " done" : ""));
+      card.style.borderColor = t.color || "#64748b";
+      const head = el("div", "th-choose-head");
+      head.append(QuizFX.avatar(t.name, t.photo, "3.2vw"), el("b", "", t.name));
+      card.append(head, el("div", "th-choose-names", t.done ? "✅ " + t.names.join(" · ") : "⏳ nog aan het kiezen…"));
+      grid.append(card);
+    });
+    body.append(grid);
+  } else if (s.status === "ready") {
     $("th-title").textContent = `⏱️ 30 Seconds · beurt ${s.turn} van ${s.total}`;
     body.append(el("p", "tv-sub", QuizFX.t("dertig.klaar", { wie: who })), el("div", "huge tv-center", "🎲"));
+    if (s.lastLap) body.append(el("p", "tv-sub", "Dit is de laatste rondgang."));
   } else if (s.status === "running") {
     $("th-title").textContent = QuizFX.t("dertig.bezig", { wie: who });
     const t = el("div", "bigtimer", "");
@@ -441,6 +770,32 @@ function renderThirty(s) {
   }
 }
 
+// Aanmeldscherm bij persoonlijk aanmelden: per familie wie er al is (alleen namen), tot de quizmaster de teams maakt
+let signupKnown = null;
+function renderLobbySignup(su) {
+  const box = $("lobby-signup");
+  const show = !!su && !su.teamsMade;
+  box.classList.toggle("hidden", !show);
+  $("lobby-head").textContent = su ? (su.teamsMade ? "De teams" : QuizFX.t("aanmeld.tv.kop")) : "Teams";
+  if (!show) { signupKnown = su ? signupKnown : null; return; }
+  const names = su.families.flatMap((f) => f.people.map((p) => f.name + "|" + p.label));
+  const fresh = signupKnown ? names.filter((n) => !signupKnown.has(n)) : [];
+  if (fresh.length) QuizFX.pop(names.length);
+  signupKnown = new Set(names);
+  box.replaceChildren();
+  su.families.forEach((f) => {
+    const full = f.expected != null && f.present >= f.expected;
+    const card = el("div", "fam-card" + (full ? " full" : ""));
+    const head = el("div", "fam-head");
+    head.append(el("span", "", f.name), el("span", "fam-count", f.expected != null ? `${full ? "✓ " : ""}${f.present} / ${f.expected}` : String(f.present)));
+    const row = el("div", "fam-names");
+    f.people.forEach((p) => row.append(el("span", "fam-chip" + (fresh.includes(f.name + "|" + p.label) ? " fx-new" : ""), p.label)));
+    card.append(head, row);
+    box.append(card);
+  });
+  if (su.total) box.append(el("div", "fam-total", su.expected != null ? (su.complete ? `Iedereen is er: ${su.total} deelnemers. De teams worden zo gemaakt!` : `${su.total} van de ${su.expected} deelnemers aangemeld`) : `${su.total} aangemeld`));
+}
+
 // Aanmeldscherm: alle teams als kaartje met foto; de nieuwste teamfoto groot naast de QR-code
 let spotKey = null;
 const photoTime = (url) => Number((/[?&]v=(\d+)/.exec(url || "") || [])[1] || 0);
@@ -451,9 +806,12 @@ function renderLobbyTeams(list) {
   const fresh = lobbyKnown ? list.filter((t) => !lobbyKnown.has(t.name)).map((t) => t.name) : [];
   if (fresh.length) QuizFX.chime(); // nieuw team erbij
   lobbyKnown = new Set(list.map((t) => t.name));
+  box.classList.toggle("wide", list.some((t) => t.names));
   list.forEach((t) => {
     const card = el("div", "team-card" + (t.connected === false ? " off" : "") + (fresh.includes(t.name) ? " fx-new" : ""));
-    card.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", (TEAMSTYLE[t.name] || {}).color), el("div", "", t.name), el("div", "tv-sub", `${t.members} ${t.members === 1 ? "speler" : "spelers"}`));
+    card.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", (TEAMSTYLE[t.name] || {}).color), el("div", "tc-name", t.name));
+    // persoonlijk aanmelden: de namen van de teamleden erbij, zodat iedereen ziet waar hij zit
+    card.append(t.names ? el("div", "tc-members", t.names.join(", ")) : el("div", "tv-sub", `${t.members} ${t.members === 1 ? "speler" : "spelers"}`));
     box.append(card);
   });
   const newest = list.filter((t) => t.photo).sort((a, b) => photoTime(b.photo) - photoTime(a.photo))[0];
@@ -478,7 +836,7 @@ function renderRoundResult(s) {
   // Geen punten en geen volgorde: alleen de teams, de stand blijft geheim
   const grid = el("div", "team-cards");
   grid.style.cssText = "justify-content:center; margin:4vh 0;";
-  (s.teams || []).forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", t.color), el("div", "", t.name)); grid.append(c); });
+  (s.teams || []).forEach((t) => { const c = el("div", "team-card"); c.append(QuizFX.avatar(t.name, t.photo, "clamp(80px, 9vw, 180px)", t.color), el("div", "tc-name", t.name)); grid.append(c); });
   body.append(grid);
   // Momentum: één voor één in beeld, met een klein geluidje (geen punten, alleen beweging)
   const mom = s.momentum || [];
@@ -505,12 +863,13 @@ function renderRoundResult(s) {
 let logoKey = null;
 function renderLogoStep(s) {
   showView("v-mc");
-  $("mc-cat").classList.toggle("hidden", !s.test);
-  $("mc-cat").textContent = "Oefenvraag";
+  $("mc-cat").classList.add("hidden"); // "Oefenvraag" staat al bovenin de balk: niet twee keer tonen
   const closed = s.status === "closed";
+  const shown = closed && s.name != null; // antwoord tonen? (instelling "Antwoorden tussendoor tonen")
+  const hiddenText = "Het antwoord volgt bij het nakijken";
   if (s.variant === "blur") {
-    $("mc-question").textContent = closed ? QuizFX.t("open.antwoord", { antwoord: s.name }) : (s.question || QuizFX.t("blur.vraag"));
-    QuizFX.renderBlur($("mc-media"), s.media, closed ? s.blurMax : s.blurStep, s.blurMax, s.media ? s.media.src : "Foto ontbreekt");
+    $("mc-question").textContent = shown ? QuizFX.t("open.antwoord", { antwoord: s.name }) : closed ? hiddenText : (s.question || QuizFX.t("blur.vraag"));
+    QuizFX.renderBlur($("mc-media"), s.media, shown ? s.blurMax : s.blurStep, s.blurMax, s.media ? s.media.src : "Foto ontbreekt");
     const dots = $("mc-dots");
     dots.classList.toggle("hidden", closed);
     dots.replaceChildren();
@@ -519,9 +878,9 @@ function renderLogoStep(s) {
     $("mc-pointsnow").classList.toggle("hidden", closed);
     $("mc-pointsnow").textContent = s.test ? QuizFX.t("blur.oefen") : QuizFX.t("blur.punten", { punten: pts });
   } else {
-    $("mc-question").textContent = closed ? QuizFX.t("open.antwoord", { antwoord: s.name }) : QuizFX.t("logo.vraag");
-    const key = s.id + s.status;
-    if (logoKey !== key) { logoKey = key; QuizFX.renderLogo($("mc-media"), s.media, s.hide, closed, s.media ? s.media.src : "Logo ontbreekt"); }
+    $("mc-question").textContent = shown ? QuizFX.t("open.antwoord", { antwoord: s.name }) : closed ? hiddenText : QuizFX.t("logo.vraag");
+    // renderLogo tekent alleen opnieuw als er echt iets verandert (ander logo, of de onthulling), dus elke update mag
+    QuizFX.renderLogo($("mc-media"), s.media, s.hide, shown, s.media ? s.media.src : "Logo ontbreekt");
     $("mc-dots").classList.add("hidden");
     $("mc-pointsnow").classList.toggle("hidden", closed);
     $("mc-pointsnow").textContent = QuizFX.t("logo.uitleg");
@@ -579,6 +938,8 @@ function renderTiebreak(s) {
 // ---------- Einduitslag: plek voor plek, de quizmaster bepaalt het tempo ----------
 let revealedN = 0;
 function resetReveal() {
+  $("podium").classList.add("hidden"); $("podium").replaceChildren(); $("podium-rest").textContent = "";
+  $("tv-scoreboard").classList.remove("hidden"); $("winner-photos").classList.remove("hidden");
   revealedN = 0;
   $("tv-scoreboard").replaceChildren();
   $("winner-banner").classList.add("hidden");
@@ -586,19 +947,56 @@ function resetReveal() {
   clearTimeout(spotTimer);
   spotDone = null;
 }
+// De avond in cijfers: tegels komen één voor één in beeld; getallen tellen op
+let statsKey = null;
+function renderStats(list) {
+  const key = JSON.stringify(list);
+  if (key === statsKey) return;
+  statsKey = key;
+  const grid = $("stats-grid");
+  grid.className = "stats-grid" + (list.length <= 6 ? " few" : "");
+  grid.replaceChildren();
+  if (!list.length) { grid.append(el("p", "tv-sub", "Nog geen cijfers: er is nog te weinig gespeeld.")); return; }
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  list.forEach((x, i) => {
+    const card = el("div", "stat-card");
+    const val = el("div", "stat-value", x.value);
+    card.append(el("div", "stat-emoji", x.emoji), val, el("div", "stat-label", x.label));
+    grid.append(card);
+    setTimeout(() => {
+      card.classList.add("show");
+      try { QuizFX.pop(i); } catch (e) { /* geen geluid */ }
+      // hele getallen tellen op van 0 naar de eindwaarde
+      if (!reduce && /^\d+$/.test(x.value) && Number(x.value) > 3) {
+        const end = Number(x.value), t0 = performance.now(), dur = 700;
+        const tick = (now) => { const p = Math.min(1, (now - t0) / dur); val.textContent = String(Math.round(end * (1 - Math.pow(1 - p, 3)))); if (p < 1 && statsKey === key) requestAnimationFrame(tick); else val.textContent = x.value; };
+        requestAnimationFrame(tick);
+      }
+    }, reduce ? 0 : 500 + i * 650);
+  });
+  scheduleFit();
+}
 function renderEnd(end) {
   showView("v-end");
   const rs = end.reveal;
+  // Voor de ontknoping dimt de tv naar een donkere achtergrond met een spotlight op het podium
+  const dark = rs !== "idle" && !(rs === "done" && ["awards", "album", "breakdown", "stats"].includes(end.endView));
+  if (dark && !document.body.classList.contains("finale")) { QuizFX.whoosh(); setTimeout(() => QuizFX.drumHit(), 500); }
+  document.body.classList.toggle("finale", dark);
   $("end-wait").classList.toggle("hidden", rs !== "idle");
   const showBreak = rs === "done" && end.endView === "breakdown" && end.breakdown;
   const showAwards = rs === "done" && end.endView === "awards" && end.awards;
   const showAlbum = rs === "done" && end.endView === "album" && end.album;
-  $("end-reveal").classList.toggle("hidden", rs === "idle" || showBreak || showAwards || showAlbum);
+  const showStats = rs === "done" && end.endView === "stats" && end.stats;
+  $("end-stats").classList.toggle("hidden", !showStats);
+  if (!showStats) statsKey = null;
+  $("end-reveal").classList.toggle("hidden", rs === "idle" || showBreak || showAwards || showAlbum || showStats);
   $("end-breakdown").classList.toggle("hidden", !showBreak);
   $("end-awards").classList.toggle("hidden", !showAwards);
   $("end-album").classList.toggle("hidden", !showAlbum);
   if (!showAlbum) stopAlbum();
   if (!showAwards) awardsKey = null;
+  if (showStats) { renderStats(end.stats); return; }
   if (showAwards) { renderAwards(end.awards); return; }
   if (showAlbum) { startAlbum(end.album); return; }
   if (showBreak) {
@@ -627,9 +1025,9 @@ function renderEnd(end) {
     revealedN++;
   }
   const all = revealedN >= list.length;
-  if (all && $("winner-banner").classList.contains("hidden") && !winnerPending) {
+  if (all && !duoBusy && $("podium").classList.contains("hidden") && !winnerPending) {
     winnerPending = true;
-    setTimeout(() => { winnerPending = false; if (revealedN >= list.length) showWinnerBanner(list, fresh); }, spotMs);
+    setTimeout(() => { winnerPending = false; if (revealedN >= list.length && !duoBusy) { showWinnerBanner(list, fresh); showPodium(list, !fresh); } }, spotMs);
   }
 }
 // ---------- Hall of fame op het aanmeldscherm ----------
@@ -653,13 +1051,18 @@ function renderAwards(list) {
   const grid = $("award-grid");
   grid.replaceChildren();
   if (!list.length) { grid.append(el("p", "tv-sub", "Te weinig teams voor prijsjes.")); return; }
+  // Schermvullend: kolommen en rijen uitrekenen, de kaarten verdelen de hoogte
+  const n = list.length, rows = n <= 4 ? 1 : n <= 10 ? 2 : n <= 18 ? 3 : 4, cols = Math.ceil(n / rows);
+  grid.className = `award-grid fill rows-${Math.min(rows, 3)}`;
+  grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  grid.style.gridAutoRows = `calc((${rows === 1 ? 50 : 66}vh - ${(rows - 1) * 2}vh) / ${rows})`;
   list.forEach((a, i) => {
     const card = el("div", "award-card");
     const teamsBox = el("div", "aw-teams");
     a.teams.forEach((t) => { const sp = el("span"); sp.append(QuizFX.avatar(t.name, t.photo, "1.8em", t.color), t.name); teamsBox.append(sp); });
     card.append(el("div", "aw-emoji", a.emoji), el("div", "aw-title", a.title), teamsBox, el("div", "aw-detail", a.detail));
     grid.append(card);
-    setTimeout(() => { card.classList.add("show"); QuizFX.drumHit && QuizFX.drumHit(); }, 600 + i * 1400);
+    setTimeout(() => { card.classList.add("show", "trophy"); QuizFX.drumHit && QuizFX.drumHit(); setTimeout(() => { QuizFX.ding && QuizFX.ding(); }, 260); if (i % 3 === 2) QuizFX.cheer && QuizFX.cheer(); }, 600 + i * 1400);
   });
 }
 // ---------- Fotoalbum: diavoorstelling met teamfoto's en tekeningen ----------
@@ -719,23 +1122,78 @@ function finishDuo(list) {
   cards.forEach((c) => c.classList.add("shake"));
   QuizFX.drumroll(3);
   setTimeout(() => {
-    const winners = list.filter((p) => p.rank === 1).map((p) => p.name);
-    cards.forEach((c) => {
-      c.classList.remove("shake");
-      const win = winners.includes(c.dataset.name);
-      c.classList.add(win ? "win" : "lose");
-      c.querySelector(".duo-label").textContent = win ? "🏆 WINNAAR!" : "🥈 Tweede plaats";
-    });
-    QuizFX.cheer(); QuizFX.launchConfetti();
-    setTimeout(() => {
-      // daarna de gewone eindstand met de winnaarsbanner
-      $("reveal-duo").classList.add("hidden");
-      duoShown = false;
+    // Beide teams verdwijnen: alleen de winnaar komt in beeld, zodat er geen verwarring is
+    $("reveal-duo").classList.add("hidden");
+    duoShown = false;
+    const winners = list.filter((p) => p.rank === 1);
+    const afterSpot = () => {
       while (revealedN < list.length) { const li = QuizFX.rankRow(list[list.length - 1 - revealedN]); $("tv-scoreboard").prepend(li); li.classList.add("show"); revealedN++; }
       showWinnerBanner(list, false);
+      showPodium(list, false);
       duoBusy = false;
-    }, 5500);
+    };
+    QuizFX.cheer(); QuizFX.launchConfetti(); (QuizFX.triumph || QuizFX.fanfare)();
+    if (winners.length === 1) spotlight(winners[0], 5500, afterSpot);
+    else setTimeout(afterSpot, 600); // gedeelde winnaars: de banner noemt ze allebei
   }, 3100);
+}
+// Overwinningskaarten: de tv tekent per team een kaart en stuurt ze naar de server (data/fotos, mee in de foto-zip)
+let cardsBusy = false, cardsDone = false;
+function makeCards() {
+  if (cardsBusy) return;
+  cardsBusy = true;
+  socket.emit("card_keys", null, async (res) => {
+    try {
+      if (res && res.ok) for (const it of res.cards) {
+        const blob = await QuizFX.trophyCard(it.card);
+        if (blob) await fetch(`/origineel/${encodeURIComponent(it.key)}`, { method: "POST", headers: { "Content-Type": "image/png" }, body: blob });
+      }
+      cardsDone = true;
+    } catch (e) { /* de kaarten staan er dan niet bij; opnieuw maken kan via de bediening */ }
+    cardsBusy = false;
+  });
+}
+socket.on("make_cards", () => { cardsDone = false; makeCards(); });
+// Punten die oplopen van 0 naar het eindresultaat (in ongeveer 1 seconde), in plaats van ineens te verschijnen
+function countUp(node, to, suffix = "", ms = 1000, delay = 0) {
+  node.textContent = `0${suffix}`;
+  setTimeout(() => {
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+      node.textContent = `${p >= 1 ? to : Math.round(to * e)}${suffix}`;
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, delay);
+}
+// Podium met drie blokken (brons, zilver, goud): eerst de derde plek, dan de tweede, als laatste de winnaar
+function showPodium(list, instant) {
+  const box = $("podium");
+  if (!box.classList.contains("hidden")) return;
+  const top = list.slice(0, 3);
+  const order = top.length >= 3 ? [top[1], top[0], top[2]] : top.length === 2 ? [top[1], top[0]] : top;
+  const HEIGHT = { 1: 36, 2: 27, 3: 20 }; // vh
+  box.replaceChildren();
+  order.forEach((p) => {
+    const r = Math.min(p.rank, 3), st = TEAMSTYLE[p.name] || {};
+    const col = el("div", `pd-col pd-${r}`);
+    const pts = el("div", "pd-pts", `${p.score}`);
+    const head = el("div", "pd-head");
+    head.append(QuizFX.avatar(p.name, p.photo || st.photo, "clamp(70px, 14vh, 230px)", p.color || st.color), el("div", "pd-name", p.name), pts);
+    const block = el("div", "pd-block", r === 1 ? "🥇" : r === 2 ? "🥈" : "🥉");
+    block.style.height = `${HEIGHT[r]}vh`;
+    col.append(head, block);
+    if (!instant) { const d = r === 1 ? 1.3 : r === 2 ? 0.7 : 0.1; col.style.animationDelay = `${d}s`; countUp(pts, p.score, " punten", 1000, d * 1000 + 500); }
+    else col.style.animation = "none";
+    box.append(col);
+  });
+  const rest = list.slice(3);
+  $("podium-rest").textContent = rest.length ? rest.map((p) => `${p.rank}. ${p.name} (${p.score})`).join("   ·   ") : "";
+  $("tv-scoreboard").classList.add("hidden");
+  $("winner-photos").classList.add("hidden");
+  box.classList.remove("hidden");
+  setTimeout(scheduleFit, 100);
 }
 // Ontknoping: elke plek eerst groot in beeld (foto, naam, punten), daarna schuift het team in de ranglijst
 let spotTimer = null, spotDone = null, winnerPending = false;
@@ -743,7 +1201,7 @@ function spotlight(player, ms, done) {
   const sp = $("reveal-spot");
   const st = TEAMSTYLE[player.name] || {};
   const rankTxt = player.rank === 1 ? "🏆 Winnaar!" : player.rank === 2 ? "🥈 Tweede plaats" : player.rank === 3 ? "🥉 Derde plaats" : `Plek ${player.rank}`;
-  sp.replaceChildren(el("div", "spot-rank", rankTxt), QuizFX.avatar(player.name, player.photo || st.photo, "clamp(180px, 34vh, 560px)", player.color || st.color), el("div", "spot-team", player.name), el("div", "spot-pts", `${player.score} punten`));
+  sp.replaceChildren(el("div", "spot-rank", rankTxt), QuizFX.avatar(player.name, player.photo || st.photo, "clamp(180px, 34vh, 560px)", player.color || st.color), el("div", "spot-team", player.name), (() => { const n = el("div", "spot-pts", "0 punten"); countUp(n, player.score, " punten", 1000, 700); return n; })());
   sp.classList.toggle("winner", player.rank === 1);
   sp.classList.remove("hidden", "go"); void sp.offsetWidth; sp.classList.add("go");
   clearTimeout(spotTimer);
@@ -793,13 +1251,32 @@ function renderPositions(pos) {
   if (pos.mode === "race") return startRace(pos);
   stopRace();
   const list = pos.list || [];
-  $("positions-list").replaceChildren(...list.map((p, i) => {
-    const row = el("div", "pos-row");
-    row.style.animationDelay = `${i * 0.25}s`;
+  const before = lastPosOrder; // volgorde van de vorige keer: teams schuiven vanaf hun oude plek naar de nieuwe
+  lastPosOrder = list.map((p) => p.name);
+  const rows = list.map((p, i) => {
+    const row = el("div", "pos-row" + (p.rank <= 3 ? ` top${p.rank}` : ""));
+    if (!before) row.style.animationDelay = `${i * 0.25}s`;
     if (p.color) row.style.borderLeft = `0.5vw solid ${p.color}`;
     row.append(el("span", "pos-rank", p.rank === 1 ? "🥇 1e" : p.rank === 2 ? "🥈 2e" : p.rank === 3 ? "🥉 3e" : `${p.rank}e`), QuizFX.avatar(p.name, p.photo, "1.6em", p.color), el("span", "", p.name));
+    const old = before ? before.indexOf(p.name) : -1;
+    if (old >= 0 && old !== i) row.append(el("span", "pos-move " + (old > i ? "up" : "down"), old > i ? `▲ ${old - i}` : `▼ ${i - old}`));
     return row;
-  }));
+  });
+  $("positions-list").replaceChildren(...rows);
+  if (before) flipRows(rows, rows.map((r, i) => before.indexOf(list[i].name)));
+}
+let lastPosOrder = null;
+// Rijen laten verschuiven vanaf hun vorige plek (FLIP): oldIdx[i] = vorige plek van rij i (-1 = nieuw)
+function flipRows(rows, oldIdx) {
+  if (!rows.length || !rows[0].animate) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const h = rows.length > 1 ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top : rows[0].offsetHeight;
+  rows.forEach((r, i) => {
+    r.style.animation = "none"; // geen inval-animatie: ze schuiven
+    const o = oldIdx[i];
+    const from = o < 0 ? [{ opacity: 0, transform: "translateX(-4vw)" }] : [{ transform: `translateY(${(o - i) * h}px)` }];
+    r.animate([...from, { opacity: 1, transform: "none" }], { duration: 1100, delay: 300 + i * 60, easing: "cubic-bezier(.34,1.56,.64,1)", fill: "backwards" });
+  });
 }
 // ---------- Balkenrace: per gespeelde ronde schuiven de balken op en halen teams elkaar in ----------
 // Geen getallen: de balken zijn verhoudingen ten opzichte van de koploper.
@@ -904,8 +1381,12 @@ function flashScreen(color) {
 }
 function fxTransitions(state) {
   const step = state.step;
+  if (state.phase !== "END") cardsDone = false;
+  else if (state.end && state.end.reveal === "done" && !cardsDone && !cardsBusy) setTimeout(makeCards, 9000); // na de onthulling en het podium
+  if (state.phase !== "END") document.body.classList.remove("finale");
   const cur = { id: step ? step.id : null, kind: step ? step.kind : null, status: step ? step.status : null, paused: !!state.paused, header: state.header && state.header.round };
   const prev = fxLast; fxLast = cur;
+  if (!prev || cur.id !== prev.id) flownStep = null; // een nieuwe (of opnieuw getoonde) vraag: de antwoorden vliegen weer binnen
   // nieuwe teamfoto (lobby of teamfoto-stap): fototoestel-klik + witte flits
   const photos = {}; Object.entries(TEAMSTYLE).forEach(([n, v]) => { if (v.photo) photos[n] = v.photo; });
   if (fxPhotos && Object.entries(photos).some(([n, u]) => fxPhotos[n] !== u)) { QuizFX.shutter(); flashScreen("#ffffff"); }
@@ -919,7 +1400,7 @@ function fxTransitions(state) {
       if (cur.header === prev.header) QuizFX.whoosh();
       requestAnimationFrame(() => {
         const v = VIEWS.map((id) => $(id)).find((x) => x && !x.classList.contains("hidden"));
-        if (v) { v.classList.remove("fx-enter"); void v.offsetWidth; v.classList.add("fx-enter"); setTimeout(() => v.classList.remove("fx-enter"), 1400); } // alleen bij binnenkomst
+        if (v) { v.classList.remove("fx-enter"); void v.offsetWidth; v.classList.add("fx-enter"); setTimeout(() => v.classList.remove("fx-enter"), 1900); } // alleen bij binnenkomst
       });
     }
     return;
@@ -928,19 +1409,24 @@ function fxTransitions(state) {
 }
 // ---------- Rondeovergang ----------
 let lastRoundHeader = null;
-function maybeCurtain(state) {
-  const r = state.header.round || "";
-  if (state.phase !== "PLAY" || r === lastRoundHeader) { lastRoundHeader = r; return; }
-  const first = lastRoundHeader === null;
-  lastRoundHeader = r;
-  const m = /^Ronde (\d+): (.*)$/.exec(r);
-  if (first || !m) return; // niet bij het openen van de tv, en alleen voor echte rondes
-  const c = $("round-curtain");
-  c.querySelector(".rc-no").textContent = `Ronde ${m[1]}`;
-  c.querySelector(".rc-title").textContent = m[2];
-  c.classList.remove("go"); void c.offsetWidth; c.classList.add("go");
-  if (QuizFX.whoosh) QuizFX.whoosh();
+// Het ronde-gordijn is weg: de uitlegpagina van de ronde ("Ronde 3: …") is zelf de overgang. Een gordijn eroverheen
+// gaf twee schermen tegelijk. Alleen bijhouden bij welke ronde we zijn.
+function maybeCurtain(state) { lastRoundHeader = state.header.round || ""; }
+// Bovenste regel: past de ronde (links) of de punten (rechts) niet in zijn vak, dan wordt die tekst kleiner, tot hij past
+function fitTop() {
+  // Joker-vakje te breed? Eerst de namen weglaten (alleen de teamfoto's/letters), pas daarna kleiner maken
+  $("tv-points").classList.remove("compact");
+  const right = document.querySelector("#tv-top .tt-right");
+  // breedte zonder animatie (offsetWidth telt het opveren van het vakje niet mee)
+  const need = right ? [...right.children].filter((c) => c.offsetParent !== null).reduce((sum, c) => sum + c.offsetWidth, 0) + 20 : 0;
+  if (right && need > right.clientWidth) $("tv-points").classList.add("compact");
+  document.querySelectorAll("#tv-top .tt-left, #tv-top .tt-right").forEach((col) => {
+    col.style.removeProperty("--fit");
+    const avail = col.clientWidth, need = col.scrollWidth;
+    if (avail > 0 && need > avail + 1) col.style.setProperty("--fit", String(Math.max(0.45, (avail / need) * 0.97).toFixed(3)));
+  });
 }
+window.addEventListener("resize", fitTop);
 // ---------- Tekst automatisch passend: lange vragen kleiner, zodat ze niet over het scherm lopen ----------
 function autoSizeText(v) {
   v.querySelectorAll(".tv-q").forEach((q) => {
@@ -954,23 +1440,76 @@ function autoSizeText(v) {
     g.querySelectorAll(".qo").forEach((o) => { o.style.fontSize = f < 1 ? `calc(clamp(16px, 2.2vw, 40px) * ${f.toFixed(2)})` : ""; });
   });
 }
+// Schermen met een tekening, foto of logo: het beeld heeft een vaste maat. Past het scherm niet, dan wordt eerst de
+// tekst eromheen kleiner (tot 60%), zodat tekeningen en logo's op elk scherm even groot blijven. Pas als dat niet
+// genoeg is, wordt het hele scherm verkleind (zoals bij de andere schermen).
+const FIT_TEXT = ".tv-title, .tv-q, .tv-sub, .pointsnow, .cat, .tchip, .qo, .gcard-cap, h2";
+function shrinkTextToFit(v, availH, availW) {
+  if (!v.querySelector(".blurbox, .padwrap")) return;
+  const els = [...v.querySelectorAll(FIT_TEXT)].filter((e) => !e.closest(".hidden"));
+  const base = els.map((e) => parseFloat(getComputedStyle(e).fontSize) || 0);
+  els.forEach((e) => { if (e.dataset.fitfs === undefined) e.dataset.fitfs = e.style.fontSize || ""; });
+  // kleine marge: tijdens een animatie is het scherm soms 1 pixel te breed, en dat mag de tekst niet verkleinen
+  for (let f = 0.92; f >= 0.6 && (v.scrollHeight > availH + 3 || v.scrollWidth > availW + 6); f -= 0.08) {
+    els.forEach((e, i) => { if (base[i]) e.style.fontSize = `${(base[i] * f).toFixed(1)}px`; });
+  }
+}
+// Rechtsboven: welke teams in deze ronde hun joker hebben ingezet (dubbele punten). Geen joker = geen vakje.
+// Tot drie teams met foto/letter en naam, bij meer teams alleen de rondjes (anders past de bovenste regel niet).
+let jokerKey = null;
+function renderJokerPill(list) {
+  const pill = $("tv-points");
+  const key = JSON.stringify(list);
+  if (key === jokerKey) return;
+  const fresh = jokerKey !== null && list.length > 0 && key !== jokerKey;
+  jokerKey = key;
+  pill.classList.toggle("hidden", !list.length);
+  pill.replaceChildren();
+  if (!list.length) return;
+  pill.append(document.createTextNode(list.length === 1 ? "🃏 Joker:" : "🃏 Jokers:"));
+  list.forEach((t) => {
+    const item = el("span", "jk-team");
+    item.append(QuizFX.avatar(t.name, t.photo, "1.25em", t.color));
+    item.append(el("span", "jk-name", t.name));
+    item.title = t.name;
+    pill.append(item);
+  });
+  if (fresh) { pill.classList.remove("jk-pop"); void pill.offsetWidth; pill.classList.add("jk-pop"); }
+  fitTop();
+}
+// Teamnamen: past het langste woord niet op de kaart, dan de naam kleiner maken (nooit midden in een woord afbreken)
+function fitNames(root) {
+  root.querySelectorAll(".tc-name").forEach((n) => {
+    n.style.fontSize = "";
+    const base = parseFloat(getComputedStyle(n).fontSize) || 16;
+    for (let f = 0.92; f >= 0.5 && n.scrollWidth > n.clientWidth + 1; f -= 0.06) n.style.fontSize = `${(base * f).toFixed(1)}px`;
+  });
+}
 function fitView() {
   const main = document.querySelector("main");
   const v = VIEWS.map((id) => $(id)).find((x) => x && !x.classList.contains("hidden"));
   if (!main || !v) return;
+  document.querySelectorAll("[data-fitfs]").forEach((e) => { e.style.fontSize = e.dataset.fitfs; delete e.dataset.fitfs; }); // vorige verkleining terugdraaien
   autoSizeText(v);
+  fitNames(v);
   v.style.transform = "";
+  v.style.marginTop = "";
   const cs = getComputedStyle(main);
   const availH = main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
   const availW = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  shrinkTextToFit(v, availH, availW);
   const h = v.scrollHeight, w = v.scrollWidth;
   const s = Math.min(1, availH / Math.max(1, h), availW / Math.max(1, w));
   if (s < 0.995) v.style.transform = `scale(${Math.max(0.3, s)})`;
+  // Blijft er onder de inhoud veel leeg? Dan de inhoud iets boven het midden zetten in plaats van tegen de bovenrand:
+  // dat oogt rustiger en verzorgder op een groot scherm. (Schermen die zelf het hele vlak vullen, blijven staan.)
+  const free = availH - h * Math.min(1, s);
+  if (free > availH * 0.08 && !v.dataset.top) v.style.marginTop = `${Math.round(free * 0.4)}px`;
 }
 function scheduleFit() {
-  requestAnimationFrame(fitView);
+  requestAnimationFrame(() => { fitView(); fitTop(); });
   clearTimeout(fitTimer);
-  fitTimer = setTimeout(fitView, 350); // na laden van plaatjes en animaties nog een keer
+  fitTimer = setTimeout(() => { fitView(); fitTop(); }, 350); // na laden van plaatjes en animaties nog een keer
 }
 window.addEventListener("resize", scheduleFit);
 document.addEventListener("load", (e) => { if (e.target && e.target.tagName === "IMG") scheduleFit(); }, true);
@@ -979,44 +1518,79 @@ document.addEventListener("load", (e) => { if (e.target && e.target.tagName === 
 let wasPaused = false;
 let lastStepId = null;
 let lastBeep = null;
-socket.on("state_update", (state) => {
+// Tijdens de opening (bij de start) en de logo-flits (begin van een ronde) wacht het nieuwe scherm even:
+// de laatste stand wordt bewaard en getoond zodra het klaar is, mét zijn eigen animatie en geluid.
+let holdUntil = 0, heldState = null, replayState = null, holdTimer = null, stingFor = null;
+function holdScreen(ms) {
+  holdUntil = Date.now() + ms;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => { holdUntil = 0; const st = heldState; heldState = null; if (st && replayState) replayState(st); }, ms);
+}
+function showSting() {
+  const o = $("sting");
+  QuizFX.renderBrand(o);
+  o.classList.remove("show"); void o.offsetWidth; o.classList.add("show");
+  try { QuizFX.whoosh && QuizFX.whoosh(); } catch (e) { /* geen geluid */ }
+  setTimeout(() => o.classList.remove("show"), 1500);
+}
+socket.on("state_update", function tvState(state) {
+  replayState = tvState;
+  if (Date.now() < holdUntil) { heldState = state; return; }
+  // Logo-flits: bij het begin van een nieuwe ronde eerst anderhalve seconde het logo groot in beeld
+  const st0 = state.step;
+  if (state.phase === "PLAY" && !state.paused && st0 && st0.roundIntro && stingFor !== st0.id && state.brand && state.brand.logo && (!state.ambience || state.ambience.sting !== false)) {
+    stingFor = st0.id;
+    if (lastTv) { showSting(); heldState = state; holdScreen(1500); return; } // niet bij het (her)laden van de pagina
+  }
+  document.body.classList.toggle("has-brand-logo", !!(state.brand && state.brand.logo));
   const step = state.step;
   const inQuiz = state.phase === "PLAY";
   TEAMSTYLE = state.teamStyle || {};
   cheatSoundOn = state.cheatSound !== false;
   setSoundOut(state.soundOut);
+  QuizFX.setSoundFiles(state.soundFiles);
   renderPositions(state.positions);
   chipStep = step ? step.id : state.phase;
   fxTransitions(state);
   QuizFX.applyTheme(state.theme);
   QuizFX.setTexts(state.texts);
+  QuizFX.setBrand(state.brand);
+  lastTv = state;
   document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = QuizFX.t(e.dataset.t); });
+  $("tv-logo").classList.toggle("hidden", state.phase === "LOBBY"); // in de lobby staat het logo al groot in beeld
+  // Achtergrondmuziek vóór de start en in de pauze, alleen als de quizgeluiden via de tv gaan
+  const mu = state.ambience || {};
+  QuizFX.setBackgroundMusic(mu.background, (state.soundOut || "tv") === "tv" && mu.on && (state.phase === "LOBBY" || (state.phase === "PLAY" && state.paused)));
+  // "Druk één keer op OK" alleen vóór de start (daarna waarschuwt de bediening als de tv nog geen geluid heeft)
+  $("audio-banner").classList.toggle("hidden", audioUnlocked || state.phase !== "LOBBY");
   if (!step || step.kind !== "info") infoShown = null;
 
   // Tijdens de pauze geen ronde, vraagnummer of punten bovenin (die horen bij de stap waarop gepauzeerd is)
   const onPause = state.phase === "PLAY" && state.paused;
-  $("tv-round").textContent = state.header.round || "Familiequiz";
-  $("tv-round").classList.toggle("hidden", onPause);
+  $("tv-round").textContent = state.header.round || QuizFX.brandName();
+  $("tv-round").classList.toggle("hidden", onPause || state.phase === "LOBBY"); // welkom/aanmelden: naam en logo staan al groot in beeld
   maybeCurtain(state);
   const prog = onPause ? null : state.header.progress;
   $("tv-prog").classList.toggle("hidden", !prog);
   if (prog) $("tv-prog").textContent = prog.label ? prog.label : `Vraag ${prog.n} van ${prog.total}`;
-  $("tv-points").classList.toggle("hidden", onPause || !state.header.points);
-  if (state.header.points) $("tv-points").textContent = `💯 ${state.header.points} punten te verdienen`;
+  renderJokerPill(onPause ? [] : state.header.jokers || []);
+  fitTop(); // past alles in de bovenste regel? anders kleiner
 
   // Aftelklok bovenin en (bij tekenen en 30 seconds) groot in beeld
   QuizFX.countdown("tv", step && step.timer ? step.timer : null, (info) => {
     $("tv-timerbar").classList.toggle("hidden", !info);
-    $("tv-timer").classList.toggle("hidden", !info);
+    const big = ["th-bigtimer", "draw-bigtimer"].some((id) => { const e = document.getElementById(id); return e && e.offsetParent !== null; });
+    $("tv-timer").classList.toggle("hidden", !info || big); // staat het grote getal in beeld, dan geen tweede klokje
     curTimer = info;
     document.body.classList.toggle("hurry", !!(info && info.running && info.secs <= 5 && info.secs > 0));
-    if (!info) return;
-    $("tv-timer").textContent = `⏱ ${info.secs}s`;
-    $("tv-timerfill").style.width = `${Math.round(info.fraction * 100)}%`;
+    if (!info) { barAnim = null; return; }
+    timerRing(info);
+    setTimerBar(info);
     const low = info.secs <= 5 && info.running;
     $("tv-timerbar").classList.toggle("low", low);
     $("tv-timerbar").classList.toggle("half", !low && info.fraction <= 0.5);
     $("tv-timer").classList.toggle("low", low);
+    $("tv-timer").classList.toggle("half", !low && info.fraction <= 0.5);
     bigTimer(info, $("draw-bigtimer"));
     bigTimer(info, $("th-bigtimer"));
     if (low && lastSecs !== info.secs && info.secs > 0) { QuizFX.tick(); if (info.secs <= 3) QuizFX.heartbeat(); } // tikken (en hartslag) in de laatste seconden
@@ -1037,7 +1611,9 @@ socket.on("state_update", (state) => {
 
 
   // Overlays hebben voorrang op de gewone schermen
-  if (state.phase === "PLAY" && state.paused) { showView("v-pause"); startPauseShow(state.teamStyle || {}, state.pausePhotos || []); return; }
+  // Pauzetimer: als hij afloopt een belletje (alleen als de quizgeluiden via de tv gaan)
+  QuizFX.setPauseTimer(state.pauseTimer, () => { if ((lastTv && lastTv.soundOut || "tv") === "tv") QuizFX.chime(); });
+  if (state.phase === "PLAY" && state.paused) { showView("v-pause"); renderDilemma(state.dilemma); startPauseShow(state.teamStyle || {}, state.pausePhotos || []); return; }
   stopPauseShow();
   if (state.review && state.review.data) {
     showView("v-review");
@@ -1068,6 +1644,14 @@ socket.on("state_update", (state) => {
   if (state.phase === "LOBBY" && state.lobbyStage === "welcome") {
     showView("v-welcome");
     $("welcome-emoji").textContent = state.welcome.emoji || "🎉";
+    // Met een logo staat het logo bovenaan in plaats van de emoji
+    const logo = QuizFX.brandLogo();
+    $("welcome-emoji").classList.toggle("hidden", !!logo);
+    $("welcome-logo").classList.toggle("hidden", !logo);
+    if (logo && $("welcome-logo").getAttribute("src") !== logo) { $("welcome-logo").src = logo; $("welcome-logo").alt = QuizFX.brandName(); }
+    const sub = state.brand && state.brand.subtitle;
+    $("welcome-sub").textContent = sub || "";
+    $("welcome-sub").classList.toggle("hidden", !sub);
     $("welcome-title").textContent = state.welcome.title;
     $("welcome-text").textContent = state.welcome.text;
     resetReveal();
@@ -1077,8 +1661,10 @@ socket.on("state_update", (state) => {
     showView("v-lobby");
     renderLobbyTeams(state.teamList);
     renderHallOfFame(state.hallOfFame);
-    $("lobby-teams").previousElementSibling.textContent = QuizFX.t("lobby.teams") + (state.maxTeams ? ` (${state.teamList.length} van ${state.maxTeams})` : "");
-    $("lobby-empty").classList.toggle("hidden", state.teamList.length > 0);
+    $("lobby-head").textContent = QuizFX.t("lobby.teams") + (state.maxTeams ? ` (${state.teamList.length} van ${state.maxTeams})` : "");
+    renderLobbySignup(state.signup); // persoonlijk aanmelden: eigen kop en het overzicht per familie
+    $("lobby-empty").textContent = state.signup ? QuizFX.t("aanmeld.tv.leeg") : QuizFX.t("lobby.leeg");
+    $("lobby-empty").classList.toggle("hidden", state.teamList.length > 0 || !!(state.signup && state.signup.total));
     resetReveal();
     return;
   }
@@ -1130,7 +1716,7 @@ socket.on("state_update", (state) => {
   const img = $("welcome-wifi-img");
   const tries = ["/media/wifi-qr.png", "/media/wifi-qr.jpg", "/media/wifi-qr.jpeg"];
   let i = 0;
-  img.onload = () => $("welcome-wifi").classList.remove("hidden");
+  img.onload = () => { $("welcome-wifi").classList.remove("hidden"); $("welcome-row").classList.add("has-wifi"); scheduleFit(); };
   img.onerror = () => { i++; if (i < tries.length) img.src = tries[i] + "?v=" + Date.now(); };
   img.src = tries[0] + "?v=" + Date.now();
 })();

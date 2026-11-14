@@ -1,0 +1,20 @@
+LOGO EN APP-ICOON
+=================
+
+logo.svg          Het logo op de tv (welkom, aanmelden, linksboven tijdens de quiz, pauze, verbindingskaart),
+                  op de telefoons en op het deelplaatje van de uitslag.
+                  Eigen logo? Zet hier een logo.png neer (gaat altijd voor logo.svg), of vervang logo.svg.
+                  Tip: PNG met transparante achtergrond, minstens 1000 pixels breed.
+                  Staat de naam van de quiz al in jullie logo? Zet dan in de Excel (tabblad Teksten)
+                  quiz.logo.naam op "nee", anders staat de naam er twee keer.
+                  Geen logo willen? Verwijder logo.svg (en logo.png): dan staat alleen de naam er.
+
+app-icoon.png     Het icoon als iemand de quiz op het beginscherm van de telefoon zet.
+                  Vierkant, 512 x 512 pixels, zonder transparantie (iPhones maken transparant zwart).
+                  Houd het belangrijkste in het midden: Android snijdt soms de hoeken af.
+
+app-icoon-bron.svg  De bron waarmee app-icoon.png gemaakt is (alleen nodig als je hem wilt aanpassen).
+
+Een nieuw bestand wordt binnen een paar seconden gebruikt; de server hoeft niet opnieuw te starten.
+Telefoons die het icoon al op hun beginscherm hebben, houden het oude icoon tot ze het opnieuw toevoegen.
+De naam van de quiz staat in de Excel, tabblad Teksten, bovenaan. De aftelklok vóór de start zet je aan in de bediening.

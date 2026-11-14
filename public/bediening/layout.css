@@ -96,3 +96,47 @@
 /* De vraag zelf klein en gedempt in de bediening: niet van een afstand mee te lezen */
 #panel .q-small { font-size: 13px; font-weight: normal; color: #94a3b8; text-align: left; margin: 4px 0 6px; }
 #panel .opt { font-size: 13px; }
+
+/* Alleen vóór de start beschikbaar */
+.locked-out { display: none !important; }
+
+/* ---------- Brede schermen: alles past in het venster, zonder schuifbalk van de pagina ----------
+   De drie kolommen krijgen samen precies de hoogte die overblijft onder de kopbalk, rekening houdend met de rand
+   van de pagina en de opvulling van de kaart. Past de inhoud van een kolom niet, dan schuift alleen die kolom. */
+@media (min-width: 1100px) {
+  body.wide { padding: 8px 16px; min-height: 0; }
+  body.wide .card { padding: 10px 16px; }
+  body.wide #play-left, body.wide #play-center, body.wide #play-right {
+    position: sticky; top: var(--topbar-h, 58px);
+    max-height: calc(100vh - var(--topbar-h, 58px) - 44px);
+    overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; scrollbar-width: thin;
+  }
+  /* Soundboard compacter: drie kolommen, lagere knoppen; de uitleg staat in de tooltip van "Eigen geluid toevoegen" */
+  body.wide #sb-buttons { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 4px !important; }
+  body.wide #sb-buttons button { padding: 7px 4px; font-size: 14px; min-height: 0; margin: 0; }
+  body.wide #sb-upload-msg { display: none; }
+  body.wide #soundboard { margin-top: 6px; }
+}
+/* Brede schermen: middenkolom wat breder en compacter, zodat alles zonder schuiven in beeld past
+   (navigatieknoppen op één regel, de grote knop lager, soundboard in vier kolommen) */
+@media (min-width: 1100px) {
+  body.wide #main-col, body.wide.playing #main-col { grid-template-columns: minmax(240px, 1fr) minmax(460px, 640px) minmax(340px, 1.15fr) !important; column-gap: 20px; }
+  body.wide #play-center #btn-main { font-size: 24px; padding: 16px 14px; margin: 4px 0 6px; }
+  body.wide #play-center #main-hint { font-size: 13px; margin: 0 0 4px; }
+  body.wide #play-center #status-line { margin-bottom: 4px; font-size: 13px; }
+  body.wide #play-center #btn-force, body.wide #play-center #btn-music, body.wide #play-center #btn-undo,
+  body.wide #play-center #dilemma-box button { padding: 10px 12px; font-size: 16px; margin: 4px 0; min-height: 0; }
+  body.wide #play-center #main-controls > .row { gap: 6px; margin: 4px 0; }
+  body.wide #play-center #main-controls > .row > button { padding: 10px 6px; font-size: 15px; margin: 0; min-height: 0; }
+  body.wide #play-center #team-overview { margin-top: 4px; }
+  body.wide #sb-buttons { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  body.wide #sb-buttons button { padding: 6px 4px; font-size: 13px; }
+  body.wide #soundboard label.btn-option { padding: 6px; font-size: 13px; margin-top: 4px !important; }
+  body.wide #phone-remote { margin-top: 4px; }
+}
+/* Lage schermen (laptop): knoppen en tussenruimtes iets kleiner zodat er meer in beeld past */
+@media (min-width: 1100px) and (max-height: 860px) {
+  body.wide #play-center #btn-main { font-size: 22px; padding: 16px 12px; min-height: 0; }
+  body.wide #kbd-hint { display: none !important; }
+  body.wide #play-center .chips-row, body.wide #play-center #team-overview { font-size: 13px; }
+}

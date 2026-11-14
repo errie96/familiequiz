@@ -24,13 +24,14 @@ test('scenario: aanmelden, testvraag, teamfoto, joker en een echte vraag met pun
   const laat = await phone(app, 'p4', { team: 'Te laat', label: 'X' });
   assert.equal(laat.res.ok, false);
 
-  // testvraag: alleen de basistelefoon mag antwoorden
+  // testvraag: iedereen antwoordt op zijn eigen telefoon (ook wie niet de basistelefoon is)
   advanceUntil((r) => r.step.id === 'test_1' && stepState('test_1').status === 'open');
   const q = T.steps.find((s) => s.id === 'test_1');
-  assert.equal((await opa.call('submit_answer', { stepId: q.id, value: q.answer })).reason, 'not_base');
+  assert.equal((await opa.call('submit_answer', { stepId: q.id, value: (q.answer + 1) % q.options.length })).ok, true);
   assert.equal((await oma.call('submit_answer', { stepId: q.id, value: q.answer })).ok, true);
+  assert.equal(stepState('test_1').status, 'open', 'het andere team moet nog');
   assert.equal((await neven.call('submit_answer', { stepId: q.id, value: (q.answer + 1) % q.options.length })).ok, true);
-  assert.equal(stepState('test_1').status, 'closed'); // iedereen geantwoord = vanzelf dicht
+  assert.equal(stepState('test_1').status, 'closed'); // elke telefoon geantwoord = vanzelf dicht
 
   // teamfoto pas na de testvragen; daarna niet meer te wijzigen
   advanceUntil((r) => r.step.kind === 'teamphoto');

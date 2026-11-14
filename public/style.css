@@ -6,7 +6,7 @@ body { background: #0f172a; color: #f8fafc; display: flex; justify-content: cent
 .card { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
 h1, h2, h3 { margin-bottom: 16px; text-align: center; }
 button { width: 100%; padding: 14px; margin: 8px 0; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:disabled { opacity: 0.45; filter: grayscale(1); cursor: not-allowed; } /* uitgeschakeld = grijs, dus niet oplichtend */
 .btn-primary { background: #3b82f6; color: white; }
 .btn-primary:active { background: #2563eb; }
 .btn-pause { background: #f59e0b; color: white; }
@@ -47,6 +47,7 @@ li { padding: 10px; border-bottom: 1px solid #334155; display: flex; justify-con
 .blurbox { position: relative; overflow: hidden; border-radius: 14px; background: #0b1220; display: flex; align-items: center; justify-content: center; }
 .blurbox img { display: block; width: 100%; height: 100%; object-fit: cover; transition: filter 0.9s ease; }
 .blurbox .ph { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; font-weight: bold; color: #cbd5e1; background: linear-gradient(135deg, #334155, #1e293b); text-align: center; padding: 1em; }
+/* Het logo onvervormd: het kader neemt de verhouding van het logo over (zoals bij foto blur) */
 .logobox canvas { width: 100%; height: 100%; display: block; background: #fff; }
 
 /* Tijdlijn (Hitster) */
@@ -79,3 +80,31 @@ img, canvas, video { max-width: 100%; }
 @media (min-width: 900px) and (orientation: landscape) { .card { max-width: 720px; } }
 
 h1, h2, h3, .tv-title, .huge, .pill, .tchip, .bigtxt, .spot-team, .spot-rank, .rank-card, #winner-banner, .btn-primary { font-family: "Quizfont", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+/* ---------- Naam en logo van de quiz (zie public/media/logo/) ---------- */
+.brand { display: flex; align-items: center; justify-content: center; gap: 0.5em; }
+.brand-logo { display: block; width: auto; object-fit: contain; }
+.brand-text { text-align: left; min-width: 0; }
+.brand-name { font-weight: 800; line-height: 1.05; }
+.brand-sub { font-weight: 600; color: #fbbf24; margin-top: 0.15em; }
+.brand-groot .brand-logo { height: clamp(90px, 24vh, 320px); max-width: 60vw; filter: drop-shadow(0 1vh 2.5vh rgba(0, 0, 0, 0.35)); }
+.brand-groot .brand-name { font-size: clamp(38px, 6vw, 110px); }
+.brand-lobby { gap: 1.2vw; margin-bottom: 1vh; }
+.brand-lobby .brand-logo { height: clamp(54px, 11vh, 150px); filter: drop-shadow(0 0.6vh 1.5vh rgba(0, 0, 0, 0.3)); }
+.brand-lobby .brand-name { font-size: clamp(30px, 4.6vw, 86px); }
+.brand-lobby .brand-sub { font-size: clamp(14px, 1.6vw, 30px); }
+.brand-klein { gap: 0.6vw; }
+.brand-klein .brand-logo { height: clamp(28px, 5.5vh, 72px); }
+.brand-klein .brand-name { font-size: clamp(14px, 1.6vw, 30px); }
+.brand-tel { margin: 0 0 12px; gap: 12px; }
+.brand-tel .brand-logo { height: 64px; }
+.brand-tel .brand-name { font-size: 26px; }
+.brand-tel .brand-sub { font-size: 14px; }
+/* Aftelklok vóór de start */
+.preshow { text-align: center; }
+.preshow .ps-label { font-weight: 700; }
+.preshow .ps-time { font-weight: 800; font-variant-numeric: tabular-nums; color: #fbbf24; letter-spacing: 0.02em; }
+.preshow.ps-done .ps-label { color: #fbbf24; }
+.preshow-tel { background: rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 10px 12px; margin: 0 0 14px; }
+.preshow-tel .ps-label { font-size: 15px; }
+.preshow-tel .ps-time { font-size: 30px; }

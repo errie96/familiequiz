@@ -4,3 +4,4 @@ data/
 *.backup.xlsx
 familiequiz-offline.zip
 pincode.txt
+.playwright-mcp/

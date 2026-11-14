@@ -74,6 +74,11 @@
       <button id="btn-main" class="btn-primary big">...</button>
       <p id="main-hint" class="muted" style="text-align:center; min-height:1.2em;"></p>
       <button id="btn-force" class="btn-option hidden" style="text-align:center;"></button>
+      <div id="dilemma-box" class="hidden" style="margin:6px 0;">
+        <button id="btn-dilemma" class="btn-option" style="text-align:center; font-size:18px; background:#7c3aed;">🤔 Volgend pauzedilemma</button>
+        <button id="btn-dilemma-hide" class="btn-option hidden" style="text-align:center;">📸 Foto's weer tonen</button>
+        <p id="dilemma-info" class="muted" style="font-size:13px; margin:4px 0;"></p>
+      </div>
       <button id="btn-music" class="btn-option hidden" style="text-align:center; font-size:18px;">⏸ Muziek pauze</button>
       <button id="btn-undo" class="btn-option" style="text-align:center; margin-top:6px;" disabled>↶ Niets om ongedaan te maken</button>
       <div class="row">
@@ -83,11 +88,45 @@
         <button id="btn-positions" class="btn-option hidden" style="text-align:center;">🏅 Posities op tv</button>
         <button id="btn-race" class="btn-option hidden" style="text-align:center;">📈 Balkenrace op tv</button>
       </div>
+      <!-- Pauzetimer: alleen tijdens de pauze. Op de tv en de telefoons staat dan "We gaan verder om …" -->
+      <div id="pause-timer-ctl" class="hidden" style="margin-top:6px; background:rgba(255,255,255,0.05); border-radius:10px; padding:8px;">
+        <div class="muted" style="font-size:13px; margin-bottom:4px;">⏱️ Pauzetimer op tv en telefoons: we gaan verder over…</div>
+        <div class="row" id="pt-buttons">
+          <button class="btn-option" data-min="5" style="text-align:center;">5 min</button>
+          <button class="btn-option" data-min="10" style="text-align:center;">10 min</button>
+          <button class="btn-option" data-min="15" style="text-align:center;">15 min</button>
+          <button class="btn-option" data-min="20" style="text-align:center;">20 min</button>
+        </div>
+        <div class="row">
+          <button class="btn-option" data-min="5" data-add="1" style="text-align:center;">➕ 5 min erbij</button>
+          <button class="btn-option" data-min="0" style="text-align:center;">✖ Timer weg</button>
+        </div>
+        <div data-pausetimer class="preshow-tel hidden" style="margin:6px 0 0;"></div>
+      </div>
+      <!-- Startklok: alleen vóór de start. Op het welkomstscherm van de tv en de telefoons staat dan "De quiz begint over …" -->
+      <!-- Persoonlijk aanmelden: snel naar het overzicht van aanmeldingen en het maken van de teams -->
+      <button id="btn-signup-panel" class="btn-option hidden" style="text-align:center; margin-top:6px; background:#1d4ed8; color:#fff; font-weight:bold;"></button>
+      <div id="start-timer-ctl" class="hidden" style="margin-top:6px; background:rgba(255,255,255,0.05); border-radius:10px; padding:8px;">
+        <div class="muted" style="font-size:13px; margin-bottom:4px;">⏱️ Aftelklok op het welkomstscherm: we beginnen over…</div>
+        <div class="row">
+          <button class="btn-option" data-min="5" style="text-align:center;">5 min</button>
+          <button class="btn-option" data-min="10" style="text-align:center;">10 min</button>
+          <button class="btn-option" data-min="15" style="text-align:center;">15 min</button>
+          <button class="btn-option" data-min="30" style="text-align:center;">30 min</button>
+        </div>
+        <div class="row">
+          <button class="btn-option" data-min="5" data-add="1" style="text-align:center;">➕ 5 min erbij</button>
+          <button class="btn-option" data-min="0" style="text-align:center;">✖ Klok weg</button>
+        </div>
+        <div data-preshow class="preshow-tel hidden" style="margin:6px 0 0;"></div>
+      </div>
       <div id="team-overview" title="Wat doet elk team nu?"></div>
       <div id="kbd-hint" class="muted" style="font-size:12px; margin-top:4px;">⌨️ Spatie = grote knop · ← = vorige stap · P = pauze · M = muziek pauze/verder</div>
       <div id="soundboard" style="margin-top:10px;">
         <div class="muted" style="font-size:13px; margin-bottom:4px;">🔊 Soundboard</div>
         <div id="sb-buttons" style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px;"></div>
+        <label class="btn-option" title="Tip: noem een bestand drumroll, applause, sadTrombone of cheer (.mp3) om het ingebouwde geluid overal in de quiz te vervangen" style="display:block; text-align:center; margin-top:6px; cursor:pointer; font-size:14px;">⬆️ Eigen geluid toevoegen<input type="file" id="sb-upload" accept="audio/*,.mp3,.wav,.ogg,.m4a" hidden></label>
+        <p id="sb-upload-msg" class="muted" style="font-size:12px; margin:4px 0;">Tip: noem een bestand <b>drumroll</b>, <b>applause</b>, <b>sadTrombone</b> of <b>cheer</b> (.mp3) om het ingebouwde geluid overal in de quiz te vervangen.</p>
       </div>
       <details id="phone-remote" style="margin-top:6px; font-size:13px;">
         <summary class="muted">📱 Bediening ook op je telefoon</summary>
@@ -125,8 +164,10 @@
         <button id="end-rank" class="btn-option" style="text-align:center;">🏆 Eindstand op tv</button>
         <button id="end-awards" class="btn-option" style="text-align:center;">🏅 Prijsjes (awards) op tv</button>
         <button id="end-album" class="btn-option" style="text-align:center;">📷 Fotoalbum op tv</button>
+        <button id="end-stats" class="btn-option" style="text-align:center;">📊 De avond in cijfers op tv</button>
       </div>
       <button id="end-share" class="btn-primary" style="text-align:center;">📤 Uitslag delen (plaatje)</button>
+      <button id="end-cards" class="btn-option" style="display:block; width:100%; text-align:center;">🏆 Overwinningskaarten maken (voor de foto-zip)</button>
       <a id="end-photos" class="btn-option" style="display:block; text-align:center; text-decoration:none;">⬇️ Alle foto's van de avond (zip)</a>
       <p id="end-share-msg" class="muted" style="font-size:12px;"></p>
     </div>
@@ -223,12 +264,18 @@
     </details>
 
     <details id="live-panel">
-      <summary>🔔 Geluid en meldingen</summary>
+      <summary>🎛️ Tijdens de quiz</summary>
       <div class="setting"><label for="s-sound-out">🔊 Geluid via</label><select id="s-sound-out"><option value="tv">Tv</option><option value="bediening">Deze bediening</option></select></div>
+      <div class="setting"><label for="s-music">🎵 Achtergrondmuziek (vóór de start en in de pauze)</label><input type="checkbox" id="s-music"></div>
+      <div class="setting"><label for="s-sting">✨ Logo-flits bij het begin van elke ronde</label><input type="checkbox" id="s-sting"></div>
+      <div class="setting"><label for="btn-test-opening">🎬 Opening (logo + jingle op de tv)</label><button id="btn-test-opening" class="btn-option btn-small" style="width:auto;">▶️ Testen</button></div>
+      <p class="muted" style="font-size:12px; margin:2px 0 8px;">Eigen jingle of muziek: zet opening.mp3 of achtergrond.mp3 in public/media/muziek/ (zie LEES-MIJ.txt daar).</p>
       <div class="setting"><label for="s-sound-tv">🔔 Spiekgeluid op tv</label><input type="checkbox" id="s-sound-tv"></div>
       <div class="setting"><label for="s-sound-me">🔔 Spiekgeluid hier</label><input type="checkbox" id="s-sound-me"></div>
       <div class="setting"><label for="s-cheat-grace">⏱️ Wachttijd spiekmelding</label><select id="s-cheat-grace"><option value="0">Meteen</option><option value="1">1 s</option><option value="2">2 s</option><option value="3">3 s</option><option value="5">5 s</option></select></div>
       <div class="setting"><label for="s-momentum">📣 Momentum-meldingen</label><input type="checkbox" id="s-momentum"></div>
+      <div class="setting"><label for="s-ans-mc">✔ Meerkeuze: antwoord direct tonen</label><input type="checkbox" id="s-ans-mc"></div>
+      <div class="setting"><label for="s-ans-logo">✔ Foto's en logo's: antwoord direct tonen</label><input type="checkbox" id="s-ans-logo"></div>
     </details>
 
     <details id="settings-panel">
@@ -237,13 +284,14 @@
       <div class="setting"><label for="s-round">Punten per ronde (alle rondes even veel)</label><input type="number" id="s-round" min="10" max="1000"></div>
       <div class="setting"><label for="s-timer">Tijdslimiet bij meerkeuze</label><input type="checkbox" id="s-timer"></div>
       <div class="setting"><label for="s-time">Standaardtijd (seconden)</label><input type="number" id="s-time" min="5" max="300"></div>
-      <div class="setting"><label for="s-read">Meerkeuze: eerst alleen de vraag (seconden)</label><input type="number" id="s-read" min="0" max="30"></div>
-      <div class="setting"><label for="s-preview">Meerkeuze: daarna antwoorden zien vóór kiezen (seconden)</label><input type="number" id="s-preview" min="0" max="30"></div>
       <div class="setting"><label for="s-wager">Slotvraag: maximale inzet</label><input type="number" id="s-wager" min="0" max="100000"></div>
       <div class="setting"><label for="s-thirty">30 Seconds: seconden per beurt</label><input type="number" id="s-thirty" min="10" max="120"></div>
+      <div class="setting"><label for="s-thirtyper">30 Seconds: vertellers per team (0 = iedereen; ook bij de start van de ronde te kiezen)</label><input type="number" id="s-thirtyper" min="0" max="10"></div>
       <div class="setting"><label for="s-blur">Foto blur: punten per stap</label><input type="text" id="s-blur"></div>
       <div class="setting"><label for="s-price">Prijzen: punten dichtstbij, 2e, 3e…</label><input type="text" id="s-price"></div>
       <div class="setting"><label for="s-hitster">Muziek: stoppen bij zoveel kaarten</label><input type="number" id="s-hitster" min="3" max="50"></div>
+      <div class="setting"><label for="s-hitsterstart">Muziek: eigen startkaarten per team</label><input type="number" id="s-hitsterstart" min="1" max="5"></div>
+      <div class="setting"><label for="s-logocount">Aantal logo's in de logo-ronde</label><input type="number" id="s-logocount" min="1" max="60"></div>
       <div class="setting"><label for="s-logo">Logo's: punten 1e, 2e, 3e… goede antwoord</label><input type="text" id="s-logo"></div>
       <div class="setting"><label for="s-hplace">Hitster: punten voor de goede plek in de tijdlijn</label><input type="number" id="s-hplace" min="0" max="100"></div>
       <div class="setting"><label for="s-hyear">Hitster: punten voor het jaartal: exact, 1, 2, 3… jaar ernaast</label><input type="text" id="s-hyear"></div>
@@ -255,13 +303,15 @@
     <details id="teams-panel" open>
       <summary>👥 Teams (<span id="team-count">0</span>)</summary>
       <div class="setting" style="border:none;">
-        <label for="max-teams"><b>Maximaal aantal teams</b></label>
+        <label for="max-teams"><b id="max-teams-label">Maximaal aantal teams</b></label>
         <span style="display:flex; gap:6px;"><input type="number" id="max-teams" min="1" max="50" style="width:70px;"><button id="max-teams-save" class="btn-option btn-small">Opslaan</button></span>
       </div>
       <div class="setting" style="border:none;">
         <label><b>🤖 Oefenen met testteams</b></label>
         <span style="display:flex; gap:6px; flex-wrap:wrap;"><button id="bots-add" class="btn-option btn-small">+3 testteams</button><button id="bots-remove" class="btn-option btn-small">Verwijder testteams</button></span>
       </div>
+      <!-- Persoonlijk aanmelden: wie is er al (per familie, jong naar oud), teams maken en mensen indelen -->
+      <div id="signup-box" class="hidden"></div>
       <div id="team-list"></div>
     </details>
 
@@ -287,6 +337,7 @@
         <a id="bk-download" class="btn-primary" style="display:block; text-align:center; text-decoration:none; padding:14px; margin:8px 0; border-radius:8px;">⬇️ Alles downloaden (zip)</a>
       </div>
       <div id="bk-list" class="muted" style="font-size:13px; max-height:220px; overflow:auto;"></div>
+      <div class="muted" style="font-size:12px; margin-top:6px;">Automatisch: bij de start, aan het begin van elke ronde, vóór de slotvraag, aan het einde en elke 5 minuten. ↩️ <b>terugzetten</b> zet de stand van dat moment terug; de server start dan kort opnieuw op en de quiz staat daarna op pauze.</div>
       <h4 style="margin:14px 0 6px;">📜 Logboek</h4>
       <div class="row">
         <select id="log-level" style="flex:1;"><option value="info">Alles</option><option value="warn">Waarschuwingen en fouten</option><option value="error">Alleen fouten</option></select>

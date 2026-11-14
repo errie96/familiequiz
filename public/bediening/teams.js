@@ -15,8 +15,109 @@ function openMove(device, from) {
 }
 $("move-cancel").onclick = () => $("move-dialog").classList.add("hidden");
 
+// ---------------- Persoonlijk aanmelden: overzicht per familie, teams maken, mensen indelen ----------------
+function openPerson(p, su) {
+  const dlg = $("move-dialog");
+  $("move-title").textContent = `${p.label}${p.age != null ? ` (${p.age})` : ""} · ${p.family || "geen familie"}`;
+  const list = $("move-list");
+  list.replaceChildren();
+  const close = () => dlg.classList.add("hidden");
+  (su.teams || []).filter((t) => t.teamId !== p.teamId).forEach((t) => {
+    const b = el("button", "btn-option", `→ ${t.name} (${t.size})`);
+    b.onclick = () => { socket.emit("assign_person", { deviceId: p.deviceId, teamId: t.teamId }); close(); };
+    list.appendChild(b);
+  });
+  const age = el("button", "btn-option", "✏️ Leeftijd wijzigen");
+  age.onclick = () => { const v = prompt(`Leeftijd van ${p.label}:`, p.age != null ? p.age : ""); if (v !== null && /^\d{1,3}$/.test(v.trim())) socket.emit("edit_person", { deviceId: p.deviceId, age: Number(v.trim()) }); close(); };
+  const name = el("button", "btn-option", "✏️ Naam wijzigen");
+  name.onclick = () => { const v = prompt("Nieuwe naam:", p.label); if (v) socket.emit("edit_person", { deviceId: p.deviceId, name: v }); close(); };
+  const fams = su.families.filter((f) => f.expected !== null || f.name !== "Overig").map((f) => f.name);
+  const fam = el("button", "btn-option", "✏️ Andere familie");
+  fam.onclick = () => { const v = prompt(`Familie van ${p.label} (${fams.join(", ")}):`, p.family || ""); if (v) socket.emit("edit_person", { deviceId: p.deviceId, family: v }); close(); };
+  const rm = el("button", "btn-option", "🗑 Aanmelding verwijderen");
+  rm.style.color = "#fca5a5";
+  rm.onclick = () => { if (confirm(`${p.label} verwijderen? Die telefoon moet zich dan opnieuw aanmelden.`)) socket.emit("remove_person", { deviceId: p.deviceId }); close(); };
+  list.append(age, name, fam, rm);
+  dlg.classList.remove("hidden");
+}
+function renderSignup(state) {
+  const box = $("signup-box");
+  const su = state.signup;
+  const lobby = state.phase === "LOBBY";
+  $("max-teams-label").textContent = su ? "Aantal teams" : "Maximaal aantal teams";
+  box.classList.toggle("hidden", !su && !lobby);
+  if (box.contains(document.activeElement) && ["INPUT", "SELECT"].includes(document.activeElement.tagName)) return; // niet onder het typen verversen
+  box.replaceChildren();
+  // Manier van aanmelden (alleen vóór de start te wisselen, en alleen zolang er nog niemand is)
+  if (lobby && state.signupSetting) {
+    const row = el("div", "setting"); row.style.border = "none";
+    const lab = el("label", "", ""); lab.append(el("b", "", "Aanmelden"));
+    const sel = el("select");
+    [["auto", `Automatisch (${state.signupSetting.families ? "persoonlijk: families in de Excel" : "zelf teams: geen families in de Excel"})`], ["personal", "Persoonlijk: naam, familie en leeftijd; ik maak de teams"], ["teams", "Zelf teams maken op de telefoon"]].forEach(([v, t]) => { const o = el("option", "", t); o.value = v; sel.append(o); });
+    sel.value = state.signupSetting.mode;
+    sel.style.maxWidth = "60%";
+    sel.onchange = () => socket.emit("set_signup", { mode: sel.value });
+    row.append(lab, sel);
+    box.append(row);
+  }
+  if (!su) return;
+  const head = el("div", "qbox");
+  const done = su.expected != null && su.total >= su.expected;
+  head.append(el("b", "", `🙋 Aangemeld: ${su.total}${su.expected != null ? ` van ${su.expected}` : ""}${done ? " ✅ iedereen is er" : ""}`));
+  if (su.unassigned && su.teamsMade) { const w = el("div", "", `⚠️ ${su.unassigned} nog zonder team: tik de naam aan en kies een team.`); w.style.color = "#fbbf24"; head.append(w); }
+  su.families.forEach((f) => {
+    const line = el("div"); line.style.cssText = "margin:8px 0 2px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;";
+    const full = f.expected != null && f.present >= f.expected;
+    const t = el("b", "", `${f.name} ${f.present}${f.expected != null ? "/" + f.expected : ""}${full ? " ✅" : ""}`);
+    t.style.cssText = "min-width:110px;" + (f.expected != null && f.present > f.expected ? " color:#fbbf24;" : "");
+    line.append(t);
+    if (!f.people.length) line.append(el("span", "muted", "nog niemand"));
+    f.people.forEach((p) => {
+      const b = el("button", "btn-option btn-small", `${p.connected ? "" : "○ "}${p.label}${p.age != null ? ` (${p.age})` : ""}`);
+      b.title = p.team ? `Team: ${p.team}` : "Nog geen team";
+      b.style.cssText = "margin:0;" + (su.teamsMade && !p.teamId ? " outline:2px solid #fbbf24;" : "") + (p.connected ? "" : " opacity:.6;");
+      b.onclick = () => openPerson(p, su);
+      line.append(b);
+    });
+    head.append(line);
+  });
+  box.append(head);
+  if (lobby) {
+    const ctl = el("div", "qbox");
+    const n = state.settings.maxTeams || 0;
+    const per = n && su.total ? (su.total / Math.min(n, su.total)) : 0;
+    ctl.append(el("b", "", "🎲 Teams maken"), el("div", "muted", n ? `${Math.min(n, su.total)} teams van ${Math.floor(per)}${per % 1 ? "–" + Math.ceil(per) : ""} spelers: leeftijden en families zo goed mogelijk gespreid. Vul hierboven een ander aantal teams in om het te veranderen.` : "Vul eerst hierboven het aantal teams in."));
+    const kids = el("div", "setting"); kids.style.border = "none";
+    const kl = el("label", "", "Kinderen t/m deze leeftijd bij een volwassen gezinslid houden (0 = niet)");
+    const ki = el("input"); ki.type = "number"; ki.min = 0; ki.max = 17; ki.value = su.keepKidsAge || 0; ki.style.width = "70px";
+    ki.onchange = () => socket.emit("set_signup", { keepKidsAge: Math.max(0, Math.min(17, Math.round(Number(ki.value)) || 0)) });
+    kids.append(kl, ki);
+    const row = el("div", "row");
+    const make = el("button", "btn-primary", su.teamsMade ? "🎲 Opnieuw verdelen" : `🎲 Maak teams${done ? "" : su.expected != null ? ` (nog niet iedereen: ${su.total}/${su.expected})` : ""}`);
+    make.style.margin = "0";
+    make.disabled = !n || !su.total;
+    make.onclick = () => { if (!su.teamsMade || confirm("Alle teams opnieuw verdelen? Teamnamen en teamfoto's vervallen.")) socket.emit("make_teams", null, () => {}); };
+    row.append(make);
+    if (su.teamsMade) { const undo = el("button", "btn-option", "Teams opheffen"); undo.style.cssText = "margin:0; text-align:center;"; undo.onclick = () => { if (confirm("Alle teams opheffen? Iedereen blijft aangemeld.")) socket.emit("unmake_teams"); }; row.append(undo); }
+    ctl.append(kids, row);
+    box.append(ctl);
+  }
+  if (su.teamsMade) {
+    const ov = el("div", "qbox");
+    ov.append(el("b", "", "Indeling"), el("div", "muted", "Tik hierboven een naam aan om iemand te verplaatsen. ⭐ = basistelefoon."));
+    su.teams.forEach((t) => {
+      const line = el("div"); line.style.cssText = `margin:6px 0; padding-left:8px; border-left:4px solid ${t.color || "#64748b"};`;
+      line.append(el("b", "", `${t.name}${t.named ? "" : " (nog geen eigen naam)"} · ${t.size}${t.avgAge != null ? ` · gem. ${t.avgAge} jr` : ""}`));
+      line.append(el("div", "muted", t.members.map((m) => `${m.base ? "⭐ " : ""}${m.label}${m.age != null ? ` ${m.age}` : ""}${m.family ? ` (${m.family})` : ""}`).join(" · ")));
+      ov.append(line);
+    });
+    box.append(ov);
+  }
+}
+
 $("max-teams-save").onclick = () => socket.emit("set_max_teams", { n: Number($("max-teams").value) });
 function renderTeams(state) {
+  renderSignup(state);
   $("team-count").textContent = state.settings.maxTeams ? `${state.teams.length} van ${state.settings.maxTeams}` : state.teams.length;
   if (document.activeElement !== $("max-teams")) $("max-teams").value = state.settings.maxTeams || "";
   $("max-teams").style.outline = state.settings.maxTeams ? "" : "2px solid #fbbf24";

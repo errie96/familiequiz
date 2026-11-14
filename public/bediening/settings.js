@@ -82,7 +82,7 @@ function renderHistory(entries) {
     box.append(details);
   });
 }
-const THEME_NAMES = { standaard: "Standaard", winter: "❄️ Winter", kerst: "🎄 Kerst", oudennieuw: "🥂 Oud & nieuw", zomer: "☀️ Zomer", halloween: "🎃 Halloween" };
+const THEME_NAMES = { standaard: "Standaard", winter: "❄️ Winter", kerst: "🎄 Kerst", oudennieuw: "🥂 Oud & nieuw", zomer: "☀️ Zomer", halloween: "🎃 Halloween", tvshow: "📺 Tv-show", feest: "🎈 Feest", sinterklaas: "🎁 Sinterklaas", disco: "🪩 Disco" };
 function renderThemes(st) {
   $("theme-badge").textContent = THEME_NAMES[st.theme] || st.theme;
   const box = $("theme-list");

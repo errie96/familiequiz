@@ -18,6 +18,9 @@ $("btn-undo").onclick = () => {
   if (S && S.controls && S.controls.undo && S.controls.undo.enabled && confirm("Laatste correctie ongedaan maken?")) socket.emit("undo_last");
 };
 $("btn-pause").onclick = () => socket.emit("toggle_pause");
+$("end-cards").onclick = () => { socket.emit("make_cards"); $("end-cards").textContent = "⏳ De tv maakt de kaarten… (even wachten, dan staan ze in de zip)"; setTimeout(() => { $("end-cards").textContent = "🏆 Overwinningskaarten opnieuw maken (voor de foto-zip)"; }, 8000); };
+$("btn-dilemma").onclick = () => socket.emit("next_dilemma");
+$("btn-dilemma-hide").onclick = () => socket.emit("hide_dilemma");
 $("btn-music").onclick = () => socket.emit("music_toggle", { paused: !(S && S.music && S.music.paused) });
 // Sneltoetsen (handig op een laptop). Niet tijdens typen in een veld, en niet als een menu open staat.
 //   Spatie = grote knop · ← = vorige stap · P = pauze · M = muziek stoppen
@@ -45,12 +48,13 @@ $("end-break").onclick = () => socket.emit("end_view", { view: "breakdown" });
 $("end-rank").onclick = () => socket.emit("end_view", { view: "ranking" });
 $("end-awards").onclick = () => socket.emit("end_view", { view: "awards" });
 $("end-album").onclick = () => socket.emit("end_view", { view: "album" });
+$("end-stats").onclick = () => socket.emit("end_view", { view: "stats" });
 $("end-share").onclick = async () => {
   const list = S && S.end && S.end.scores;
   if (!list || S.end.reveal !== "done") { $("end-share-msg").textContent = "Eerst de ontknoping afmaken, anders verklap je de uitslag."; return; }
   $("end-share-msg").textContent = "Plaatje maken…";
   const date = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
-  const blob = await QuizFX.resultImage({ title: "Familiequiz", subtitle: date, rows: list });
+  const blob = await QuizFX.resultImage({ title: QuizFX.brandName(), subtitle: date, rows: list });
   const how = await QuizFX.shareImage(blob, `familiequiz-uitslag-${new Date().toISOString().slice(0, 10)}.png`, "De uitslag van de familiequiz! 🏆");
   $("end-share-msg").textContent = how === "shared" ? "✔ Gedeeld." : how === "downloaded" ? "✔ Plaatje gedownload." : "";
 };
@@ -60,6 +64,16 @@ $("btn-void").onclick = () => { if (confirm("Deze meerkeuzevraag laten vervallen
 $("btn-logout-all").onclick = () => { if (confirm("Alle bediening-toestellen uitloggen? Daarna moet iedereen de toegangscode opnieuw invoeren.")) socket.emit("logout_all"); };
 
 // ---------------- Soundboard: vaste geluiden + eigen bestanden uit public/media/sounds/ ----------------
+$("sb-upload").onchange = async () => {
+  const f = $("sb-upload").files && $("sb-upload").files[0];
+  $("sb-upload").value = "";
+  if (!f) return;
+  $("sb-upload-msg").textContent = "⏳ Uploaden…";
+  try {
+    const r = await fetch(`/geluid-upload?naam=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "x-host-token": localStorage.getItem("quiz_host_token") || "" }, body: f });
+    $("sb-upload-msg").textContent = r.ok ? `✅ "${f.name}" toegevoegd (staat er binnen een paar seconden bij).` : `❌ ${await r.text()}`;
+  } catch (e) { $("sb-upload-msg").textContent = "❌ Uploaden mislukt."; }
+};
 let sbKey = null;
 function renderSoundboard(sb) {
   if (!sb) return;
@@ -77,3 +91,27 @@ function renderSoundboard(sb) {
   sb.builtin.forEach((x) => add(x.label, { name: x.name }));
   sb.custom.forEach((x) => add(x.label, { file: x.file }));
 }
+
+// ---------------- Achtergrondmuziek en opening ----------------
+$("s-music").onchange = () => socket.emit("set_music", { on: $("s-music").checked });
+$("btn-test-opening").onclick = () => { socket.emit("test_opening"); localStorage.setItem("quiz_prep_muziek", "1"); }; // telt als "getest" in de checklist
+socket.on("opening", () => {
+  if (soundOut === "bediening" && soundHere()) QuizFX.playOpening(S && S.ambience ? S.ambience.opening : null);
+});
+document.addEventListener("click", () => QuizFX.retryMusic());
+
+// ---------------- Pauzetimer ----------------
+document.querySelectorAll("#pause-timer-ctl button[data-min]").forEach((b) => {
+  b.onclick = () => socket.emit("set_pause_timer", { minutes: Number(b.dataset.min), add: b.dataset.add === "1" });
+});
+
+// ---------------- Snelknop: aanmeldingen en teams ----------------
+$("btn-signup-panel").onclick = () => { if (window.openQuizMenu) window.openQuizMenu("teams-panel"); };
+
+// ---------------- Startklok (vóór de start) ----------------
+document.querySelectorAll("#start-timer-ctl button[data-min]").forEach((b) => {
+  b.onclick = () => socket.emit("set_start_timer", { minutes: Number(b.dataset.min), add: b.dataset.add === "1" });
+});
+
+// ---------------- Logo-flits bij het begin van een ronde ----------------
+$("s-sting").onchange = () => socket.emit("set_logo_sting", { on: $("s-sting").checked });

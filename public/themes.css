@@ -1,56 +1,123 @@
-/* Thema's: de quizmaster kiest in de bediening. body[data-theme] verandert kleuren en decoratie op alle schermen. */
+/* Thema's: de quizmaster kiest in de bediening. body[data-theme] vult de kleurvariabelen uit design.css anders in
+   (tv en telefoons). De bediening laadt design.css niet en blijft daardoor rustig; alleen de deeltjes komen daar ook. */
 body { transition: background 0.6s; }
+
+/* ---------- Deeltjes (zie applyTheme in shared.js) ---------- */
 .fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 .fx-layer span { position: absolute; top: -5vh; animation: fx-fall linear infinite; opacity: 0.85; }
-@keyframes fx-fall { to { transform: translateY(110vh) rotate(360deg); } }
-@keyframes fx-twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.2); } }
-.fx-layer.twinkle span { top: auto; animation: fx-twinkle ease-in-out infinite; }
+.fx-layer span.dot { border-radius: 50%; background: var(--particle, #fff); }
+.fx-layer span.chip { border-radius: 2px; }
+@keyframes fx-fall { to { transform: translate3d(var(--drift, 0px), 110vh, 0) rotate(360deg); } }
+@keyframes fx-twinkle { 0%, 100% { opacity: 0.1; transform: scale(0.6); } 50% { opacity: 1; transform: scale(1.15); } }
+.fx-layer.twinkle span { top: auto; animation-name: fx-twinkle; animation-timing-function: ease-in-out; }
+.fx-layer.twinkle span.dot { box-shadow: 0 0 12px var(--particle, #fff); }
+/* Tv-show en disco: zwaaiende lichtbundels */
+.fx-layer .beam { position: absolute; top: -10vh; width: 12vw; height: 125vh; filter: blur(28px); transform-origin: top center; animation: fx-sweep 9s ease-in-out infinite; opacity: 0.55; }
+@keyframes fx-sweep { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+.fx-layer .fade { position: absolute; left: 0; right: 0; bottom: 0; height: 33%; background: linear-gradient(to top, var(--bg, #0f172a) 0%, transparent 100%); opacity: 0.8; }
 body > *:not(.fx-layer) { position: relative; z-index: 2; }
 #tv-alerts, #toast, #move-dialog, #tv-timerbar { z-index: 60 !important; }
+@media (prefers-reduced-motion: reduce) { .fx-layer { display: none; } }
 
 /* ---------- Winter: ijsblauw met sneeuw ---------- */
-body[data-theme="winter"] { background: linear-gradient(180deg, #0b1e3b 0%, #1e3a5f 60%, #3b6ea5 100%) fixed; }
-body[data-theme="winter"] .card, body[data-theme="winter"] .qbox, body[data-theme="winter"] details { background: rgba(15, 40, 75, 0.88); }
-body[data-theme="winter"] .btn-primary { background: #38bdf8; color: #0b1e3b; }
-body[data-theme="winter"] .qo, body[data-theme="winter"] .tchip, body[data-theme="winter"] .pill, body[data-theme="winter"] .btn-option, body[data-theme="winter"] .word { background: rgba(148, 197, 255, 0.18); }
-body[data-theme="winter"] .qo .letter, body[data-theme="winter"] #join-url { color: #bae6fd; }
-body[data-theme="winter"] .tv-title { color: #e0f2fe; text-shadow: 0 0 20px rgba(186, 230, 253, 0.7); }
+body[data-theme="winter"] {
+  --bg: #0b1e3b; --card: #13294a; --primary: #7dd3fc; --primary-glow: #e0f2fe; --primary-fg: #08213f; --bronze: #38bdf8;
+  --accent: #2563eb; --info: #bae6fd; --success: #34d399; --muted: #b6c8de;
+  --glass: rgba(148, 197, 255, 0.14); --glass-strong: rgba(13, 37, 70, 0.78); --glass-border: rgba(186, 230, 253, 0.22);
+  --stage: radial-gradient(110% 70% at 50% -10%, rgba(224, 242, 254, 0.28) 0%, transparent 60%),
+    linear-gradient(180deg, #0b1e3b 0%, #1e3a5f 60%, #2c5a8c 100%);
+  --particle: rgba(255, 255, 255, 0.9);
+}
 
-/* ---------- Kerst: rood, groen en goud met sneeuw ---------- */
-body[data-theme="kerst"] { background: radial-gradient(circle at 50% -10%, #b91c1c 0%, #14532d 55%, #052e16 100%) fixed; }
-body[data-theme="kerst"] .card, body[data-theme="kerst"] .qbox, body[data-theme="kerst"] details { background: rgba(5, 46, 22, 0.88); border: 1px solid rgba(250, 204, 21, 0.35); }
-body[data-theme="kerst"] .btn-primary { background: #dc2626; color: #fff; }
-body[data-theme="kerst"] .qo, body[data-theme="kerst"] .tchip, body[data-theme="kerst"] .pill, body[data-theme="kerst"] .btn-option, body[data-theme="kerst"] .word { background: rgba(127, 29, 29, 0.55); }
-body[data-theme="kerst"] .pill.points { background: #ca8a04; }
-body[data-theme="kerst"] .qo .letter { color: #fde047; }
-body[data-theme="kerst"] .tv-title { color: #fef3c7; text-shadow: 0 0 18px rgba(250, 204, 21, 0.6); }
-body[data-theme="kerst"] .tlcard { background: linear-gradient(135deg, #b91c1c, #15803d); }
+/* ---------- Kerst: dennengroen, karmozijn en goud ---------- */
+body[data-theme="kerst"] {
+  --bg: #0f2a1c; --card: #163b28; --primary: #f2c94c; --primary-glow: #fbe39a; --primary-fg: #14261b;
+  --accent: #b3262d; --info: #fde68a; --success: #4ade80; --muted: #c4d8c4;
+  --glass: rgba(30, 72, 48, 0.42); --glass-strong: rgba(17, 46, 30, 0.8); --glass-border: rgba(242, 201, 76, 0.2);
+  --stage: radial-gradient(100% 70% at 50% -15%, rgba(163, 36, 42, 0.75) 0%, transparent 60%),
+    radial-gradient(70% 50% at 10% 110%, rgba(34, 98, 62, 0.6) 0%, transparent 70%),
+    linear-gradient(180deg, #0f2a1c 0%, #08180f 100%);
+  --particle: rgba(255, 253, 243, 0.92);
+}
 
-/* ---------- Oud & nieuw: zwart en goud met fonkels ---------- */
-body[data-theme="oudennieuw"] { background: radial-gradient(circle at 50% 120%, #312e81 0%, #0a0a0a 65%) fixed; }
-body[data-theme="oudennieuw"] .card, body[data-theme="oudennieuw"] .qbox, body[data-theme="oudennieuw"] details { background: rgba(10, 10, 10, 0.9); border: 1px solid rgba(234, 179, 8, 0.45); }
-body[data-theme="oudennieuw"] .btn-primary { background: #eab308; color: #0a0a0a; }
-body[data-theme="oudennieuw"] .qo, body[data-theme="oudennieuw"] .tchip, body[data-theme="oudennieuw"] .pill, body[data-theme="oudennieuw"] .btn-option, body[data-theme="oudennieuw"] .word { background: rgba(234, 179, 8, 0.14); }
-body[data-theme="oudennieuw"] .qo .letter { color: #facc15; }
-body[data-theme="oudennieuw"] .tv-title { color: #fde68a; text-shadow: 0 0 22px rgba(250, 204, 21, 0.75); }
-body[data-theme="oudennieuw"] .tlcard { background: linear-gradient(135deg, #a16207, #312e81); }
+/* ---------- Oud & nieuw: zwart, champagnegoud en vuurwerk ---------- */
+body[data-theme="oudennieuw"] {
+  --bg: #0c0b10; --card: #18161f; --primary: #f3d27a; --primary-glow: #fbeab8; --primary-fg: #0c0b10;
+  --accent: #4a2f8a; --info: #c4b5fd; --muted: #bdb8c8;
+  --glass: rgba(40, 38, 48, 0.42); --glass-strong: rgba(20, 18, 26, 0.85); --glass-border: rgba(243, 210, 122, 0.22);
+  --stage: radial-gradient(90% 60% at 50% 120%, rgba(60, 42, 128, 0.8) 0%, transparent 65%),
+    radial-gradient(50% 40% at 80% 0%, rgba(160, 130, 50, 0.25) 0%, transparent 70%),
+    linear-gradient(180deg, #08070c 0%, #13101e 100%);
+  --particle: rgba(245, 217, 138, 0.95);
+}
 
-/* ---------- Zomer: zonnig ---------- */
-body[data-theme="zomer"] { background: linear-gradient(180deg, #0369a1 0%, #0ea5e9 55%, #fbbf24 100%) fixed; }
-body[data-theme="zomer"] .card, body[data-theme="zomer"] .qbox, body[data-theme="zomer"] details { background: rgba(7, 89, 133, 0.85); }
-body[data-theme="zomer"] .btn-primary { background: #f97316; color: #fff; }
-body[data-theme="zomer"] .qo, body[data-theme="zomer"] .tchip, body[data-theme="zomer"] .pill, body[data-theme="zomer"] .btn-option, body[data-theme="zomer"] .word { background: rgba(255, 255, 255, 0.18); }
-body[data-theme="zomer"] .qo .letter { color: #fde047; }
-body[data-theme="zomer"] .tlcard { background: linear-gradient(135deg, #f97316, #db2777); }
+/* ---------- Zomer: zonsondergang boven zee ---------- */
+body[data-theme="zomer"] {
+  --bg: #0f3346; --card: #164058; --primary: #f8a937; --primary-glow: #fcd27a; --primary-fg: #1a2a35;
+  --accent: #e0593c; --info: #7dd3fc; --success: #2fd6b0; --muted: #c6dbe6;
+  --glass: rgba(40, 95, 120, 0.38); --glass-strong: rgba(18, 55, 75, 0.78); --glass-border: rgba(255, 255, 255, 0.15);
+  --stage: radial-gradient(80% 55% at 50% -5%, rgba(245, 154, 74, 0.55) 0%, transparent 60%),
+    radial-gradient(70% 50% at 50% 115%, rgba(42, 143, 168, 0.6) 0%, transparent 70%),
+    linear-gradient(180deg, #6b2a1e 0%, #163c5c 45%, #0c2638 100%);
+  --particle: rgba(251, 217, 122, 0.85);
+}
 
 /* ---------- Halloween: oranje en paars ---------- */
-body[data-theme="halloween"] { background: radial-gradient(circle at 50% 0%, #4c1d95 0%, #1a1025 60%, #0a0510 100%) fixed; }
-body[data-theme="halloween"] .card, body[data-theme="halloween"] .qbox, body[data-theme="halloween"] details { background: rgba(26, 16, 37, 0.9); border: 1px solid rgba(249, 115, 22, 0.4); }
-body[data-theme="halloween"] .btn-primary { background: #f97316; color: #1a1025; }
-body[data-theme="halloween"] .qo, body[data-theme="halloween"] .tchip, body[data-theme="halloween"] .pill, body[data-theme="halloween"] .btn-option, body[data-theme="halloween"] .word { background: rgba(124, 58, 237, 0.3); }
-body[data-theme="halloween"] .qo .letter { color: #fb923c; }
-body[data-theme="halloween"] .tv-title { color: #fdba74; text-shadow: 0 0 18px rgba(249, 115, 22, 0.7); }
-body[data-theme="halloween"] .tlcard { background: linear-gradient(135deg, #ea580c, #6d28d9); }
+body[data-theme="halloween"] {
+  --bg: #12081d; --card: #1f1030; --primary: #f97316; --primary-glow: #fdba74; --primary-fg: #1a0b05;
+  --accent: #7c3aed; --info: #c4b5fd; --success: #84cc16; --muted: #c9b8d9;
+  --glass: rgba(76, 29, 149, 0.3); --glass-strong: rgba(26, 12, 40, 0.85); --glass-border: rgba(249, 115, 22, 0.3);
+  --stage: radial-gradient(90% 60% at 50% -10%, rgba(76, 29, 149, 0.85) 0%, transparent 60%),
+    radial-gradient(60% 40% at 50% 115%, rgba(124, 45, 18, 0.6) 0%, transparent 70%),
+    linear-gradient(180deg, #1a1025 0%, #0a0510 100%);
+  --particle: rgba(253, 186, 116, 0.9);
+}
+
+/* ---------- Tv-show: studio met elektrisch blauw en magenta spotlights ---------- */
+body[data-theme="tvshow"] {
+  --bg: #0d0b26; --card: #1a1645; --primary: #f6dc4a; --primary-glow: #fbec9a; --primary-fg: #12102e;
+  --accent: #e8318f; --info: #60a5fa; --success: #3ee08a; --muted: #b9b6e0;
+  --glass: rgba(45, 35, 110, 0.4); --glass-strong: rgba(22, 18, 64, 0.82); --glass-border: rgba(96, 165, 250, 0.28);
+  --stage: conic-gradient(from 200deg at 15% -10%, transparent 0deg, rgba(59, 140, 242, 0.32) 18deg, transparent 36deg),
+    conic-gradient(from 130deg at 85% -10%, transparent 0deg, rgba(232, 49, 143, 0.32) 18deg, transparent 36deg),
+    radial-gradient(80% 50% at 50% 120%, rgba(98, 40, 190, 0.7) 0%, transparent 70%),
+    linear-gradient(180deg, #0b0922 0%, #17113a 100%);
+  --particle: rgba(156, 200, 255, 0.9);
+}
+
+/* ---------- Verjaardag / feest: vrolijk, met confetti ---------- */
+body[data-theme="feest"] {
+  --bg: #1a0f3d; --card: #2a1a5c; --primary: #ffcf3f; --primary-glow: #ffe58f; --primary-fg: #24104a;
+  --accent: #ff4f9a; --info: #38e1ff; --success: #2ee6a6; --muted: #d4c8f2;
+  --glass: rgba(255, 255, 255, 0.10); --glass-strong: rgba(36, 20, 80, 0.82); --glass-border: rgba(255, 255, 255, 0.2);
+  --stage: radial-gradient(60% 50% at 15% 10%, rgba(255, 79, 154, 0.45) 0%, transparent 65%),
+    radial-gradient(60% 50% at 85% 15%, rgba(56, 225, 255, 0.35) 0%, transparent 65%),
+    radial-gradient(70% 50% at 50% 115%, rgba(255, 207, 63, 0.35) 0%, transparent 70%),
+    linear-gradient(180deg, #1a0f3d 0%, #120a2c 100%);
+  --particle: #ffcf3f;
+}
+
+/* ---------- Sinterklaas: rood, goud en pepernoten ---------- */
+body[data-theme="sinterklaas"] {
+  --bg: #2a0a0d; --card: #3d1015; --primary: #f2c14e; --primary-glow: #f9dd94; --primary-fg: #2a0a0d;
+  --accent: #c8102e; --info: #fcd9a8; --success: #6fd69a; --muted: #e3c6c0;
+  --glass: rgba(120, 20, 30, 0.35); --glass-strong: rgba(48, 10, 14, 0.85); --glass-border: rgba(242, 193, 78, 0.28);
+  --stage: radial-gradient(100% 70% at 50% -15%, rgba(200, 16, 46, 0.7) 0%, transparent 60%),
+    radial-gradient(60% 45% at 90% 110%, rgba(242, 193, 78, 0.2) 0%, transparent 70%),
+    linear-gradient(180deg, #2a0a0d 0%, #150405 100%);
+  --particle: #b8773d;
+}
+
+/* ---------- Disco / retro: neon roze en cyaan ---------- */
+body[data-theme="disco"] {
+  --bg: #12051f; --card: #22093a; --primary: #ff4fd8; --primary-glow: #ffb3f0; --primary-fg: #1a0526; --bronze: #a855f7;
+  --accent: #7c3aed; --info: #22d3ee; --success: #39f5a8; --muted: #d6bde8;
+  --glass: rgba(120, 40, 160, 0.28); --glass-strong: rgba(30, 8, 50, 0.85); --glass-border: rgba(255, 79, 216, 0.32);
+  --stage: conic-gradient(from 180deg at 50% -20%, rgba(255, 79, 216, 0.25), rgba(34, 211, 238, 0.25), rgba(168, 85, 247, 0.25), rgba(255, 207, 63, 0.2), rgba(255, 79, 216, 0.25)),
+    radial-gradient(80% 60% at 50% 120%, rgba(124, 58, 237, 0.6) 0%, transparent 70%),
+    linear-gradient(180deg, #12051f 0%, #0a0214 100%);
+  --particle: #ffffff;
+}
 
 /* Hoekdecoratie op de tv */
 body.tv[data-theme]::after { position: fixed; right: 1.5vw; bottom: 1vh; font-size: 7vw; opacity: 0.35; z-index: 1; pointer-events: none; }
@@ -59,3 +126,7 @@ body.tv[data-theme="kerst"]::after { content: "🎄"; }
 body.tv[data-theme="oudennieuw"]::after { content: "🥂"; }
 body.tv[data-theme="zomer"]::after { content: "☀️"; }
 body.tv[data-theme="halloween"]::after { content: "🎃"; }
+body.tv[data-theme="tvshow"]::after { content: "📺"; }
+body.tv[data-theme="feest"]::after { content: "🎈"; }
+body.tv[data-theme="sinterklaas"]::after { content: "🎁"; }
+body.tv[data-theme="disco"]::after { content: "🪩"; }

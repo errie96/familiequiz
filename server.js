@@ -10,7 +10,7 @@ const { loadContent, decadeOf } = require('./lib/content');
 const { fromExcel, libraryFromExcel, isQuizWorkbook } = require('./lib/fromExcel');
 const { updateLibrary, editLibrary } = require('./lib/hitster-update');
 const { newId, cleanText, norm, lev, fuzzyEq, shuffle } = require('./lib/util');
-const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles } = require('./lib/state-store');
+const { writeJsonWithBackup, readJsonWithBackup, removeStateFiles, writeFileAtomic } = require('./lib/state-store');
 const { pushUndo, applyUndoEntry } = require('./lib/undo');
 const { HISTORY_VERSION, DEFAULT_LIMIT: HISTORY_LIMIT, createHistoryEntry, appendHistory, isHistorySnapshot } = require('./lib/quiz-history');
 
@@ -111,6 +111,27 @@ app.get('/qr-bediening2.svg', (req, res) => {
   res.set('Cache-Control', 'no-store').type('image/svg+xml').send(svg(`${getJoinUrl()}/bediening2.html`));
 });
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
+// Naam, logo en starttijd (voor de telefoon vóór het aanmelden, en voor het app-icoon op het beginscherm)
+app.get('/api/brand', (req, res) => res.json({ ...brandInfo(), texts: brandTexts() }));
+app.get('/manifest.webmanifest', (req, res) => {
+  const b = brandInfo();
+  // "standalone": de quiz opent als app, zonder adresbalk. Dat mag alleen vóór het aanmelden: een iPhone ziet de
+  // app-weergave als een nieuw toestel. Zodra een telefoon bij een team hoort, vraagt hij dit bestand op met
+  // ?mode=browser (en haalt de iPhone-instelling weg), zodat het icoon dan gewoon de browser opent.
+  res.type('application/manifest+json').send(JSON.stringify({
+    name: b.name, short_name: b.short, start_url: '/', scope: '/', display: req.query && req.query.mode === 'browser' ? 'browser' : 'standalone', background_color: '#0f172a', theme_color: '#1e1b4b',
+    icons: b.icon ? [{ src: b.icon, sizes: '512x512', type: 'image/png', purpose: 'any' }, { src: b.icon, sizes: '192x192', type: 'image/png', purpose: 'any' }] : []
+  }));
+});
+const sendAppIcon = (req, res) => {
+  const f = path.join(LOGO_DIR, 'app-icoon.png');
+  if (!fs.existsSync(f)) return res.status(404).end();
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(f);
+};
+app.get('/apple-touch-icon.png', sendAppIcon);
+app.get('/apple-touch-icon-precomposed.png', sendAppIcon);
+app.get('/favicon.ico', sendAppIcon);
 app.get('/download/Hitster-bibliotheek.xlsx', (req, res) => {
   if (req.query.t !== DOWNLOAD_TOKEN) return res.status(403).type('text').send('Geen toegang');
   const file = currentLibraryFile();
@@ -144,6 +165,8 @@ app.get('/download/fotos.zip', (req, res) => {
   const files = {};
   const slug = (s) => String(s).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'team';
   // Origineel (ware grootte) als dat binnen is, anders de kleine tv-versie
+  // Overwinningskaarten van deze quiz
+  try { for (const f of fs.readdirSync(path.join(ORIG_DIR, 'kaarten'))) files[`kaarten/${f}`] = fs.readFileSync(path.join(ORIG_DIR, 'kaarten', f)); } catch (e) { quiet('kaarten in de zip')(e); }
   // Teamfoto's: alle bewaarde (ook van eerdere avonden of van vóór een reset), plus de huidige als die nog niet bewaard was
   const archived = archivedTeamPhotos();
   for (const a of archived) { try { files[`teamfotos/${a.day}_${a.slug}.jpg`] = readOriginal(teamOriginalFile(a.teamId)) || fs.readFileSync(path.join(TEAM_ARCHIVE, a.day, a.file)); } catch (e) { quiet('foto-zip teamfoto')(e); } }
@@ -177,7 +200,9 @@ app.post('/origineel/:key', (req, res) => {
   req.on('end', () => {
     if (size > MAX_ORIGINAL_BYTES) return res.status(413).type('text').send('Foto te groot');
     const buf = Buffer.concat(chunks);
-    if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) return res.status(400).type('text').send('Geen JPEG');
+    const isPng = /\.png$/i.test(job.file);
+    const okType = isPng ? (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) : (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff);
+    if (!okType) return res.status(400).type('text').send(isPng ? 'Geen PNG' : 'Geen JPEG');
     try {
       const full = path.join(ORIG_DIR, job.file);
       fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -230,6 +255,7 @@ const backups = createBackups({
     { name: 'history.json', file: path.join(DATA_DIR, 'history.json') },
     { name: 'teamphotos.json', file: path.join(DATA_DIR, 'teamphotos.json') },
     { name: 'playlists.json', file: path.join(DATA_DIR, 'playlists.json') },
+    { name: 'quiz-vast.json', file: path.join(DATA_DIR, 'quiz-vast.json') },
     { name: 'vragenlijst.xlsx', file: currentQuizFile() },
     { name: 'Hitster-bibliotheek.xlsx', file: currentLibraryFile() }
   ]
@@ -335,7 +361,8 @@ try {
 } catch (e) { quiet('playlists lezen')(e); }
 rebuildPlaylists();
 function savePlaylists() {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(PLAYLISTS_FILE, JSON.stringify({ version: 2, overrides: G.playlistOverrides }, null, 2)); }
+  if (G.restoring) return; // er wordt net een reservekopie teruggezet: niets meer overschrijven
+  try { writeFileAtomic(PLAYLISTS_FILE, JSON.stringify({ version: 2, overrides: G.playlistOverrides }, null, 2)); }
   catch (e) { console.error('Playlists opslaan mislukt:', e.message); }
 }
 const extraTitle = (p, b) => (b.type === 'hitster' ? `Muziek: ${HITSTER_CATS[p.category] || HITSTER_CATS.original}` : `${b.title} (extra ronde)`);
@@ -363,6 +390,7 @@ function extraRaw(p, b) {
 function applyPlan(raw) {
   const out = JSON.parse(JSON.stringify(raw));
   const byId = Object.fromEntries((raw.rounds || []).map((r) => [r.id, r]));
+  out.logoCount = G.settings.logoCount; // aantal logo's in de logo-ronde (zie lib/content.js)
   out.rounds = planOrder().filter((p) => p.on).map((p) => (p.base ? extraRaw(p, byId[p.base]) : JSON.parse(JSON.stringify(byId[p.id]))));
   return out;
 }
@@ -393,7 +421,7 @@ function replan(order) {
   G.settings.roundPlan = order.map((p) => ({ id: p.id, on: p.on !== false, base: p.base || undefined, category: p.category || undefined }));
   compileQuiz(G.content.warnings.filter((w) => !/Ronde/.test(w)));
   if (curId) { const i = G.steps.findIndex((x) => x.id === curId); if (i >= 0) G.stepIndex = i; }
-  if (G.phase === 'LOBBY') { G.ssAll = {}; G.undoHistory = []; Object.values(G.teams).forEach((t) => { t.timelines = {}; t.jokerRound = null; }); }
+  if (G.phase === 'LOBBY') { G.ssAll = {}; G.undoHistory = []; Object.values(G.teams).forEach((t) => { t.timelines = {}; t.starts = {}; t.jokerRound = null; }); }
 }
 G.dynSongs = {};  // liedjes die de bediening online vindt (id -> liedje)
 G.dynStart = {};  // rondeId -> online startkaarten
@@ -424,6 +452,7 @@ function pickColor() {
 const teamStyle = () => Object.fromEntries(Object.values(G.teams).map((t) => [t.name, { color: t.color || '#64748b', photo: photoUrl(t.teamId) }]));
 const photoUrl = (teamId) => (G.teamPhotos[teamId] ? `/teamfoto/${encodeURIComponent(teamId)}?v=${G.teamPhotos[teamId].v}` : null);
 function savePhotos() {
+  if (G.restoring) return;
   try { writeJsonWithBackup(PHOTOS_FILE, { version: 1, photos: G.teamPhotos }); }
   catch (e) { console.error('Teamfoto\'s opslaan mislukt:', e.message); }
 }
@@ -470,6 +499,7 @@ function usedSongKeys() {
   G.steps.forEach((x) => { const id = x.kind === 'song' && G.ssAll[x.id] && G.ssAll[x.id].songId; if (id && G.songs[id]) keys.add(G.songs[id].key); });
   Object.values(G.roundById).forEach((round) => { if (!playlistFirst(round)) (round.startIds || []).forEach((id) => { if (G.songs[id]) keys.add(G.songs[id].key); }); });
   Object.values(G.dynStart).flat().forEach((id) => { if (G.songs[id]) keys.add(G.songs[id].key); });
+  Object.values(G.teams).forEach((t) => Object.values(t.starts || {}).flat().forEach((id) => { if (G.songs[id]) keys.add(G.songs[id].key); })); // eigen startkaarten van de teams
   G.rejectedKeys.forEach((k) => keys.add(k));
   return [...keys];
 }
@@ -482,6 +512,7 @@ function compileQuiz(extraWarnings) {
   for (const song of Object.values(G.songs)) if (song && G.yearFixes[song.key]) { song.year = G.yearFixes[song.key]; song.verified = true; }
   G.roundById = Object.fromEntries(G.rounds.map((r) => [r.id, r]));
   G.content.warnings.push(...missingMediaWarnings());
+  brandCache = { at: 0, value: null }; // naam/starttijd kunnen veranderd zijn
 }
 // Controle: staan alle foto's, logo's en geluidsbestanden uit de vragenlijst echt in public/media/?
 const MEDIA_WARNING = '📁 ';
@@ -491,15 +522,147 @@ const SOUNDBOARD = [
   { name: 'sadTrombone', label: '🎺 Wah-wah-waah' }, { name: 'cheer', label: '🎉 Gejuich' },
   { name: 'buzzer', label: '❌ Zoemer' }, { name: 'ding', label: '🔔 Belletje' }, { name: 'fanfare', label: '🎺 Fanfare' }
 ];
+// ---------------------------------------------------------------
+// Naam, logo en starttijd van de quiz
+// ---------------------------------------------------------------
+// De naam en starttijd staan in de Excel (tabblad Teksten, bovenaan). Het logo en het app-icoon staan als bestand
+// in public/media/huisstijl/ (logo.png gaat voor logo.svg). Een nieuw bestand wordt binnen een paar seconden opgepikt.
+const LOGO_DIR = path.join(__dirname, 'public', 'media', 'huisstijl');
+let brandCache = { at: 0, value: null };
+// "19:30", "19.30", "19u30", "1930", "19" of een Excel-tijd (0,8125 = 19:30). Leeg of "-" = geen starttijd.
+function parseStartTime(value) {
+  const s = String(value ?? '').trim();
+  if (!s || s === '-') return null;
+  let h, m;
+  const frac = Number(s.replace(',', '.'));
+  if (/^0?[.,]\d+$/.test(s) && frac > 0 && frac < 1) {
+    const mins = Math.round(frac * 1440);
+    h = Math.floor(mins / 60) % 24; m = mins % 60;
+  } else {
+    const mt = /^(\d{1,2})\s*[:.u]\s*(\d{2})(?:\s*uur)?$/i.exec(s) || /^(\d{1,2})(\d{2})$/.exec(s) || /^(\d{1,2})\s*(?:u|uur)?$/i.exec(s);
+    if (!mt) return null;
+    h = Number(mt[1]); m = Number(mt[2] || 0);
+  }
+  if (!(h >= 0 && h <= 23 && m >= 0 && m <= 59)) return null;
+  return { h, m, label: `${h}:${String(m).padStart(2, '0')}` };
+}
+function brandInfo() {
+  if (brandCache.value && Date.now() - brandCache.at < 3000) return brandCache.value;
+  const texts = (G.content && G.content.texts) || {};
+  const T = (k) => { const v = String(texts[k] ?? '').trim(); return v === '-' ? '' : v; };
+  const file = (names) => {
+    for (const n of names) {
+      try { const st = fs.statSync(path.join(LOGO_DIR, n)); if (st.isFile() && st.size > 0) return { url: `/media/huisstijl/${n}?v=${Math.round(st.mtimeMs)}`, name: n }; } catch (e) { /* bestaat niet */ }
+    }
+    return null;
+  };
+  const logo = file(['logo.png', 'logo.svg', 'logo.webp', 'logo.jpg', 'logo.jpeg']);
+  const icon = file(['app-icoon.png']);
+  const name = T('quiz.naam') || 'Familiequiz';
+  // Aftelklok vóór de start: de quizmaster stelt hem in de bediening in (net als de pauzetimer), los van een vaste starttijd
+  let start = null;
+  if (G.phase === 'LOBBY' && G.startUntil) { const d = new Date(G.startUntil); start = { label: `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`, at: G.startUntil }; }
+  brandCache = {
+    at: Date.now(),
+    value: {
+      name, subtitle: T('quiz.ondertitel'), short: (T('quiz.kortenaam') || name).slice(0, 24),
+      showName: !/^(nee|n|no|0|false|uit)$/i.test(T('quiz.logo.naam')),
+      logo: logo ? logo.url : null, logoFile: logo ? logo.name : null, icon: icon ? icon.url : null,
+      start, startInvalid: null
+    }
+  };
+  return brandCache.value;
+}
+// ---------- Jingle, achtergrondmuziek en wifi-QR (bestanden die jullie zelf kunnen vervangen) ----------
+// public/media/muziek/opening.(mp3|m4a|ogg|wav) en achtergrond.(…): mp3 gaat voor wav. Zonder bestand: ingebouwde geluiden.
+const MUSIC_DIR = path.join(__dirname, 'public', 'media', 'muziek');
+let mediaCache = { at: 0, value: null };
+function mediaInfo() {
+  if (mediaCache.value && Date.now() - mediaCache.at < 3000) return mediaCache.value;
+  const find = (dir, base, exts, urlBase) => {
+    for (const ext of exts) {
+      try { const st = fs.statSync(path.join(dir, `${base}.${ext}`)); if (st.isFile() && st.size > 0) return `${urlBase}/${base}.${ext}?v=${Math.round(st.mtimeMs)}`; } catch (e) { /* bestaat niet */ }
+    }
+    return null;
+  };
+  const AUDIO = ['mp3', 'm4a', 'ogg', 'wav'];
+  mediaCache = { at: Date.now(), value: {
+    opening: find(MUSIC_DIR, 'opening', AUDIO, '/media/muziek'),
+    background: find(MUSIC_DIR, 'achtergrond', AUDIO, '/media/muziek'),
+    wifiQr: !!find(path.join(__dirname, 'public', 'media'), 'wifi-qr', ['png', 'jpg', 'jpeg'], '/media')
+  } };
+  return mediaCache.value;
+}
+G.musicOn = true; // achtergrondmuziek vóór de start en in de pauze (knop in de bediening)
+// Pauzetimer: tijdstip + label in de tijd van de laptop ("20:45"); alleen tijdens een pauze
+function pauseTimer() {
+  if (G.phase !== 'PLAY' || !G.paused || !G.pauseUntil) return null;
+  const d = new Date(G.pauseUntil);
+  return { until: G.pauseUntil, label: `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}` };
+}
+const musicState = () => { const m = mediaInfo(); return { opening: m.opening, background: m.background, on: G.musicOn !== false, sting: G.logoSting !== false }; };
+// De opening: logo groot in beeld met jingle (bij de start, of via "Opening testen" in de bediening)
+// hold = de tv houdt het eerste scherm vast tot de opening klaar is; de grote knop doet in die tijd niets.
+const OPENING_MS = process.env.QUIZ_TEST === '1' ? 0 : 6000;
+G.openingUntil = 0;
+function emitOpening(hold) {
+  if (hold) G.openingUntil = Date.now() + OPENING_MS;
+  io.to('tv_room').emit('opening', { hold: !!hold && OPENING_MS > 0, ms: OPENING_MS });
+  io.to('remote_room').emit('opening', { hold: !!hold });
+}
+const openingBusy = () => Date.now() < G.openingUntil;
+G.logoSting = true; // korte logo-flits bij het begin van elke ronde (knop in de bediening)
+// Heeft de tv geluid? De browser van de tv wil eerst één druk op OK; de tv meldt dat via 'tv_audio'
+function tvAudioOk() {
+  const room = io.sockets && io.sockets.adapter && io.sockets.adapter.rooms && io.sockets.adapter.rooms.get('tv_room');
+  if (!room || !io.sockets.sockets) return false;
+  for (const id of room) { const sk = io.sockets.sockets.get(id); if (sk && sk.data && sk.data.audioOk) return true; }
+  return false;
+}
+// Teksten die de telefoon al nodig heeft vóór hij de eerste stand krijgt (aftelklok op het aanmeldscherm)
+const brandTexts = () => Object.fromEntries(['aftel.over', 'aftel.om', 'aftel.bijna'].map((k) => [k, (G.content.texts || {})[k] || k]));
 const SOUNDS_DIR = path.join(__dirname, 'public', 'media', 'sounds');
-let soundsCache = { at: 0, list: [] };
+// Een bestand met de naam van een quizgeluid (bijv. drumroll.mp3, applause.wav) vervangt dat geluid overal in de quiz
+const OVERRIDABLE = ['buzzer', 'triumph', 'ding', 'whoosh', 'drumHit', 'fanfare', 'tick', 'pop', 'chime', 'shutter', 'aww', 'reveal', 'heartbeat', 'applause', 'drumroll', 'sadTrombone', 'cheer'];
+let soundsCache = { at: 0, list: [], files: {} };
 function customSounds() {
   if (Date.now() - soundsCache.at < 10000) return soundsCache.list;
   let list = [];
   try { list = fs.readdirSync(SOUNDS_DIR).filter((f) => /^[\w\- .()'&!]+\.(mp3|wav|ogg|m4a)$/i.test(f)).sort().slice(0, 40).map((f) => ({ file: f, label: '🎵 ' + f.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ') })); } catch (e) { /* map bestaat (nog) niet */ }
-  soundsCache = { at: Date.now(), list };
-  return list;
+  const files = {};
+  try { for (const f of fs.readdirSync(SOUNDS_DIR)) { const m = /^([A-Za-z]+)\.(mp3|wav|ogg|m4a)$/i.exec(f); if (m && OVERRIDABLE.includes(m[1])) files[m[1]] = '/media/sounds/' + encodeURIComponent(f); } } catch (e) { /* map bestaat (nog) niet */ }
+  soundsCache = { at: Date.now(), list: list.filter((x) => !files[x.file.replace(/\.[^.]+$/, '')]), files }; // overschrijvingen hoeven geen eigen knop
+  return soundsCache.list;
 }
+const soundOverrides = () => { customSounds(); return soundsCache.files; };
+// Eigen geluid uploaden vanuit de bediening (alleen met een geldige sessie van de quizmaster)
+app.post('/geluid-upload', (req, res) => {
+  if (!sessions.valid(String((req.headers && req.headers['x-host-token']) || ''))) return res.status(403).type('text').send('Geen toegang');
+  const MAX = 4 * 1024 * 1024;
+  if (Number(req.headers && req.headers['content-length']) > MAX) return res.status(413).type('text').send('Bestand te groot (max 4 MB)');
+  const chunks = [];
+  let size = 0;
+  req.on('data', (c) => { size += c.length; if (size <= MAX) chunks.push(c); });
+  req.on('error', () => { /* verbinding weg */ });
+  req.on('end', () => {
+    if (size > MAX) return res.status(413).type('text').send('Bestand te groot (max 4 MB)');
+    const b = Buffer.concat(chunks);
+    const kind = b.length < 12 ? null : b.slice(0, 3).toString('latin1') === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0) ? 'mp3' : b.slice(0, 4).toString('latin1') === 'RIFF' && b.slice(8, 12).toString('latin1') === 'WAVE' ? 'wav' : b.slice(0, 4).toString('latin1') === 'OggS' ? 'ogg' : b.slice(4, 8).toString('latin1') === 'ftyp' ? 'm4a' : null;
+    if (!kind) return res.status(400).type('text').send('Alleen mp3, wav, ogg of m4a');
+    const name = String((req.query && req.query.naam) || 'geluid').replace(/\.[^.]*$/, '').replace(/[^\w\- ]+/g, '').trim().slice(0, 40) || 'geluid';
+    try {
+      fs.mkdirSync(SOUNDS_DIR, { recursive: true });
+      if (!OVERRIDABLE.includes(name) && fs.readdirSync(SOUNDS_DIR).filter((f) => !f.startsWith('.')).length >= 40) return res.status(400).type('text').send('Er staan al 40 geluiden in de map');
+      for (const f of fs.readdirSync(SOUNDS_DIR)) if (f.replace(/\.[^.]+$/, '') === name) fs.unlinkSync(path.join(SOUNDS_DIR, f)); // zelfde naam: vervangen
+      fs.writeFileSync(path.join(SOUNDS_DIR, `${name}.${kind}`), b);
+    } catch (e) { return res.status(500).type('text').send('Opslaan mislukt'); }
+    soundsCache.at = 0;
+    LOG.info('geluid_geupload', { naam: name, kb: Math.round(b.length / 1024) });
+    sync();
+    res.status(204).end();
+  });
+});
+
 // Wifi-QR voor het welkomstscherm (plaatje dat de quizmaster zelf neerzet); kort onthouden om niet steeds te kijken
 G.wifiQrCache = { at: 0, ok: false };
 function wifiQrPresent() {
@@ -507,6 +670,12 @@ function wifiQrPresent() {
   const ok = ['png', 'jpg', 'jpeg'].some((x) => { try { return fs.statSync(path.join(__dirname, 'public', 'media', `wifi-qr.${x}`)).isFile(); } catch (e) { return false; } });
   G.wifiQrCache = { at: Date.now(), ok };
   return ok;
+}
+// Zelfde controle, maar actueel (hooguit 5 seconden oud) voor de startklaar-lijst in de bediening
+let mediaCheck = { at: 0, list: [] };
+function liveMediaWarnings() {
+  if (Date.now() - mediaCheck.at > 5000) mediaCheck = { at: Date.now(), list: missingMediaWarnings() };
+  return mediaCheck.list;
 }
 function missingMediaWarnings() {
   const missing = new Map(); // ronde -> Set(bestanden)
@@ -532,16 +701,20 @@ function loadQuiz() {
   candidates.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
   let result = null;
   const extra = [];
-  if (candidates.length) {
+  // De nieuwste Excel eerst. Is die onleesbaar (bijv. net half opgeslagen of nog open in Excel), dan de volgende,
+  // en pas als geen enkele Excel lukt de voorbeeldquiz uit questions.json.
+  for (const file of candidates) {
     try {
-      const { raw, warnings } = fromExcel(candidates[0], JSON_BASE);
+      const { raw, warnings } = fromExcel(file, JSON_BASE);
       G.baseRaw = raw;
       result = { warnings };
-      G.quizSource = { kind: 'excel', file: path.basename(candidates[0]) + (candidates[0] === XLSX_UPLOAD ? ' (geüpload)' : ''), loadedAt: new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
+      G.quizSource = { kind: 'excel', file: path.basename(file) + (file === XLSX_UPLOAD ? ' (geüpload)' : ''), loadedAt: new Date().toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) };
+      break;
     } catch (e) {
-      extra.push(`De Excel kon niet gelezen worden (${e.message}). questions.json is gebruikt.`);
+      extra.push(`De Excel ${path.basename(file)}${file === XLSX_UPLOAD ? ' (geüpload)' : ''} kon niet gelezen worden (${e.message}).`);
     }
   }
+  if (!result && candidates.length) extra.push('Geen enkele Excel was leesbaar: de voorbeeldquiz uit questions.json is gebruikt.');
   if (!result) {
     G.baseRaw = JSON.parse(fs.readFileSync(JSON_BASE, 'utf8'));
     result = { warnings: [] };
@@ -562,15 +735,19 @@ G.devices = {};    // deviceId -> { deviceId, memberId, teamId, label, seq, sock
 G.phase = 'LOBBY'; // LOBBY | PLAY | END
 G.stepIndex = 0;
 G.paused = false;
+G.startUntil = null; // aftelklok vóór de start: tijdstip (ms), ingesteld in de bediening, of null
+G.pauseUntil = null; // pauzetimer: tijdstip (ms) waarop de quiz verder gaat, of null
 G.showStandings = false;
 G.showPositions = false; // tussenstand op de tv (nooit punten): false | 'list' (posities) | 'race' (balkenrace)
 G.review = null;   // { scope: rondeId | 'all', page }
 G.reveal = 'idle'; // einduitslag: idle -> stepping (plek voor plek) -> done
 G.revealN = 0;     // aantal onthulde plekken (van laag naar hoog)
 G.revealDuo = false; // de laatste twee teams staan samen in beeld (nog zonder plek)
+G.dilemma = null;  // pauzedilemma: { id, n, votes: { deviceId: 'a'|'b' }, used: [ids], visible } (geen punten, alleen voor de gezelligheid)
 G.lobbyStage = 'welcome'; // lobby: eerst de welkomstpagina, dan het aanmeldscherm met QR-code
 G.endView = 'ranking'; // ranking | breakdown | awards | album (op de tv na de ontknoping)
-const END_VIEWS = ['ranking', 'breakdown', 'awards', 'album'];
+const END_VIEWS = ['ranking', 'breakdown', 'awards', 'album', 'stats'];
+G.startedAt = null; G.endedAt = null; G.reactionCount = 0; // voor "De avond in cijfers"
 // Gegevens voor de awards: hoe vaak een team als eerste antwoordde en bij hoeveel vragen er gespiekt werd
 G.musicPaused = false; // muziek van de huidige muziekvraag op pauze gezet door de quizmaster
 G.awardStats = {}; // teamId -> { firsts, cheatSteps: [stepId] }
@@ -616,6 +793,82 @@ const teamDevices = (team) => Object.values(G.devices).filter((d) => d.teamId ==
 const connectedDevices = (team) => teamDevices(team).filter((d) => d.connected);
 const teamConnected = (team) => { const b = G.devices[team.baseDeviceId]; return !!(b && b.connected); };
 const activeTeams = () => Object.values(G.teams).filter(teamConnected);
+// ---- Persoonlijk aanmelden: iedereen vult naam, familie en leeftijd in; de bediening maakt daarna de teams ----
+const { makeTeams: dealTeams } = require('./lib/teammaker');
+const familyList = () => (G.content && G.content.families) || [];
+// QUIZ_SIGNUP (teams/personal) overschrijft de instelling, voor tests
+function personalMode() {
+  const mode = process.env.QUIZ_SIGNUP || G.settings.signup || 'auto';
+  return mode === 'personal' || (mode === 'auto' && familyList().length > 0);
+}
+const people = () => Object.values(G.devices).filter((d) => !d.bot);
+const unassigned = () => people().filter((d) => !G.teams[d.teamId]).sort(bySeq);
+const ageOf = (d) => (Number.isInteger(d.age) ? d.age : null);
+const personTaken = (label, exceptId) => people().some((d) => d.deviceId !== exceptId && norm(d.label) === norm(label));
+// Basistelefoon van een nieuw team: iemand die verbonden is, bij voorkeur een volwassene (het dichtst bij 35)
+function pickBase(members) {
+  const score = (d) => (d.connected ? 0 : 1000) + (ageOf(d) == null ? 30 : ageOf(d) < 14 ? 200 : Math.abs(ageOf(d) - 35));
+  return members.slice().sort((a, b) => score(a) - score(b) || a.seq - b.seq)[0] || null;
+}
+// Overzicht voor de bediening (alles) en de tv (alleen namen): per familie, van jong naar oud
+function signupView(full) {
+  if (!personalMode()) return null;
+  const fams = familyList();
+  const all = people();
+  const row = (d) => (full ? { deviceId: d.deviceId, label: d.label, age: ageOf(d), family: d.family || '', connected: !!d.connected, teamId: G.teams[d.teamId] ? d.teamId : null, team: G.teams[d.teamId] ? G.teams[d.teamId].name : null } : { label: d.label });
+  const byAge = (a, b) => (ageOf(a) ?? 999) - (ageOf(b) ?? 999) || a.seq - b.seq;
+  const known = new Set(fams.map((f) => norm(f.name)));
+  const groups = fams.map((f) => { const list = all.filter((d) => norm(d.family) === norm(f.name)).sort(byAge); return { name: f.name, expected: f.count, present: list.length, people: list.map(row) }; });
+  const rest = all.filter((d) => !known.has(norm(d.family))).sort(byAge);
+  if (rest.length) groups.push({ name: fams.length ? 'Overig' : 'Aangemeld', expected: null, present: rest.length, people: rest.map(row) });
+  const expected = fams.every((f) => f.count) && fams.length ? fams.reduce((a, f) => a + f.count, 0) : null;
+  const teamsMade = Object.values(G.teams).some((t) => !t.bot);
+  const out = { families: groups, total: all.length, expected, complete: expected != null && all.length >= expected, teamsMade };
+  if (full) Object.assign(out, { mode: G.settings.signup || 'auto', hasFamilies: fams.length > 0, unassigned: unassigned().length, keepKidsAge: G.settings.keepKidsAge || 0,
+    ageSum: all.reduce((a, d) => a + (ageOf(d) || 0), 0),
+    teams: Object.values(G.teams).filter((t) => !t.bot).sort(bySeq).map((t) => { const m = teamDevices(t); const ages = m.map(ageOf).filter((x) => x != null); return { teamId: t.teamId, name: t.name, color: t.color, named: !t.autoName, size: m.length, avgAge: ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : null, members: m.slice().sort(byAge).map((d) => ({ deviceId: d.deviceId, label: d.label, age: ageOf(d), family: d.family || '', base: t.baseDeviceId === d.deviceId, connected: !!d.connected })) }; }) });
+  return out;
+}
+// Teams (opnieuw) maken uit alle aanmeldingen. Bestaande teams (geen testteams) worden eerst opgeheven.
+function buildTeams() {
+  const list = people();
+  const n = Math.min(G.settings.maxTeams || 0, list.length);
+  if (!n) return { ok: false, message: list.length ? 'Vul eerst in hoeveel teams er moeten komen.' : 'Er is nog niemand aangemeld.' };
+  for (const t of Object.values(G.teams).filter((x) => !x.bot)) { if (G.teamPhotos[t.teamId]) setTeamPhoto(t.teamId, null); delete G.teams[t.teamId]; }
+  for (const d of list) d.teamId = null;
+  const groups = dealTeams(list.map((d) => ({ id: d.deviceId, age: ageOf(d), family: d.family || '' })), n, { keepKidsAge: G.settings.keepKidsAge || 0 });
+  const usedColors = new Set(Object.values(G.teams).map((t) => t.color));
+  const usedNames = new Set(Object.values(G.teams).map((t) => norm(t.name)));
+  let no = 0;
+  for (const ids of groups) {
+    const members = ids.map((id) => G.devices[id]).filter(Boolean);
+    if (!members.length) continue;
+    do { no++; } while (usedNames.has(norm(`Team ${no}`)));
+    const color = TEAM_COLORS.find((c) => !usedColors.has(c)) || pickColor();
+    usedColors.add(color);
+    const base = pickBase(members);
+    const team = { teamId: newId('t_'), name: `Team ${no}`, autoName: true, seq: ++G.seq, baseDeviceId: base.deviceId, jokerRound: null, timelines: {}, proposal: null, color };
+    G.teams[team.teamId] = team;
+    for (const d of members) d.teamId = team.teamId;
+  }
+  LOG.info('teams_gemaakt', { teams: groups.length, spelers: list.length });
+  return { ok: true };
+}
+// Iemand uit een team halen (verplaatsen of verwijderen): basistelefoon doorgeven, leeg team opheffen
+function detachFromTeam(device) {
+  const team = G.teams[device.teamId];
+  device.teamId = null;
+  if (!team) return;
+  team.proposal = null;
+  const rest = teamDevices(team);
+  if (!rest.length) { if (G.phase === 'LOBBY') { if (G.teamPhotos[team.teamId]) setTeamPhoto(team.teamId, null); delete G.teams[team.teamId]; } return; }
+  if (team.baseDeviceId === device.deviceId) {
+    const nextBase = rest.find((d) => d.connected) || rest[0];
+    team.baseDeviceId = nextBase.deviceId;
+    team.baseApprovals = rest.map((d) => d.deviceId);
+    notifyTeam(team, `${device.label} zit niet meer in jullie team. ${nextBase.label} is nu de basistelefoon.`);
+  }
+}
 function notifyTeam(team, text) {
   for (const d of teamDevices(team)) if (d.connected && d.socketId) io.to(d.socketId).emit('team_notice', { text });
 }
@@ -854,12 +1107,33 @@ function activeFor(step) {
   if (step.kind === 'tiebreak') return activeTeams().filter((t) => (s.teams || []).includes(t.teamId));
   return activeTeams();
 }
+// Automatische beslissingsvraag: de leeftijden van alle deelnemers bij elkaar. Het antwoord wordt één keer vastgelegd
+// (op het moment dat de vraag in beeld komt) en bewaard, zodat het na een herstart hetzelfde is.
+function applyAgeTiebreak(step) {
+  const s = ss(step);
+  if (!Number.isFinite(s.autoAnswer)) {
+    const ages = people().map(ageOf).filter((a) => a != null);
+    if (ages.length < 2) { s.teams = []; return; } // geen leeftijden bekend: deze vraag overslaan
+    s.autoAnswer = ages.reduce((a, b) => a + b, 0);
+    s.autoCount = ages.length;
+  }
+  step.answer = s.autoAnswer;
+  step.question = String(step.questionTpl || 'Hoe oud zijn alle {aantal} deelnemers van vanavond bij elkaar opgeteld?').replace('{aantal}', s.autoCount);
+  step.explanation = `De ${s.autoCount} ingevulde leeftijden bij elkaar opgeteld.`;
+}
 function tiebreakWinners(step) {
   const s = ss(step);
   const d = Object.entries(s.answers).filter(([id, v]) => (s.teams || []).includes(id) && G.teams[id] && Number.isFinite(v)).map(([id, v]) => [id, Math.abs(v - step.answer)]);
   if (!d.length) return [];
   const best = Math.min(...d.map((x) => x[1]));
-  return d.filter((x) => x[1] <= best + 1e-9).map((x) => x[0]);
+  const closest = d.filter((x) => x[1] <= best + 1e-9).map((x) => x[0]);
+  // Even dichtbij? Dan wint wie het snelst antwoordde (alleen als van iedereen de tijd bekend is)
+  const at = s.at || {};
+  if (closest.length > 1 && closest.every((id) => Number.isFinite(at[id]))) {
+    const first = Math.min(...closest.map((id) => at[id]));
+    return closest.filter((id) => at[id] === first);
+  }
+  return closest;
 }
 
 function ranking() {
@@ -928,8 +1202,16 @@ function readiness() {
   const tests = G.steps.filter((x) => x.round === 'test' && x.kind === 'mc').length;
   if (!tests) warnings.push('Er zijn geen testvragen: je kunt vooraf niet controleren of alle telefoons werken.');
   else info.push(`${tests} testvragen`);
-  for (const w of G.content.warnings || []) warnings.push(w.startsWith(MEDIA_WARNING) ? w : `⚠️ ${w}`);
+  for (const w of G.content.warnings || []) if (!w.startsWith(MEDIA_WARNING)) warnings.push(`⚠️ ${w}`);
+  warnings.push(...liveMediaWarnings()); // telkens opnieuw gekeken: zet je de bestanden erbij, dan verdwijnt de melding vanzelf
   if (!G.librarySource) warnings.push('Geen Hitster-bibliotheek gevonden: extra muziekrondes zoeken direct op Spotify.');
+  const b = brandInfo();
+  info.push(`Naam: ${b.name}${b.subtitle ? ` (${b.subtitle})` : ''} · logo: ${b.logoFile ? `public/media/huisstijl/${b.logoFile}` : 'geen (alleen de naam)'} · app-icoon: ${b.icon ? 'ja' : 'nee'}`);
+  if (b.start) info.push(`Aftelklok tot ${b.start.label}`);
+  const md = mediaInfo();
+  info.push(`Opening: ${md.opening ? md.opening.split('?')[0].replace('/media/', 'public/media/') : 'ingebouwde fanfare'} · achtergrondmuziek: ${md.background ? md.background.split('?')[0].replace('/media/', 'public/media/') : 'geen'}`);
+  if (!md.wifiQr) warnings.push('Er staat nog geen wifi-QR op het welkomstscherm: zet een plaatje neer als public/media/wifi-qr.png.');
+  if ((G.settings.soundOut || 'tv') === 'tv' && tvCount() > 0 && !tvAudioOk()) warnings.push('🔇 De tv heeft nog geen geluid: druk één keer op OK op de afstandsbediening van de tv (of klik één keer op het tv-scherm).');
   if (G.internet === false) {
     // Zonder internet speelt muziek alleen af met eigen audiobestanden (kolom Audio in de Excel)
     const music = G.rounds.filter((r) => r.type === 'hitster' && !r.dynamic);
@@ -966,9 +1248,14 @@ function momentumFor(round) {
   if (!first || all.length < 2) return [];
   const playedBefore = G.rounds.filter((r) => { const last = G.steps.filter((x) => x.round === r.id).pop(); return r.id !== round.id && last && last.index < first.index; });
   const total = (t, list) => list.reduce((sum, r) => sum + roundScore(t, r) * jokerFactor(t, r), 0);
+  // de stand één ronde eerder (voor "stijgt voor de tweede ronde op rij"): alles vóór de vorige gespeelde ronde
+  const firstIndex = (r) => (G.steps.find((x) => x.round === r.id) || { index: 0 }).index;
+  const earlier = [...playedBefore].sort((a, b) => firstIndex(a) - firstIndex(b)).slice(0, -1);
   return momentumMessages({
     names: all.map((t) => t.name),
     before: playedBefore.length ? all.map((t) => total(t, playedBefore)) : null,
+    prev: earlier.length ? all.map((t) => total(t, earlier)) : null,
+    variety: playedBefore.length,
     after: all.map((t) => total(t, [...playedBefore, round])),
     roundPoints: G.settings.roundPoints
   });
@@ -1016,6 +1303,52 @@ const ROUND_AWARD = {
   mc: ['🧠', 'Bollebozen'], blur: ['🦅', 'Arendsogen'], logo: ['🏷️', 'Merkenkenners'], memory: ['🐘', 'Olifantengeheugen'],
   hitster: ['🎵', 'Muziekkenners'], price: ['💰', 'Prijzenkenners'], draw: ['🎨', 'Beste tekenaars'], thirty: ['🗣️', 'Kletskampioenen']
 };
+// "De avond in cijfers": losse weetjes over de hele avond, voor op de tv na de ontknoping.
+// Elk cijfer wordt apart uitgerekend en bij twijfel weggelaten; er komt alleen iets in beeld als het ook iets zegt.
+function nightStats() {
+  const out = [];
+  const add = (emoji, value, label) => { if (value !== null && value !== undefined && value !== '' && value !== 0) out.push({ emoji, value: String(value), label }); };
+  const safe = (fn) => { try { fn(); } catch (e) { quiet('avond in cijfers')(e); } };
+  const steps = G.steps.filter((x) => !x.test && G.ssAll[x.id]);
+  const st = (x) => G.ssAll[x.id] || {};
+  const teams = Object.values(G.teams);
+  safe(() => { const n = Object.values(G.devices).filter((d) => !d.bot).length; add('🙋', n, `${n === 1 ? 'deelnemer' : 'deelnemers'} in ${teams.length} teams`); });
+  safe(() => {
+    const ages = people().map(ageOf).filter((a) => a != null);
+    if (ages.length >= 2) { add('🎂', ages.reduce((a, b) => a + b, 0), 'jaar levenservaring bij elkaar'); add('👶👵', `${Math.min(...ages)} – ${Math.max(...ages)}`, 'jaar: van de jongste tot de oudste speler'); }
+  });
+  safe(() => { if (G.startedAt && G.endedAt && G.endedAt > G.startedAt) { const m = Math.round((G.endedAt - G.startedAt) / 60e3); if (m >= 10) add('⏱️', m >= 60 ? `${Math.floor(m / 60)}u ${String(m % 60).padStart(2, '0')}` : `${m} min`, 'van de start tot de ontknoping'); } });
+  safe(() => {
+    // alleen vragen waarop echt is geantwoord (overgeslagen vragen tellen niet mee)
+    const some = (o) => o && typeof o === 'object' && Object.keys(o).length > 0;
+    const q = steps.filter((x) => ['mc', 'logo', 'price', 'final'].includes(x.kind) && some(st(x).answers)).length + steps.filter((x) => x.kind === 'song' && some(st(x).placements)).length;
+    add('❓', q, 'vragen en liedjes gespeeld');
+  });
+  safe(() => {
+    let good = 0, all = 0;
+    for (const x of steps.filter((y) => y.kind === 'mc')) {
+      const s = st(x);
+      if (s.voided) continue;
+      for (const [id, a] of Object.entries(s.answers || {})) {
+        if (!G.teams[id] || !a) continue;
+        all++;
+        if (a.v === x.answer) good++;
+      }
+    }
+    if (all >= 4) add('✅', `${Math.round((good / all) * 100)}%`, `van de meerkeuze-antwoorden was goed (${good} van ${all})`);
+  });
+  safe(() => { let ok = 0, turns = 0; for (const x of steps.filter((y) => y.kind === 'thirty')) for (const t of st(x).turns || []) { if (!t || !t.done) continue; turns++; ok += (t.ok || []).filter(Boolean).length; } if (turns) add('🗣️', ok, `woorden geraden in ${turns} beurten 30 Seconds`); });
+  safe(() => { let n = 0; for (const x of steps.filter((y) => y.kind === 'draw')) n += (st(x).turns || []).filter(Boolean).length; add('✏️', n, n === 1 ? 'tekening gemaakt' : 'tekeningen gemaakt'); });
+  safe(() => { let n = 0; for (const t of teams) for (const tl of Object.values(t.timelines || {})) n += Math.max(0, (Array.isArray(tl) ? tl.length : 0) - 1); add('🎵', n, 'liedjes op de goede plek in een tijdlijn'); });
+  safe(() => { add('😂', G.reactionCount || 0, 'emoji\'s naar de tv gestuurd'); });
+  safe(() => { add('📸', pausePhotos.length, pausePhotos.length === 1 ? 'pauzefoto ingestuurd' : 'pauzefoto\'s ingestuurd'); });
+  safe(() => { const n = teams.reduce((a, t) => a + ((G.awardStats[t.teamId] || {}).cheatSteps || []).length, 0); add('🕵️', n, n === 1 ? 'keer is er iemand betrapt op wegkijken' : 'keer is er iemand betrapt op wegkijken'); });
+  safe(() => {
+    const r = ranking();
+    if (r.length >= 2) { const total = r.reduce((a, x) => a + (x.score || 0), 0); add('🏅', total, 'punten uitgedeeld in totaal'); const gap = (r[0].score || 0) - (r[1].score || 0); if (gap > 0) add('📏', gap, `${gap === 1 ? 'punt' : 'punten'} verschil tussen nummer 1 en 2`); }
+  });
+  return out.slice(0, 12);
+}
 function awards() {
   const list = Object.values(G.teams);
   if (list.length < 2) return [];
@@ -1110,11 +1443,17 @@ function roundStandings(round) {
 // ---------------------------------------------------------------
 // Antwoorden en voortgang
 // ---------------------------------------------------------------
+// De testvragen vóór de quiz beantwoordt iedereen op zijn eigen telefoon (niet alleen de basistelefoon):
+// zo weet je vóór de start dat elke telefoon werkt. Een team is klaar als al zijn verbonden telefoons hebben geantwoord.
+const everyoneAnswers = (step) => !!step && step.kind === 'mc' && step.round === 'test';
+const testMissing = (team, step) => { const p = ss(step).personal || {}; return teamDevices(team).filter((d) => !d.bot && d.connected && !p[d.deviceId]); };
 function hasAnswered(team, step) {
   const s = ss(step);
   const id = team.teamId;
   switch (step.kind) {
-    case 'mc': return !!s.answers[id];
+    case 'mc':
+      if (everyoneAnswers(step) && !team.bot) { const on = teamDevices(team).filter((d) => !d.bot && d.connected); return on.length ? !testMissing(team, step).length : !!s.answers[id]; }
+      return !!s.answers[id];
     case 'price': return !!s.answers[id];
     case 'logo': return !!s.answers[id];
     case 'song': return s.placements[id] !== undefined;
@@ -1122,13 +1461,17 @@ function hasAnswered(team, step) {
     case 'teamphoto': return !!G.teamPhotos[id] || !!s.skipped[id];
     case 'final': return s.status === 'wager' ? s.wagers[id] !== undefined : s.answers[id] !== undefined;
     case 'tiebreak': return s.answers[id] !== undefined;
+    case 'thirty': return s.status !== 'select' || !!(s.picks && s.picks[id]);
     default: return false;
   }
 }
-const waitingFor = (step) => activeFor(step).filter((t) => !hasAnswered(t, step)).map((t) => t.name);
+const waitingFor = (step) => activeFor(step).filter((t) => !hasAnswered(t, step)).map((t) => (everyoneAnswers(step) && testMissing(t, step).length ? `${t.name} (${testMissing(t, step).map((d) => d.label).join(', ')})` : t.name));
 
+const REVEAL_DELAY_MS = process.env.QUIZ_TEST === '1' ? 0 : 2000; // in de tests geen wachttijd
 // Reveal = direct na het sluiten tonen we het antwoord (bij gewone meerkeuze pas bij het nakijken)
-const revealsOnClose = (step) => step.kind !== 'mc' || step.variant !== 'text';
+const revealsOnClose = (step) => step.kind !== 'mc' || step.variant !== 'text' || G.settings.showAnswers.mc;
+// Testvragen (meerkeuze): als alle antwoorden binnen zijn, toont de tv het goede antwoord pas als de quizmaster erom vraagt
+const showsAnswerNow = (step, s) => s.status === 'closed' && (step.test ? !!s.revealAnswer : revealsOnClose(step));
 
 function closeStep(step) {
   const s = ss(step);
@@ -1166,11 +1509,21 @@ function songOf(step) {
     const round = G.roundById[step.round];
     const pool = (round && (step.test ? round.practicePool : round.pool)) || [];
     const used = new Set(G.steps.filter((x) => x.kind === 'song' && x.id !== step.id).map((x) => G.ssAll[x.id] && G.ssAll[x.id].songId).filter((id) => G.songs[id]).map((id) => G.songs[id].key));
-    const starts = new Set(((round && round.startIds) || []).map((id) => G.songs[id].key));
+    const starts = new Set([...((round && round.startIds) || []), ...teamStartIds(step.round)].filter((id) => G.songs[id]).map((id) => G.songs[id].key));
     const free = pool.filter((id) => !used.has(G.songs[id].key) && !starts.has(G.songs[id].key));
-    s.songId = free.length ? free[Math.floor(Math.random() * free.length)] : pool[0];
+    s.songId = free.length ? free[Math.floor(Math.random() * free.length)] : (pool.find((id) => !starts.has(G.songs[id].key)) || pool[0]);
   }
   return G.songs[s.songId];
+}
+// Vaste muziekronde: zijn alle liedjes gespeeld of als startkaart uitgedeeld? Dan vervallen de overige muziekvragen.
+function songsExhausted(step) {
+  if (step.dynamic || step.test) return false;
+  const s = ss(step);
+  if (s.songId) return false;
+  const round = G.roundById[step.round];
+  const played = playedSongKeys();
+  const starts = new Set(teamStartIds(step.round).filter((id) => G.songs[id]).map((id) => G.songs[id].key));
+  return !((round && round.pool) || []).some((id) => G.songs[id] && !played.has(G.songs[id].key) && !starts.has(G.songs[id].key));
 }
 // Heeft een team het doel (standaard 10 kaarten) gehaald? Dan stopt de muziekronde.
 const hitsterDone = (roundId) => Object.values(G.teams).some((t) => t.timelines && t.timelines[roundId] && t.timelines[roundId].length >= G.settings.hitsterTarget);
@@ -1183,7 +1536,7 @@ function revealSong(step) {
   for (const team of Object.values(G.teams)) {
     const slot = s.placements[team.teamId];
     if (slot === undefined) continue;
-    const tl = ensureTimeline(team, step.round);
+    const tl = timelineFor(team, step);
     const left = slot > 0 ? G.songs[tl[slot - 1]] : null;
     const right = slot < tl.length ? G.songs[tl[slot]] : null;
     const ok = (!left || left.year <= song.year) && (!right || song.year <= right.year);
@@ -1226,16 +1579,54 @@ function dynamicStartReady(roundId) {
   const round = G.roundById[roundId];
   return !round || dynamicStartIds(roundId).length >= (round.startCards || 2);
 }
+// ---- Elk team zijn eigen startkaarten (standaard 2, instelbaar), zoals bij het echte spel ----
+// Zo liggen de tijdlijnen op de tv vanaf het begin anders en valt er niets af te kijken. De liedjes met
+// "Startkaart = JA" in de Excel worden als eerste uitgedeeld; daarna willekeurige andere liedjes van de ronde.
+// Een startkaart wordt niet meer als liedje gespeeld. Zijn er te weinig liedjes, dan delen teams een kaart.
+const startCount = () => Math.max(1, G.settings.hitsterStartCards || 2);
+const teamStartIds = (roundId) => Object.values(G.teams).flatMap((t) => (t.starts && t.starts[roundId]) || []);
+const playedSongKeys = () => new Set(G.steps.filter((x) => x.kind === 'song').map((x) => G.ssAll[x.id] && G.ssAll[x.id].songId).filter((id) => G.songs[id]).map((id) => G.songs[id].key));
+function dealStartCards(team, roundId) {
+  const round = G.roundById[roundId];
+  team.starts = team.starts || {};
+  if (team.starts[roundId]) return team.starts[roundId];
+  if (!round) return [];
+  const n = startCount();
+  const taken = new Set(teamStartIds(roundId).filter((id) => G.songs[id]).map((id) => G.songs[id].key));
+  const played = playedSongKeys();
+  const free = (id) => G.songs[id] && !G.songs[id].practice && !taken.has(G.songs[id].key) && !played.has(G.songs[id].key) && !G.rejectedKeys.includes(G.songs[id].key);
+  const preferred = shuffle((round.dynamic ? dynamicStartIds(roundId) : round.startIds || []).filter(free));
+  const rest = shuffle([...(round.pool || []), ...(round.fallbackPool || [])].filter((id) => free(id) && !preferred.includes(id)));
+  const picks = [];
+  const far = (id) => picks.every((p) => Math.abs(G.songs[p].year - G.songs[id].year) >= 3);
+  // eerst kaarten die een paar jaar uit elkaar liggen (anders is de tijdlijn meteen een gok), daarna wat er over is
+  for (const pass of [far, () => true]) for (const id of [...preferred, ...rest]) { if (picks.length >= n) break; if (!picks.includes(id) && !picks.some((p) => G.songs[p].key === G.songs[id].key) && pass(id)) picks.push(id); }
+  // te weinig liedjes: dan dezelfde kaarten als een ander team (liever delen dan een lege tijdlijn)
+  if (picks.length < n) for (const id of [...teamStartIds(roundId), ...(round.startIds || [])]) { if (picks.length >= n) break; if (G.songs[id] && !picks.includes(id)) picks.push(id); }
+  team.starts[roundId] = picks;
+  return picks;
+}
 function ensureTimeline(team, roundId) {
   team.timelines = team.timelines || {};
   if (!team.timelines[roundId]) {
     const round = G.roundById[roundId];
-    const start = round && round.dynamic ? dynamicStartIds(roundId) : round && round.startIds;
     if (round && round.dynamic && !dynamicStartReady(roundId)) return [];
+    const start = round ? dealStartCards(team, roundId) : null;
     team.timelines[roundId] = start ? [...start].filter((id) => G.songs[id]).sort((a, b) => G.songs[a].year - G.songs[b].year) : [];
   }
   return team.timelines[roundId];
 }
+// Oefenliedje: iedereen dezelfde twee jaartallen (de vaste startkaarten van de ronde), zodat er voor de
+// oefenronde geen eigen startkaarten per team uitgedeeld hoeven te worden.
+function practiceTimeline(roundId) {
+  const round = G.roundById[roundId];
+  if (!round) return [];
+  const playedKeys = playedSongKeys();
+  let ids = (round.startIds || []).filter((id) => G.songs[id]);
+  if (ids.length < 2) ids = [...ids, ...(round.pool || []).filter((id) => G.songs[id] && !ids.includes(id) && !playedKeys.has(G.songs[id].key))].slice(0, 2);
+  return ids.slice(0, 2).sort((a, b) => G.songs[a].year - G.songs[b].year);
+}
+const timelineFor = (team, step) => (step.test ? practiceTimeline(step.round) : ensureTimeline(team, step.round));
 
 function settle() {
   if (G.paused || G.phase !== 'PLAY') return;
@@ -1248,8 +1639,23 @@ function settle() {
     const a = activeFor(step);
     if (a.length && a.every((t) => hasAnswered(t, step))) closeStep(step);
   }
-  if (['mc', 'price', 'song', 'logo'].includes(step.kind) && s.status === 'open') {
-    if (active.every((t) => hasAnswered(t, step))) closeStep(step);
+  // Muziek (tijdlijn): niet vanzelf onthullen. De kaarten liggen dicht op de tv tot de quizmaster op "Toon het antwoord" drukt.
+  if (['mc', 'price', 'logo'].includes(step.kind) && s.status === 'open') {
+    if (active.every((t) => hasAnswered(t, step))) {
+      // Meerkeuze met "antwoord meteen tonen": na het laatste antwoord eerst 2 seconden spanning, dan pas het antwoord
+      const wait = step.kind === 'mc' && step.variant === 'text' && !step.test && G.settings.showAnswers.mc ? REVEAL_DELAY_MS : 0;
+      if (!wait) closeStep(step);
+      else if (!s.closing) {
+        s.closing = true;
+        setTimeout(() => {
+          s.closing = false;
+          if (cur() !== step || s.status !== 'open' || G.phase !== 'PLAY') return; // intussen al gesloten of verder gegaan
+          if (G.paused) return; // na de pauze sluit de eerstvolgende stand hem alsnog
+          closeStep(step);
+          broadcastState();
+        }, wait);
+      }
+    }
   } else if (step.kind === 'final' && s.status === 'question') {
     if (active.every((t) => hasAnswered(t, step))) closeStep(step);
   }
@@ -1290,10 +1696,12 @@ function startMcTimer(step) {
   const secs = step.time ?? G.settings.defaultTime;
   if (secs > 0) timerStart(secs * 1000, 'mc');
 }
-// Leestijd bij meerkeuze: eerst de vraag ('reading'), dan de antwoorden zichtbaar ('showing'), dan open (de klok start
-// dan pas). Tijdens de pauze staat het stil.
+// Leestijd bij meerkeuze: eerst 2 seconden alleen de vraag ('reading'), daarna staan de antwoorden in beeld en kan er
+// meteen geantwoord worden ('open'; de klok start dan pas). Tijdens de pauze staat het stil. Vast, geen instelling.
 let readTimer = null;
-const isReading = (s) => s.status === 'reading' || s.status === 'showing';
+const MC_READ_SECONDS = 0; // 0 = de antwoorden komen direct achter de vraag aan (na MC_READ_MIN_MS)
+const MC_READ_MIN_MS = 600; // net genoeg om de vraag te zien verschijnen
+const isReading = (s) => s.status === 'reading';
 function scheduleOpen(step) {
   clearTimeout(readTimer);
   const s = ss(step);
@@ -1303,11 +1711,7 @@ function scheduleOpen(step) {
     try {
       const st = ss(step);
       if (cur() !== step || !isReading(st) || G.paused) return;
-      if (st.status === 'reading' && G.settings.previewSeconds > 0) {
-        st.status = 'showing'; // nu de antwoorden in beeld, nog even niet kiezen
-        st.readUntil = Date.now() + G.settings.previewSeconds * 1000;
-        scheduleOpen(step);
-      } else openAnswers(step);
+      openAnswers(step);
       sync();
     } catch (e) { reportError('leestijd', e); }
   }, Math.max(0, (s.readUntil || 0) - Date.now()));
@@ -1338,27 +1742,32 @@ function enterStep() {
   G.showStandings = false;
   const step = cur();
   if (!step) return;
+  // Reservekopie aan het begin van elke ronde en vóór de slotvraag: zo ben je bij een probleem hooguit één ronde kwijt
+  if (G.phase === 'PLAY' && (step.roundIntro || step.kind === 'final')) {
+    const reason = step.kind === 'final' ? 'slotvraag' : `ronde-${(G.roundById[step.round] && G.roundById[step.round].no) || 0}`;
+    backupNow(reason); // meteen (synchroon): precies de stand van vóór de ronde, nog voordat er geantwoord wordt
+  }
   const s = ss(step);
   // Meerkeuze: eerst alleen de vraag (leestijd), pas daarna antwoorden. Alleen de eerste keer; bij terugbladeren
   // naar een vraag die al open was niet opnieuw. Na een herstart midden in de leestijd loopt die gewoon verder.
-  // Volgorde: 'reading' (alleen de vraag) → 'showing' (antwoorden in beeld, nog niet kiezen) → 'open'.
+  // Volgorde: 'reading' (alleen de vraag, 2 s) → 'open' (antwoorden in beeld en meteen te beantwoorden).
+  if (s.status === 'showing') s.status = 'open'; // oude opslag uit een eerdere versie (tussenfase bestaat niet meer)
   if (step.kind === 'mc' && step.variant === 'text' && s.status === 'open' && !s.readDone && !Object.keys(s.answers).length) {
-    if (G.settings.readSeconds > 0) { s.status = 'reading'; s.readUntil = Date.now() + G.settings.readSeconds * 1000; }
-    else if (G.settings.previewSeconds > 0) { s.status = 'showing'; s.readUntil = Date.now() + G.settings.previewSeconds * 1000; }
+    s.status = 'reading'; s.readUntil = Date.now() + Math.max(MC_READ_MIN_MS, (G.settings.readSeconds ?? MC_READ_SECONDS) * 1000);
   }
-  if (step.kind === 'mc' && (s.status === 'reading' || s.status === 'showing')) scheduleOpen(step);
+  if (step.kind === 'mc' && s.status === 'reading') scheduleOpen(step);
   if (step.kind === 'mc' && s.status === 'open') startMcTimer(step);
   if (step.kind === 'draw' && !s.plan) planDraw(step);
-  if (step.kind === 'thirty' && !s.order) planThirty(step);
+  if (step.kind === 'thirty' && !s.order) { planThirty(step); if (G.settings.thirtyPer > 0) startThirtySelect(step, G.settings.thirtyPer); }
   if (step.kind === 'song') {
     if (step.dynamic) {
       const song = songOf(step); // probeer eerst de Excel-bibliotheek
       s.status = song && dynamicStartReady(step.round) ? 'open' : 'loading';
     }
-    Object.values(G.teams).forEach((t) => ensureTimeline(t, step.round));
+    if (!step.test) Object.values(G.teams).forEach((t) => ensureTimeline(t, step.round));
   }
   if (step.kind === 'tiebreak' && !s.teams) s.teams = tiedLeaders();
-  // Spiekmeldingen horen bij vragen; bij andere schermen weer opruimen
+  if (step.kind === 'tiebreak' && step.auto === 'age') applyAgeTiebreak(step);  // Spiekmeldingen horen bij vragen; bij andere schermen weer opruimen
   if (!cheatSensitive(step)) G.alerts = {};
 }
 const cheatSensitive = (step) => ['mc', 'price', 'song', 'memory', 'final', 'tiebreak', 'logo'].includes(step.kind);
@@ -1403,6 +1812,7 @@ function raiseCheat(deviceId, stepId) {
 const tiebreakPlayed = () => G.steps.some((x) => x.kind === 'tiebreak' && G.ssAll[x.id] && (G.ssAll[x.id].teams || []).length);
 function finishQuiz() {
   if (G.phase === 'END') return;
+  G.endedAt = Date.now();
   G.phase = 'END'; G.revealDuo = false; G.reveal = 'idle'; G.endView = 'ranking'; G.review = null; G.showStandings = false; G.showPositions = false; timerClear();
   LOG.info('quiz_einde', {}); setTimeout(() => backupNow('einde'), 500);
   archiveFinishedQuiz();
@@ -1412,7 +1822,7 @@ function next() {
   G.stepIndex++;
   enterStep();
   // Beslissingsvragen alleen stellen als er echt een gelijke stand op de eerste plaats is
-  while (G.phase === 'PLAY' && ((cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) || (cur().kind === 'song' && !cur().test && hitsterDone(cur().round)) || (cur().noTie && tiebreakPlayed()))) {
+  while (G.phase === 'PLAY' && ((cur().kind === 'tiebreak' && !(ss(cur()).teams || []).length) || (cur().kind === 'song' && !cur().test && (hitsterDone(cur().round) || songsExhausted(cur()))) || (cur().noTie && tiebreakPlayed()))) {
     if (G.stepIndex + 1 >= G.steps.length) return finishQuiz();
     G.stepIndex++;
     enterStep();
@@ -1544,7 +1954,8 @@ function planThirty(step) {
   const lists = Object.values(G.teams).sort(bySeq).map((t) => ({ t, members: teamDevices(t) }));
   const maxM = Math.max(0, ...lists.map((l) => l.members.length));
   s.order = [];
-  for (let k = 0; k < maxM; k++) for (const l of lists) if (l.members[k]) s.order.push({ teamId: l.t.teamId, deviceId: l.members[k].deviceId });
+  for (let k = 0; k < maxM; k++) for (const l of lists) if (l.members[k]) s.order.push({ teamId: l.t.teamId, deviceId: l.members[k].deviceId, lap: k });
+  s.per = 0; s.picks = null; s.cut = null; s.requeued = [];
   const usedCards = new Set(G.steps.filter((x) => x.kind === 'thirty' && x.id !== step.id).flatMap((x) => ((G.ssAll[x.id] && G.ssAll[x.id].turns) || []).map((t) => t && t.words.join('|'))));
   const idx = step.cards.map((_, i) => i);
   s.cardOrder = [...shuffle(idx.filter((i) => !usedCards.has(step.cards[i].join('|')))), ...shuffle(idx.filter((i) => usedCards.has(step.cards[i].join('|'))))];
@@ -1552,13 +1963,61 @@ function planThirty(step) {
   s.turns = [];
   s.status = s.order.length ? 'ready' : 'finished';
 }
+// ---- 30 Seconds: een vast aantal vertellers per team (in plaats van iedereen) ----
+// De quizmaster kiest vóór de ronde het aantal (bediening); de basistelefoon van elk team tikt aan wie er gaan
+// uitleggen. Is een team kleiner dan het aantal, dan wijst de basistelefoon aan wie een tweede keer mag.
+// Er is steeds maar één verteller tegelijk aan de beurt; de teams wisselen elkaar af.
+const thirtyAutoPick = (team, per) => { const m = teamDevices(team); return m.length ? Array.from({ length: per }, (_, i) => m[i % m.length].deviceId) : []; };
+function thirtyPickValid(team, per, ids) {
+  const members = teamDevices(team).map((d) => d.deviceId);
+  if (!members.length || !Array.isArray(ids) || ids.length !== per || ids.some((id) => !members.includes(id))) return false;
+  const cnt = {};
+  ids.forEach((id) => { cnt[id] = (cnt[id] || 0) + 1; });
+  const lo = Math.floor(per / members.length), hi = Math.ceil(per / members.length);
+  return members.every((m) => (cnt[m] || 0) <= hi && (cnt[m] || 0) >= lo);
+}
+const thirtyStarted = (s) => (s.turns || []).length > 0;
+function startThirtySelect(step, per) {
+  const s = ss(step);
+  if (thirtyStarted(s)) return false;
+  s.per = per; s.picks = {}; s.cut = null; s.order = []; s.turn = 0; s.status = 'select';
+  for (const t of Object.values(G.teams)) if (t.bot) s.picks[t.teamId] = thirtyAutoPick(t, per); // testteams kiezen zelf
+  return true;
+}
+function buildThirtyOrder(step) {
+  const s = ss(step);
+  const teams = Object.values(G.teams).sort(bySeq);
+  for (const t of teams) if (!thirtyPickValid(t, s.per, s.picks[t.teamId])) s.picks[t.teamId] = thirtyAutoPick(t, s.per); // niet (goed) gekozen: de app kiest
+  s.order = [];
+  for (let k = 0; k < s.per; k++) for (const t of teams) { const id = s.picks[t.teamId][k]; if (id) s.order.push({ teamId: t.teamId, deviceId: id, lap: k }); }
+  s.turn = 0; s.turns = []; s.requeued = [];
+  s.status = s.order.length ? 'ready' : 'finished';
+}
+// Noodknop: stoppen na deze rondgang (elk team is dan even vaak aan de beurt geweest). Terugdraaien kan zolang
+// de ronde niet is afgesloten: de geschrapte beurten komen dan weer achteraan.
+function thirtyCut(step, on) {
+  const s = ss(step);
+  if (!s.order || !s.order.length || ['select', 'finished'].includes(s.status)) return false;
+  if (on && !s.cut) {
+    const at = Math.min(s.turn, s.order.length - 1);
+    const lap = s.order[at].lap ?? 0;
+    const keep = s.order.filter((o, i) => i <= at || (o.lap ?? 0) <= lap);
+    const removed = s.order.filter((o) => !keep.includes(o));
+    if (!removed.length) return false;
+    s.order = keep; s.cut = removed;
+    return true;
+  }
+  if (!on && s.cut) { s.order.push(...s.cut); s.cut = null; return true; }
+  return false;
+}
 // Naar de volgende 30 Seconds-beurt. Iedereen komt aan de beurt: spelers die later aansloten komen achteraan
 // in de rij, en is de volgende uitlegger even niet verbonden, dan schuift die (één keer) door naar achteren.
 function advanceThirty(step) {
   const s = ss(step);
   s.turn++;
   const inOrder = new Set(s.order.map((o) => o.deviceId));
-  for (const t of Object.values(G.teams).sort(bySeq)) for (const d of teamDevices(t)) if (!inOrder.has(d.deviceId)) { s.order.push({ teamId: t.teamId, deviceId: d.deviceId }); inOrder.add(d.deviceId); }
+  // (alleen als iedereen uitlegt; bij een vast aantal vertellers of na de noodknop komt er niemand meer bij)
+  if (!s.per && !s.cut) for (const t of Object.values(G.teams).sort(bySeq)) for (const d of teamDevices(t)) if (!inOrder.has(d.deviceId)) { s.order.push({ teamId: t.teamId, deviceId: d.deviceId, lap: 999 }); inOrder.add(d.deviceId); }
   s.requeued = s.requeued || [];
   for (let guard = 0; guard < 50 && s.turn < s.order.length; guard++) {
     const o = s.order[s.turn];
@@ -1602,6 +2061,61 @@ const { reviewPages } = require('./lib/review').createReview({
 // Opslaan en hervatten
 // ---------------------------------------------------------------
 G.saveTimer = null;
+// De vragen worden bij de start van de quiz vastgezet in data/quiz-vast.json. Na een herstart midden in de
+// quiz komen de vragen dáár vandaan, niet opnieuw uit de Excel: een Excel die intussen is aangepast, nog open
+// staat of onleesbaar is, kan zo nooit de lopende quiz door elkaar gooien.
+const FROZEN_FILE = path.join(DATA_DIR, 'quiz-vast.json');
+G.restoreNotes = []; // meldingen over het herstel na een herstart (komen bij de waarschuwingen in de bediening)
+function freezeQuiz() {
+  try {
+    writeJsonWithBackup(FROZEN_FILE, { version: 1, gameId: G.gameId, savedAt: new Date().toISOString(), quizSource: G.quizSource, librarySource: G.librarySource, excelPlaylists: G.excelPlaylists, raw: G.baseRaw });
+  } catch (e) {
+    reportError('vragen vastzetten', e);
+  }
+}
+function forgetFrozenQuiz() {
+  try { removeStateFiles(FROZEN_FILE); } catch (e) { quiet('vastgezette vragen wissen')(e); }
+}
+// De vastgezette vragen van deze quiz (zelfde gameId), of null
+function readFrozenQuiz(gameId) {
+  const saved = readJsonWithBackup(FROZEN_FILE, (x) => x.version === 1 && x.raw && typeof x.raw === 'object' && Array.isArray(x.raw.rounds));
+  if (!saved || !gameId || saved.data.gameId !== gameId) return null;
+  return saved.data;
+}
+// ---------- Reservekopie terugzetten (bediening → 🛟 Reservekopieën) ----------
+// De bestanden uit de kopie gaan terug in data/, daarna start de server zichzelf opnieuw op. Dat herstarten
+// doet scripts/run.js (gebruikt door start-lokaal en npm start). Zo loopt het terugzetten precies via dezelfde,
+// geteste weg als een gewone herstart: de quiz komt op pauze terug en alle schermen verbinden vanzelf opnieuw.
+const CAN_RESTART = process.env.FAMILIEQUIZ_HERSTART === '1';
+const RESTART_CODE = 75; // afgesproken met scripts/run.js: 'meteen opnieuw starten'
+const RESTORE_FILES = ['state.json', 'teamphotos.json', 'playlists.json', 'quiz-vast.json']; // history.json blijft: afgeronde quizzen niet kwijtraken
+G.restoring = false;
+G.restartRequested = false; // alleen voor de tests
+function restoreBackup(id) {
+  if (G.restoring) return { ok: false, message: 'Er wordt al een kopie teruggezet. Even geduld.' };
+  if (!CAN_RESTART && process.env.QUIZ_TEST !== '1') return { ok: false, message: 'Terugzetten werkt alleen als de quiz is gestart met start-lokaal (dubbelklik) of "npm start". Stop de server en start hem op die manier opnieuw.' };
+  if (!backups.has(id, 'state.json')) return { ok: false, message: 'Deze kopie bevat geen spelstand om terug te zetten.' };
+  let saved = null;
+  try { saved = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'backups', id, 'state.json'), 'utf8')); } catch (e) { saved = null; }
+  if (!saved || saved.version !== 2 || !saved.teams || typeof saved.teams !== 'object') return { ok: false, message: 'De spelstand in deze kopie is beschadigd. Kies een andere kopie.' };
+  const playing = saved.phase === 'PLAY' || saved.phase === 'END';
+  const note = playing && !backups.has(id, 'quiz-vast.json') ? 'Let op: dit is een oudere kopie zonder vastgezette vragen. De vragen worden uit de huidige Excel gelezen; controleer na het opstarten of het juiste scherm op de tv staat.' : null;
+  backupNow('voor-terugzetten', true); // eerst de huidige stand bewaren: terugzetten is zo zelf ook terug te draaien
+  G.restoring = true;
+  if (G.saveTimer) { clearTimeout(G.saveTimer); G.saveTimer = null; }
+  let files;
+  try {
+    files = backups.restore(id, DATA_DIR, RESTORE_FILES);
+  } catch (e) {
+    G.restoring = false;
+    reportError('terugzetten', e);
+    return { ok: false, message: 'Terugzetten mislukt: ' + e.message };
+  }
+  LOG.warn('kopie_teruggezet', { id, bestanden: files });
+  if (process.env.QUIZ_TEST === '1') G.restartRequested = true;
+  else setTimeout(() => process.exit(RESTART_CODE), 500); // eerst het antwoord naar de bediening laten gaan
+  return { ok: true, files, note, phase: saved.phase, teams: Object.keys(saved.teams).length };
+}
 function loadHistory() {
   const saved = readJsonWithBackup(HISTORY_FILE, isHistorySnapshot);
   G.historyEntries = saved ? saved.data.entries.slice(0, HISTORY_LIMIT) : [];
@@ -1631,19 +2145,23 @@ function scheduleSave() {
   G.saveTimer = setTimeout(() => { G.saveTimer = null; saveNow(); }, 250);
 }
 function saveNow() {
+  if (G.restoring) return; // er wordt net een reservekopie teruggezet: die niet meer overschrijven
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const snapshot = {
       version: 2, savedAt: new Date().toISOString(),
-      phase: G.phase, stepIndex: G.stepIndex, paused: G.paused, reveal: G.reveal, revealN: G.revealN, revealDuo: G.revealDuo, lobbyStage: G.lobbyStage, endView: G.endView, settings: G.settings, seq: G.seq, ssAll: G.ssAll, dynSongs: G.dynSongs, dynStart: G.dynStart, gameId: G.gameId, yearFixes: G.yearFixes, rejectedKeys: G.rejectedKeys, awardStats: G.awardStats, playlistFailed: G.playlistFailed,
+      phase: G.phase, stepIndex: G.stepIndex, stepId: cur() ? cur().id : null, paused: G.paused, pauseUntil: G.pauseUntil, startUntil: G.startUntil || null, startedAt: G.startedAt || null, endedAt: G.endedAt || null, reactionCount: G.reactionCount || 0, reveal: G.reveal, revealN: G.revealN, revealDuo: G.revealDuo, lobbyStage: G.lobbyStage, endView: G.endView, settings: G.settings, seq: G.seq, ssAll: G.ssAll, dynSongs: G.dynSongs, dynStart: G.dynStart, gameId: G.gameId, yearFixes: G.yearFixes, rejectedKeys: G.rejectedKeys, awardStats: G.awardStats, playlistFailed: G.playlistFailed,
       timer: { tag: timer.tag, totalMs: timer.totalMs, remainingMs: Math.round(remainingNow()) },
       teams: G.teams,
       undoHistory: G.undoHistory,
-      devices: Object.fromEntries(Object.entries(G.devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq, ...(d.bot ? { bot: true } : {}) }]))
+      devices: Object.fromEntries(Object.entries(G.devices).map(([id, d]) => [id, { deviceId: d.deviceId, memberId: d.memberId, teamId: d.teamId, label: d.label, seq: d.seq, ...(d.family ? { family: d.family } : {}), ...(Number.isInteger(d.age) ? { age: d.age } : {}), ...(d.bot ? { bot: true } : {}) }]))
     };
     writeJsonWithBackup(STATE_FILE, snapshot);
+    if (G.saveFailedAt) { G.saveFailedAt = 0; LOG.info('opslaan_weer_gelukt', {}); }
   } catch (e) {
     console.error('Opslaan mislukt:', e.message);
+    // De quizmaster moet dit weten (schijf vol, map op slot, ...): melden in de bediening, hooguit één keer per minuut
+    if (!G.saveFailedAt || Date.now() - G.saveFailedAt > 60e3) { G.saveFailedAt = Date.now(); reportError('opslaan van de stand', e); }
   }
 }
 function loadSaved() {
@@ -1657,12 +2175,15 @@ function loadSaved() {
   G.teams = {};
   for (const t of Object.values(data.teams)) {
     if (!t || !t.teamId || !t.name) continue;
-    G.teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++G.seq, baseDeviceId: t.baseDeviceId, jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, proposal: null, color: TEAM_COLORS.includes(t.color) ? t.color : null, adjust: Number.isFinite(t.adjust) ? t.adjust : 0, baseApprovals: Array.isArray(t.baseApprovals) ? t.baseApprovals.filter((x) => typeof x === 'string') : undefined, ...(t.bot ? { bot: true } : {}) };
+    G.teams[t.teamId] = { teamId: t.teamId, name: t.name, seq: t.seq || ++G.seq, baseDeviceId: t.baseDeviceId, ...(t.autoName ? { autoName: true } : {}), jokerRound: t.jokerRound || null, timelines: t.timelines && typeof t.timelines === 'object' ? t.timelines : {}, starts: t.starts && typeof t.starts === 'object' ? t.starts : {}, proposal: null, color: TEAM_COLORS.includes(t.color) ? t.color : null, adjust: Number.isFinite(t.adjust) ? t.adjust : 0, baseApprovals: Array.isArray(t.baseApprovals) ? t.baseApprovals.filter((x) => typeof x === 'string') : undefined, ...(t.bot ? { bot: true } : {}) };
   }
   G.devices = {};
   for (const d of Object.values(data.devices || {})) {
-    if (!d || !G.teams[d.teamId]) continue;
-    G.devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: d.teamId, label: d.label || 'Telefoon', seq: d.seq || ++G.seq, socketId: d.bot ? `bot_${d.deviceId}` : null, connected: !!d.bot, ...(d.bot ? { bot: true } : {}) };
+    // Zonder team mag alleen bij persoonlijk aanmelden (aangemeld, nog niet ingedeeld): te herkennen aan familie of leeftijd
+    const signedUp = d && !d.bot && (d.family || Number.isInteger(d.age));
+    if (!d || !d.deviceId || (!G.teams[d.teamId] && !signedUp)) continue;
+    G.devices[d.deviceId] = { deviceId: d.deviceId, memberId: d.memberId || newId('m_'), teamId: G.teams[d.teamId] ? d.teamId : null, label: d.label || 'Telefoon', seq: d.seq || ++G.seq, socketId: d.bot ? `bot_${d.deviceId}` : null, connected: !!d.bot,
+      ...(d.family ? { family: String(d.family).slice(0, 30) } : {}), ...(Number.isInteger(d.age) ? { age: d.age } : {}), ...(d.bot ? { bot: true } : {}) };
   }
   for (const t of Object.values(G.teams)) if (!t.color) t.color = pickColor();
   for (const t of Object.values(G.teams)) {
@@ -1673,7 +2194,7 @@ function loadSaved() {
   // Oude standaard voor het jaartal (5-3-1-1) bijwerken naar de nieuwe (5-3-2-1): 2 jaar ernaast geeft nu 2 punten
   if (JSON.stringify(G.settings.hitsterYearPoints) === '[5,3,1,1]') G.settings.hitsterYearPoints = [5, 3, 2, 1];
   // Leestijd uit de vorige versie (5 s in één keer) omzetten naar de nieuwe indeling: 2 s vraag + 2 s antwoorden
-  if (data.settings && data.settings.previewSeconds === undefined && G.settings.readSeconds === 5) G.settings.readSeconds = 2;
+  G.settings.readSeconds = 0; // vast: de antwoorden komen direct achter de vraag aan (de losse instellingen bestaan niet meer)
   G.yearFixes = data.yearFixes && typeof data.yearFixes === 'object' ? data.yearFixes : {};
   G.rejectedKeys = Array.isArray(data.rejectedKeys) ? data.rejectedKeys.filter((k) => typeof k === 'string') : [];
   for (const song of Object.values(G.songs)) if (song && G.yearFixes[song.key]) { song.year = G.yearFixes[song.key]; song.verified = true; }
@@ -1681,23 +2202,51 @@ function loadSaved() {
   G.dynSongs = data.dynSongs && typeof data.dynSongs === 'object' ? data.dynSongs : {};
   G.dynStart = data.dynStart && typeof data.dynStart === 'object' ? data.dynStart : {};
   G.playlistFailed = data.playlistFailed && typeof data.playlistFailed === 'object' ? data.playlistFailed : {};
-  compileQuiz(G.content.warnings);
+  if (data.phase === 'PLAY' || data.phase === 'END') {
+    const frozen = readFrozenQuiz(data.gameId);
+    if (frozen) {
+      G.baseRaw = frozen.raw;
+      G.quizSource = { ...(frozen.quizSource || {}), frozen: true, file: `${(frozen.quizSource && frozen.quizSource.file) || 'vragenlijst'} (vastgezet bij de start)` };
+      if (frozen.librarySource !== undefined) G.librarySource = frozen.librarySource;
+      if (frozen.excelPlaylists && typeof frozen.excelPlaylists === 'object') { G.excelPlaylists = frozen.excelPlaylists; rebuildPlaylists(); }
+      LOG.info('vragen_hersteld', { bron: 'quiz-vast.json' });
+    } else {
+      G.restoreNotes.push('De vragen van de lopende quiz waren niet vastgezet (quiz gestart met een oudere versie?). Ze zijn opnieuw uit de Excel gelezen: controleer of het juiste scherm op de tv staat.');
+      LOG.warn('vragen_niet_vastgezet', { gameId: data.gameId || null });
+    }
+  }
+  compileQuiz([...G.content.warnings, ...G.restoreNotes]);
   G.ssAll = data.ssAll && typeof data.ssAll === 'object' ? data.ssAll : {};
+  for (const st of G.steps) if (st.auto === 'age' && G.ssAll[st.id] && Number.isFinite(G.ssAll[st.id].autoAnswer)) applyAgeTiebreak(st); // uitgerekend antwoord terugzetten
   G.undoHistory = Array.isArray(data.undoHistory) ? data.undoHistory.slice(-UNDO_LIMIT) : [];
   G.phase = ['LOBBY', 'PLAY', 'END'].includes(data.phase) ? data.phase : 'LOBBY';
   // Oude opgeslagen quizzen van vóór de geschiedenisfunctie krijgen alsnog een sessie-ID.
   if (G.phase !== 'LOBBY' && !G.gameId) G.gameId = crypto.randomUUID();
   G.stepIndex = Math.min(Math.max(Number.isInteger(data.stepIndex) ? data.stepIndex : 0, 0), G.steps.length - 1);
+  // Het scherm terugzoeken op naam (ID), niet op volgnummer: zo klopt het ook als de volgorde ooit anders uitvalt
+  if (typeof data.stepId === 'string') {
+    const i = G.steps.findIndex((x) => x.id === data.stepId);
+    if (i >= 0) G.stepIndex = i;
+    else if (G.phase !== 'LOBBY') {
+      const note = `Het scherm waar de quiz stond (${data.stepId}) bestaat niet meer; de quiz staat op scherm ${G.stepIndex + 1}. Kies zo nodig via "Ga naar" het juiste scherm.`;
+      G.restoreNotes.push(note);
+      G.content.warnings.push(note);
+      LOG.warn('scherm_niet_gevonden', { stepId: data.stepId, index: G.stepIndex });
+    }
+  }
   G.reveal = ['idle', 'stepping', 'done'].includes(data.reveal) ? data.reveal : 'idle';
   G.revealN = Number.isInteger(data.revealN) ? data.revealN : 0;
   G.revealDuo = data.revealDuo === true;
   G.lobbyStage = data.lobbyStage === 'join' ? 'join' : 'welcome';
   G.endView = END_VIEWS.includes(data.endView) ? data.endView : 'ranking';
+  G.startedAt = Number.isFinite(data.startedAt) ? data.startedAt : null; G.endedAt = Number.isFinite(data.endedAt) ? data.endedAt : null; G.reactionCount = Number.isFinite(data.reactionCount) ? data.reactionCount : 0;
   G.awardStats = data.awardStats && typeof data.awardStats === 'object' ? data.awardStats : {};
   if (data.timer && data.timer.tag) { timer.tag = data.timer.tag; timer.totalMs = Number(data.timer.totalMs) || 0; timer.remainingMs = Number(data.timer.remainingMs) || 0; }
   // Teams komen pas langzaam terug na een herstart: begin dus op pauze
   G.paused = G.phase === 'PLAY';
-  return Object.keys(G.teams).length > 0 || G.phase !== 'LOBBY';
+  G.pauseUntil = G.paused && Number.isFinite(data.pauseUntil) ? data.pauseUntil : null;
+  G.startUntil = G.phase === 'LOBBY' && Number.isFinite(data.startUntil) ? data.startUntil : null;
+  return Object.keys(G.teams).length > 0 || Object.keys(G.devices).length > 0 || G.phase !== 'LOBBY';
 }
 
 // ---------------------------------------------------------------
@@ -1726,13 +2275,15 @@ function publicStep(step) {
     case 'info':
       return { ...base, emoji: step.emoji, title: step.title, text: step.text, transition: !!step.transition, categoryIntro: !!step.categoryIntro, roundIntro: !!step.roundIntro, points: step.roundIntro ? roundPoints(G.roundById[step.round]) : null, roundNo: step.roundIntro ? G.roundById[step.round].no : null, scoring: step.roundIntro ? scoringText(G.roundById[step.round]) : null };
     case 'mc': {
-      const showAnswer = s.status === 'closed' && revealsOnClose(step);
+      const showAnswer = showsAnswerNow(step, s);
       return {
         ...base, variant: step.variant, test: step.test, category: step.category, question: step.question, options: step.options, media: step.media,
         status: s.status, blurStep: s.blurStep, blurMax: G.settings.blurPoints.length - 1, blurPoints: step.variant === 'blur' ? G.settings.blurPoints : null, hide: step.hide,
         answer: showAnswer ? step.answer : null, results: null, explanation: showAnswer ? step.explanation : null,
+        // welk vakje koos elk team (alleen als het antwoord op de tv staat): de teamfoto's vliegen ernaartoe
+        picks: showAnswer && step.variant === 'text' ? Object.values(G.teams).sort(byName).filter((t) => s.answers[t.teamId] && Number.isInteger(s.answers[t.teamId].v)).map((t) => ({ name: t.name, choice: s.answers[t.teamId].v })) : null,
         teams: teamChips(step), timer: s.status === 'open' ? timerInfo('mc') : null,
-        readMs: s.status === 'reading' || s.status === 'showing' ? Math.max(0, G.paused ? (s.readLeft ?? 0) : (s.readUntil || 0) - Date.now()) : null
+        readMs: s.status === 'reading' ? Math.max(0, G.paused ? (s.readLeft ?? 0) : (s.readUntil || 0) - Date.now()) : null
       };
     }
     case 'memory': {
@@ -1747,8 +2298,19 @@ function publicStep(step) {
       const song = songOf(step);
       if (!song || s.status === 'loading') return { ...base, status: 'loading', target: G.settings.hitsterTarget, teams: [] };
       const out = { ...base, status: s.status, audio: song.audio, target: G.settings.hitsterTarget, done: s.status === 'revealed' && hitsterDone(step.round), placed: Object.keys(s.placements).filter((id) => G.teams[id]).length, active: activeTeams().length,
-        teams: Object.values(G.teams).sort(byName).map((t) => ({ name: t.name, cards: ensureTimeline(t, step.round).length, answered: hasAnswered(t, step), connected: teamConnected(t) })) };
-      return out; // het antwoord staat alleen op de telefoons, niet op de tv
+        test: !!step.test,
+        // De tijdlijn van elk team ligt open op de tv (zoals bij het echte spel). Een ingediende kaart ligt dicht (de tv legt
+        // hem rechts tot alle teams hebben ingediend, daarna op de gekozen plek: slot); pas bij "Toon het antwoord" komt het liedje mee en draait de tv de kaarten om.
+        teams: Object.values(G.teams).sort(byName).map((t) => {
+          const r = s.status === 'revealed' && s.results ? s.results[t.teamId] : null;
+          return { name: t.name, answered: hasAnswered(t, step), connected: teamConnected(t),
+            timeline: timelineFor(t, step).filter((sid) => G.songs[sid]).map((sid) => ({ id: sid, year: G.songs[sid].year, title: G.songs[sid].title, artist: G.songs[sid].artist })),
+            cards: timelineFor(t, step).length,
+            slot: s.placements[t.teamId] !== undefined ? s.placements[t.teamId] : null,
+            result: r ? { ok: !!r.ok, slot: r.slot } : null };
+        }),
+        song: s.status === 'revealed' ? { id: song.id, year: song.year, title: song.title, artist: song.artist } : null };
+      return out;
     }
     case 'price': {
       // De bedragen komen bewust niet op de tv (ook niet na het sluiten): die blijven voor het nakijken
@@ -1778,7 +2340,7 @@ function publicStep(step) {
       return {
         ...base, variant: step.variant, test: !!step.test, question: step.question, status: s.status, media: step.media, hide: step.hide, teams: teamChips(step),
         blurStep: s.blurStep || 0, blurMax: G.settings.blurPoints.length - 1, blurPoints: G.settings.blurPoints,
-        name: s.status === 'closed' ? step.name : null
+        name: s.status === 'closed' && (step.test || G.settings.showAnswers.logo) ? step.name : null
       };
     case 'thirty': {
       const o = s.order && s.order[s.turn];
@@ -1787,6 +2349,8 @@ function publicStep(step) {
       const words = !turn ? null : s.status === 'running' ? turn.words.map((w, i) => (turn.ok[i] ? w : null)) : turn.words;
       return {
         ...base, status: s.status, turn: s.turn + 1, total: s.order ? s.order.length : 0, timer: timerInfo('thirty'),
+        per: s.per || 0, lastLap: !!s.cut,
+        choosing: s.status === 'select' ? Object.values(G.teams).sort(byName).map((t) => ({ name: t.name, color: t.color || null, photo: photoUrl(t.teamId), done: !!s.picks[t.teamId], names: (s.picks[t.teamId] || []).map((id) => (G.devices[id] ? G.devices[id].label : '?')) })) : null,
         team: o && G.teams[o.teamId] ? G.teams[o.teamId].name : null,
         explainer: o && G.devices[o.deviceId] ? G.devices[o.deviceId].label : null,
         words, ok: turn ? turn.ok : null
@@ -1843,12 +2407,12 @@ function hostPanel(step) {
         return { type: 'song', status: 'loading', dynamic: true, stepId: step.id, roundId: step.round, category: round.category, categoryName: HITSTER_CATS[round.category],
           playlist: playlistFirst(round) ? G.hitsterPlaylists[round.category].id : null,
           playlistFailed: G.playlistFailed[round.id] || null,
-          needSong: !s.songId, needStart: Math.max(0, (round.startCards || 2) - dynamicStartIds(step.round).length), exclude: usedSongKeys() };
+          needSong: !s.songId, needStart: Math.max(0, (playlistFirst(round) ? startCount() * Math.max(1, Object.keys(G.teams).length) : (round.startCards || 2)) - dynamicStartIds(step.round).length), exclude: usedSongKeys() };
       }
       const round = G.roundById[step.round];
       const verify = round && round.dynamic ? [...dynamicStartIds(step.round), song.id].filter((id) => G.songs[id] && G.songs[id].check && !G.songs[id].verified)
         .map((id) => ({ songId: id, title: G.songs[id].title, artist: G.songs[id].artist, year: G.songs[id].year })) : [];
-      return { type: 'song', verify, uri: song.uri || null, target: G.settings.hitsterTarget, cards: Object.values(G.teams).sort(byName).map((t) => ({ name: t.name, n: ensureTimeline(t, step.round).length })), status: s.status, song: { id: step.id, uri: song.uri || null, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length,
+      return { type: 'song', verify, uri: song.uri || null, target: G.settings.hitsterTarget, cards: Object.values(G.teams).sort(byName).map((t) => ({ name: t.name, n: timelineFor(t, step).length })), status: s.status, song: { id: step.id, uri: song.uri || null, title: song.title, artist: song.artist, year: song.year, hasAudio: !!song.audio, spotify: `https://open.spotify.com/search/${encodeURIComponent(song.title + ' ' + song.artist)}` }, placed: Object.keys(s.placements).length,
         bonusOn: !!(G.settings.hitsterTitlePoints || G.settings.hitsterArtistPoints),
         bonus: s.status === 'revealed' ? Object.values(G.teams).sort(byName).map((t) => { const g = (s.guesses || {})[t.teamId] || {}, j = (s.judge || {})[t.teamId] || {}; return { teamId: t.teamId, name: t.name, title: g.title || '', artist: g.artist || '', titleOk: !!j.title, artistOk: !!j.artist }; }) : null };
     }
@@ -1873,7 +2437,13 @@ function hostPanel(step) {
       return {
         type: 'thirty', status: s.status, turn: s.turn + 1, total: s.order ? s.order.length : 0,
         team: o && G.teams[o.teamId] ? G.teams[o.teamId].name : null, explainer: o && G.devices[o.deviceId] ? G.devices[o.deviceId].label : null,
-        words: turn ? turn.words : null, ok: turn ? turn.ok : null
+        words: turn ? turn.words : null, ok: turn ? turn.ok : null,
+        // vooraf: aantal vertellers per team kiezen (0 = iedereen); tijdens de ronde: noodknop "stop na deze rondgang"
+        per: s.per || 0, canChoose: !thirtyStarted(s), seconds: step.seconds || G.settings.thirtySeconds,
+        sizes: Object.values(G.teams).map((t) => teamDevices(t).length),
+        cut: !!s.cut, cutSaves: s.cut ? s.cut.length : 0,
+        cutPossible: !!s.order && !['select', 'finished'].includes(s.status) && !s.cut && s.order.some((x, i) => i > s.turn && (x.lap ?? 0) > ((s.order[Math.min(s.turn, s.order.length - 1)] || {}).lap ?? 0)),
+        picks: s.status === 'select' ? Object.values(G.teams).sort(byName).map((t) => ({ name: t.name, names: (s.picks[t.teamId] || []).map((id) => (G.devices[id] ? G.devices[id].label : '?')) })) : null
       };
     }
     case 'demo_draw':
@@ -1934,8 +2504,15 @@ function mainAction() {
   const go = (label, run, hint) => ({ label, enabled: true, hint: hint || '', run });
   if (G.phase === 'LOBBY') {
     if (!G.steps.length) return none('Geen quiz geladen', 'Controleer questions.json');
-    if (!G.settings.maxTeams) return none('📱 Toon het aanmeldscherm (QR-code)', 'Vul eerst bij Teams in hoeveel teams er maximaal mee mogen doen.');
+    if (!G.settings.maxTeams) return none('📱 Toon het aanmeldscherm (QR-code)', personalMode() ? 'Vul eerst bij 👥 Teams in hoeveel teams er moeten komen.' : 'Vul eerst bij Teams in hoeveel teams er maximaal mee mogen doen.');
     if (G.lobbyStage === 'welcome') return go('📱 Toon het aanmeldscherm (QR-code)', () => { G.lobbyStage = 'join'; });
+    if (personalMode()) {
+      const loose = unassigned();
+      if (!Object.keys(G.teams).length) return none('▶️ Start de quiz', people().length ? `${people().length} aangemeld. Maak eerst de teams: blok 👥 Teams → "Maak teams".` : 'Er is nog niemand aangemeld.');
+      if (loose.length) return none('⏳ Nog niet iedereen is ingedeeld', `Nog zonder team: ${loose.map((d) => d.label).join(', ')}. Kies bij 👥 Teams een team voor hen (of maak de teams opnieuw).`);
+      const unnamed = Object.values(G.teams).filter((t) => t.autoName && !t.bot);
+      if (unnamed.length) return none('⏳ Teams kiezen nog een naam', `Nog geen eigen naam: ${unnamed.map((t) => `${t.name} (${G.devices[t.baseDeviceId] ? G.devices[t.baseDeviceId].label : '?'})`).join(' · ')}. De basistelefoon vult de teamnaam in.`);
+    }
     if (!Object.keys(G.teams).length) return none('▶️ Start de quiz', 'Er is nog geen team aangemeld.');
     const unsure = Object.values(G.teams).filter((t) => !baseConfirmed(t));
     if (unsure.length) return none('⏳ Basistelefoons nog niet bevestigd', `Nog niet akkoord: ${unsure.map((t) => `${t.name} (${baseWaiting(t).map((x) => x.label).join(', ')})`).join(' · ')}. Iedereen in een team tikt op "Akkoord".`);
@@ -1970,15 +2547,16 @@ function mainAction() {
       return go('Volgende ▶️', next);
     case 'song':
       if (s.status === 'loading') return none('🔎 Liedje zoeken op Spotify…', 'De bediening zoekt automatisch een nummer in deze categorie (Spotify moet verbonden zijn; anders een iTunes-fragment).');
-      if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
+      if (s.status === 'open') return activeTeams().every((t) => hasAnswered(t, step)) ? go('🎯 Toon het antwoord (kaarten draaien om)', () => closeStep(step), 'Alle teams hebben hun kaart gelegd. Op de tv draaien de kaarten nu om: goed blijft liggen, fout verdwijnt.') : none('⏳ Wachten op de teams…', wait());
       if (step.test) return go('Volgende ▶️', next);
       if (hitsterDone(step.round)) return go(`🏁 Muziekronde klaar (${G.settings.hitsterTarget} kaarten) ▶️`, next, 'Een team heeft de tijdlijn vol; de overige liedjes worden overgeslagen.');
       if (!G.steps.slice(G.stepIndex + 1).some((x) => x.kind === 'song' && x.round === step.round)) return go('Volgende ▶️', next, `De liedjes zijn op voordat een team ${G.settings.hitsterTarget} kaarten had.`);
       return go('Volgend liedje ▶️', next);
     case 'mc':
     case 'price':
-      if (s.status === 'reading' || s.status === 'showing') return go('⏩ Antwoorden nu openen', () => openAnswers(step), s.status === 'reading' ? 'Eerst staat alleen de vraag in beeld, daarna de antwoorden.' : 'De antwoorden staan in beeld; zo meteen kan er gekozen worden.');
+      if (s.status === 'reading') return go('⏩ Antwoorden nu openen', () => openAnswers(step), 'De antwoorden komen direct achter de vraag aan (en dan kan er meteen geantwoord worden).');
       if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
+      if (step.kind === 'mc' && step.test && s.status === 'closed' && !s.revealAnswer) return go('🎯 Toon het goede antwoord', () => { s.revealAnswer = true; }, 'Alle antwoorden zijn binnen. Toon eerst het goede antwoord; daarna ga je verder.');
       return go('Volgende ▶️', next);
     case 'logo':
       if (s.status === 'open') return none('⏳ Wachten op de teams…', wait());
@@ -1995,6 +2573,10 @@ function mainAction() {
       if (s.status === 'result' && s.turn + 1 < (s.total || 0)) return go(`👉 Tekenaars voor beurt ${s.turn + 2} van ${s.total}`, () => { s.turn++; s.status = 'ready'; assignDrawTurn(step); }, 'De tekenaars zien het op hun telefoon en kunnen zich klaarmaken; daarna start je de beurt.');
       return go('Ronde afsluiten ▶️', next);
     case 'thirty':
+      if (s.status === 'select') {
+        const w = activeTeams().filter((t) => !s.picks[t.teamId]).map((t) => t.name);
+        return w.length ? none(`⏳ Teams kiezen hun ${s.per === 1 ? 'verteller' : `${s.per} vertellers`}…`, `Wacht nog op: ${w.join(', ')}`) : go('✅ Vertellers staan vast: zet de beurten klaar', () => buildThirtyOrder(step), 'Elk team heeft gekozen. Hierna zie je wie er als eerste aan de beurt is.');
+      }
       if (s.status === 'ready') return go(`▶️ Start: ${G.teams[s.order[s.turn].teamId] ? G.teams[s.order[s.turn].teamId].name : '?'}`, () => startThirty(step));
       if (s.status === 'running') return go('⏹️ Stop (tijd om)', () => stopThirty(step));
       if (s.status === 'judging') return go('✅ Uitslag bevestigen', () => { s.turns[s.turn].done = true; s.status = 'result'; });
@@ -2033,12 +2615,14 @@ function mainAction() {
 }
 
 // Knoppen die alleen bij sommige stappen horen
-function startQuiz() { G.gameId = crypto.randomUUID(); G.phase = 'PLAY'; G.stepIndex = 0; enterStep(); LOG.info('quiz_gestart', { teams: Object.keys(G.teams).length }); setTimeout(() => backupNow('start'), 500); }
+function startQuiz() { G.startedAt = Date.now(); G.endedAt = null; G.reactionCount = 0; G.startUntil = null; brandCache = { at: 0, value: null }; G.gameId = crypto.randomUUID(); freezeQuiz(); emitOpening(true); G.phase = 'PLAY'; G.stepIndex = 0; enterStep(); LOG.info('quiz_gestart', { teams: Object.keys(G.teams).length }); setTimeout(() => backupNow('start'), 500); }
 function forceAction() {
   // Vóór de start: niet startklaar, maar de quizmaster wil toch beginnen
   if (G.phase === 'LOBBY') {
     if (!(G.lobbyStage === 'join' && Object.keys(G.teams).length && G.settings.maxTeams)) return null;
     const unsure = Object.values(G.teams).filter((t) => !baseConfirmed(t));
+    const pm = personalMode();
+    if (pm && (unassigned().length || Object.values(G.teams).some((t) => t.autoName && !t.bot))) return { label: unassigned().length ? '⚠️ Toch starten (niet iedereen is ingedeeld)' : '⚠️ Toch starten (niet elk team heeft een eigen naam)', run: () => { LOG.warn('start_ondanks_indeling', { zonderTeam: unassigned().map((d) => d.label) }); startQuiz(); } };
     if (!readiness().ok || unsure.length) return { label: unsure.length ? '⚠️ Toch starten (basistelefoon niet door iedereen bevestigd)' : '⚠️ Toch starten (niet startklaar)', run: () => { LOG.warn('start_ondanks_fouten', { fouten: readiness().errors, onbevestigd: unsure.map((t) => t.name) }); startQuiz(); } };
     return null;
   }
@@ -2048,6 +2632,7 @@ function forceAction() {
   if (step.kind === 'song' && s.status === 'loading') return { label: '⏭️ Dit liedje overslaan', run: next };
   if (['mc', 'price', 'song', 'logo'].includes(step.kind) && s.status === 'open') return { label: '⏭️ Toch afsluiten zonder te wachten', run: () => closeStep(step) };
   if (step.kind === 'joker' || step.kind === 'teamphoto') return { label: '⏭️ Toch doorgaan', run: next };
+  if (step.kind === 'thirty' && s.status === 'select' && activeTeams().some((t) => !s.picks[t.teamId])) return { label: '⏭️ Toch doorgaan (de app kiest voor teams die nog niet kozen)', run: () => buildThirtyOrder(step) };
   if (step.kind === 'draw' && s.status === 'drawing') return { label: '⏭️ Beurt toch stoppen (niet iedereen heeft ingediend)', run: () => endDrawTurn(step) };
   if (step.kind === 'final' && s.status === 'wager') return { label: '⏭️ Toch de vraag tonen', run: () => { s.status = 'question'; } };
   if (step.kind === 'final' && s.status === 'question') return { label: '⏭️ Toch afsluiten', run: () => closeStep(step) };
@@ -2059,6 +2644,14 @@ function forceAction() {
 // verkeer: veel acties veranderen maar voor één scherm iets. Komt er iemand bij of gaat er iemand weg, dan
 // verandert de groepsgrootte en wordt de stand sowieso opnieuw gestuurd; een nieuwe telefoon heeft een nieuw id.
 const lastSent = new Map();
+// Elk scherm apart afvangen: gaat het opbouwen van de stand voor één scherm mis (een softwarefout bij één soort
+// vraag of één telefoon), dan krijgen de andere schermen hun stand gewoon. De fout komt in de bediening en het logboek.
+const softFailAt = {};
+function softSend(where, fn) {
+  try { fn(); } catch (error) {
+    if (!softFailAt[where] || Date.now() - softFailAt[where] > 15e3) { softFailAt[where] = Date.now(); reportError(`stand voor ${where}`, error); }
+  }
+}
 function sendState(target, payload) {
   let key = target;
   if (target === 'tv_room' || target === 'remote_room') {
@@ -2082,32 +2675,40 @@ function broadcastState() {
   const common = {
     phase: G.phase, paused: G.paused, showStandings: G.showStandings, review: reviewPayload, teamStyle: teamStyle(),
     header: {
-      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.round === 'briefing' ? 'Uitleg van de rondes' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'teamphoto' ? 'Teamfoto' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : 'Familiequiz',
-      progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null
+      round: round ? `Ronde ${round.no}: ${round.title}` : step && step.round === 'test' ? 'Testronde' : step && step.round === 'briefing' ? 'Uitleg van de rondes' : step && step.kind === 'joker' ? 'Joker' : step && step.kind === 'teamphoto' ? 'Teamfoto' : step && step.kind === 'final' ? 'Slotvraag' : step && step.kind === 'tiebreak' ? 'Beslissingsvraag' : brandInfo().name,
+      progress: progressOf(step), points: round && step.kind !== 'info' && step.kind !== 'roundresult' && !step.test ? roundPoints(round) : null,
+      // Teams die in deze ronde hun joker hebben ingezet (dubbele punten): rechtsboven op de tv
+      jokers: round ? Object.values(G.teams).filter((t) => t.jokerRound === round.id).sort(byName).map((t) => ({ name: t.name, color: t.color || null, photo: photoUrl(t.teamId) })) : []
     },
     standings: G.phase === 'END' ? ranking() : null,
     alerts: Object.values(G.alerts),
     theme: G.settings.theme, lobbyStage: G.lobbyStage, welcome: G.content.welcome, texts: G.content.texts,
     end: G.phase === 'END' ? { reveal: G.reveal, revealN: G.revealN, duo: G.revealDuo, endView: G.endView, scores: G.reveal !== 'idle' ? ranking() : null, breakdown: G.reveal === 'done' ? breakdown() : null,
-      awards: G.reveal === 'done' && G.endView === 'awards' ? awards() : null, album: null, gameDate: new Date().toISOString() } : null,
-    hallOfFame: G.phase === 'LOBBY' ? hallOfFame() : null
+      awards: G.reveal === 'done' && G.endView === 'awards' ? awards() : null, stats: G.reveal === 'done' && G.endView === 'stats' ? nightStats() : null, album: null, gameDate: new Date().toISOString() } : null,
+    hallOfFame: G.phase === 'LOBBY' ? hallOfFame() : null,
+    brand: brandInfo(),
+    ambience: musicState(),
+    pauseTimer: pauseTimer()
   };
 
-  sendState('tv_room', {
+  softSend('de tv', () => sendState('tv_room', {
     ...common,
     cheatSound: G.settings.tvCheatSound !== false,
     soundOut: G.settings.soundOut || 'tv',
+    soundFiles: soundOverrides(),
+    dilemma: dilemmaView(null),
     pausePhotos: G.phase === 'PLAY' && G.paused ? pausePhotos.slice(-80).map((p) => ({ url: pausePhotoUrl(p), team: p.team, label: p.label, at: p.at })) : null,
     positions: G.phase === 'PLAY' && G.showPositions ? positionsPayload(G.showPositions) : null,
     end: common.end && G.reveal === 'done' && G.endView === 'album' ? { ...common.end, album: album() } : common.end, // tekeningen alleen naar de tv
     step: step ? publicStep(step) : null,
-    teamList: Object.values(G.teams).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), members: teamDevices(t).length })).sort(byName),
+    teamList: Object.values(G.teams).map((t) => ({ name: t.name, photo: photoUrl(t.teamId), connected: teamConnected(t), members: teamDevices(t).length, names: personalMode() ? teamDevices(t).map((d) => d.label) : null })).sort(byName),
+    signup: G.phase === 'LOBBY' ? signupView(false) : null,
     maxTeams: G.settings.maxTeams
-  });
+  }));
 
   const main = mainAction();
   const force = forceAction();
-  sendState('remote_room', {
+  softSend('de bediening', () => sendState('remote_room', {
     ...common,
     step: step ? publicStep(step) : null,
     panel: step ? hostPanel(step) : null,
@@ -2119,10 +2720,16 @@ function broadcastState() {
       members: teamDevices(t).map((d) => ({ deviceId: d.deviceId, label: d.label, role: d.deviceId === t.baseDeviceId ? 'base' : 'member', connected: d.connected }))
     })).sort(byName),
     rounds: G.rounds.map((r) => ({ id: r.id, no: r.no, title: r.title, introId: `${r.id}_intro` })),
+    signup: signupView(true), signupSetting: { mode: G.settings.signup || 'auto', families: familyList().length, personal: personalMode() },
     settings: G.settings, settingsLocked: G.phase !== 'LOBBY',
     stepNo: G.stepIndex + 1, stepTotal: G.steps.length,
     warnings: [...G.content.warnings, ...(wifiQrPresent() ? [] : ['📶 Nog geen wifi-QR voor het welkomstscherm: zet het plaatje in public/media/wifi-qr.png (of .jpg).']), ...serverErrors.map((e) => `⚠️ Foutje opgevangen (${e.at}, ${e.where}): ${e.message}. De quiz loopt door.`)],
     tvCount: tvCount(),
+    tvAudioOk: tvAudioOk(),
+    brand: brandInfo(),
+    pauseTimer: pauseTimer(),
+    ambience: musicState(),
+    wifiQr: mediaInfo().wifiQr,
     hitsterCats: HITSTER_CATS,
     hitsterPlaylists: G.hitsterPlaylists,
     libraryDownload: `/download/Hitster-bibliotheek.xlsx?t=${DOWNLOAD_TOKEN}`,
@@ -2130,8 +2737,11 @@ function broadcastState() {
     pinIsDefault: G.HOST_PIN === '1234', onlineHost: ON_RENDER,
     readiness: G.phase === 'LOBBY' ? readiness() : null,
     upNext: G.phase === 'PLAY' ? upNext() : null,
+    canPrev: G.phase === 'PLAY' && G.stepIndex > 0, // 'Vorige' doet alleen iets als er een vorige stap is
     current: G.phase === 'PLAY' ? stepSummary(cur(), true) : null,
     soundboard: { builtin: SOUNDBOARD, custom: customSounds() },
+    soundFiles: soundOverrides(),
+    dilemma: dilemmaView(null) ? { ...dilemmaView(null), left: Math.max(0, dilemmaList().length - ((G.dilemma && G.dilemma.used.length) || 0)), count: dilemmaList().length } : { count: dilemmaList().length },
     music: G.phase === 'PLAY' && cur() && cur().kind === 'song' ? { paused: G.musicPaused } : null,
     internet: G.internet, photoCount: pausePhotos.length + new Set([...archivedTeamPhotos().map((a) => a.teamId), ...Object.keys(G.teamPhotos).map(safeId)]).size,
     showPositions: G.showPositions,
@@ -2140,28 +2750,40 @@ function broadcastState() {
     plan: planView(), extraOptions: extraOptions(), themes: THEMES,
     hostScores: G.phase !== 'LOBBY' ? breakdown() : null, // alleen voor de quizmasters
     history: G.historyEntries // alleen in de beveiligde bediening; nooit naar tv of spelers
-  });
+  }));
 
-  Object.values(G.devices).forEach((d) => {
+  Object.values(G.devices).forEach((d) => softSend(`telefoon ${d.label}`, () => {
     if (!d.connected || !d.socketId) return;
     const t = G.teams[d.teamId];
-    if (!t) return;
+    if (!t) {
+      // Aangemeld maar nog niet in een team (persoonlijk aanmelden): wachtscherm
+      if (!personalMode()) return;
+      sendState(d.socketId, { brand: brandInfo(), pauseTimer: null, phase: G.phase, paused: false, showStandings: false, reviewing: false, theme: G.settings.theme, texts: G.content.texts, standings: null, roundName: brandInfo().name, timer: null, dilemma: null,
+        view: { type: 'signup_wait', id: 'signup_wait', started: G.phase !== 'LOBBY', count: people().length },
+        me: { memberId: d.memberId, teamId: null, label: d.label, family: d.family || '', age: ageOf(d) } });
+      return;
+    }
     const isBase = t.baseDeviceId === d.deviceId;
     sendState(d.socketId, {
+      dilemma: dilemmaView(d.deviceId),
+      brand: brandInfo(),
+      pauseTimer: pauseTimer(),
       phase: G.phase, paused: G.paused, showStandings: false, reviewing: !!G.review, theme: G.settings.theme, texts: G.content.texts,
       standings: null,
       roundName: common.header.round,
       timer: null,
-      view: G.phase === 'PLAY' ? phoneView(step, t, d, isBase) : G.phase === 'END' ? { type: 'end', share: G.reveal === 'done' ? ranking().map((r) => ({ rank: r.rank, name: r.name, photo: r.photo, color: r.color, score: r.score })) : null } : { type: 'lobby' },
+      view: G.phase === 'PLAY' ? phoneView(step, t, d, isBase) : G.phase === 'END' ? { type: 'end', badges: G.reveal === 'done' && G.endView !== 'ranking' ? teamBadges(t.teamId) : null, card: cardsAvailable() ? (teamCards().find((c) => c.teamId === t.teamId) || null) : null, share: G.reveal === 'done' ? ranking().map((r) => ({ rank: r.rank, name: r.name, photo: r.photo, color: r.color, score: r.score })) : null } : { type: 'lobby' },
       me: {
         memberId: d.memberId, teamId: t.teamId, teamName: t.name, color: t.color || '#64748b', photo: photoUrl(t.teamId), label: d.label, role: isBase ? 'base' : 'member',
         baseLabel: G.devices[t.baseDeviceId] ? G.devices[t.baseDeviceId].label : '', proposal: proposalFor(t, d),
         baseOk: { approved: baseApprovals(t).includes(d.deviceId), confirmed: baseConfirmed(t), waiting: baseWaiting(t).map((x) => x.label) },
         canChangeBase: baseChangeAllowed(),
+        // persoonlijk aanmelden: de basistelefoon kiest in de lobby de teamnaam en de kleur
+        personal: personalMode(), setup: personalMode() && G.phase === 'LOBBY' && isBase ? { needsName: !!t.autoName, colors: TEAM_COLORS.map((c) => ({ c, free: c === t.color || !Object.values(G.teams).some((x) => x.color === c) })) } : null, autoName: !!t.autoName,
         members: teamDevices(t).map((m) => ({ memberId: m.memberId, label: m.label, role: m.deviceId === t.baseDeviceId ? 'base' : 'member', connected: m.connected }))
       }
     });
-  });
+  }));
   scheduleSave();
 }
 
@@ -2173,7 +2795,10 @@ function phoneView(step, team, device, isBase) {
     case 'info':
       return { ...base, emoji: step.emoji, title: step.title, text: step.text, scoring: step.roundIntro ? scoringText(G.roundById[step.round]) : null };
     case 'mc': {
-      const a = s.answers[id];
+      // testvraag: ieders eigen antwoord, en iedereen mag indienen (isBase aan, zodat de knoppen werken)
+      const own = everyoneAnswers(step);
+      const a = own ? (s.personal || {})[device.deviceId] : s.answers[id];
+      if (own) { base.isBase = true; base.everyone = true; }
       return {
         ...base, variant: step.variant, test: step.test, category: step.category, question: step.question, options: step.options,
         media: step.variant === 'text' ? step.media : null, status: s.status === 'closed' && s.late && s.late[id] && !a ? 'open' : s.status, answered: !!a, given: a ? a.v : null,
@@ -2184,7 +2809,7 @@ function phoneView(step, team, device, isBase) {
       return { ...base, status: s.status, test: !!step.test, prompt: step.prompt, entries: (s.entries[id] || []).map((e) => ({ id: e.id, text: e.text, by: e.by })) };
     case 'song': {
       if (s.status === 'loading') return { ...base, status: 'loading', timeline: [], placed: null, target: G.settings.hitsterTarget };
-      const tl = ensureTimeline(team, step.round).map((sid) => ({ id: sid, year: G.songs[sid].year, title: G.songs[sid].title, artist: G.songs[sid].artist }));
+      const tl = timelineFor(team, step).map((sid) => ({ id: sid, year: G.songs[sid].year, title: G.songs[sid].title, artist: G.songs[sid].artist }));
       const r = s.results && s.results[id];
       return { ...base, test: !!step.test, status: s.status, timeline: tl, placed: s.placements[id] !== undefined ? s.placements[id] : null, yearGuess: s.years[id] ?? null, result: r ? { ok: r.ok, exact: r.exact, yearGuess: r.yearGuess, diff: songAward(step, id).diff } : null,
         target: G.settings.hitsterTarget,
@@ -2223,6 +2848,13 @@ function phoneView(step, team, device, isBase) {
       const turn = s.turns[s.turn];
       let role = 'other';
       if (o && o.teamId === id) role = o.deviceId === device.deviceId ? 'explainer' : 'teammate';
+      if (s.status === 'select') {
+        const members = teamDevices(team);
+        const mine = s.picks[id] || null;
+        return { ...base, status: 'select', per: s.per, members: members.map((m) => ({ memberId: m.memberId, label: m.label })),
+          picked: mine ? mine.map((did) => (G.devices[did] ? G.devices[did].memberId : null)).filter(Boolean) : null,
+          maxEach: Math.ceil(s.per / Math.max(1, members.length)), minEach: Math.floor(s.per / Math.max(1, members.length)) };
+      }
       return {
         ...base, status: s.status, role, turn: s.turn + 1, total: s.order ? s.order.length : 0, timer: timerInfo('thirty'),
         team: o && G.teams[o.teamId] ? G.teams[o.teamId].name : null, explainer: o && G.devices[o.deviceId] ? G.devices[o.deviceId].label : null,
@@ -2263,6 +2895,66 @@ function baseChangeAllowed() {
   if (G.phase !== 'PLAY') return false;
   const step = cur();
   return !step || ['info', 'roundresult', 'joker', 'teamphoto'].includes(step.kind);
+}
+// ---- Pauzedilemma's: één per keer, iedereen kan stemmen, geen punten ----
+const dilemmaList = () => (G.content && G.content.dilemmas) || [];
+function dilemmaCounts() {
+  const v = (G.dilemma && G.dilemma.votes) || {};
+  let a = 0, b = 0;
+  for (const [dev, c] of Object.entries(v)) { if (!G.devices[dev]) continue; if (c === 'a') a++; else if (c === 'b') b++; } // alleen bestaande toestellen
+  return { a, b };
+}
+function nextDilemma() {
+  const list = dilemmaList();
+  if (!list.length) return false;
+  const used = (G.dilemma && G.dilemma.used) || [];
+  let pool = list.map((_, i) => i).filter((i) => !used.includes(i));
+  const usedList = pool.length ? used : []; // alles gehad: opnieuw beginnen
+  if (!pool.length) pool = list.map((_, i) => i);
+  const id = pool[Math.floor(Math.random() * pool.length)];
+  G.dilemma = { id, votes: {}, used: [...usedList, id], visible: true };
+  return true;
+}
+function dilemmaView(deviceId) {
+  if (!G.paused || !G.dilemma || !G.dilemma.visible) return null;
+  const d = dilemmaList()[G.dilemma.id];
+  if (!d) return null;
+  const counts = dilemmaCounts();
+  const total = counts.a + counts.b;
+  const out = { text: d.text, a: d.a, b: d.b, counts, total };
+  if (deviceId) { out.mine = G.dilemma.votes[deviceId] || null; if (!out.mine) out.counts = null; } // pas na het stemmen zie je de uitslag
+  return out;
+}
+// ---- Overwinningskaarten: per team een kaart met naam, eindscore en statistieken (voor een screenshot of het album) ----
+function teamCards() {
+  const rk = ranking(), bd = breakdown(), aw = awards();
+  const year = new Date().getFullYear();
+  const date = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  return rk.map((r) => {
+    const row = bd.rows.find((x) => x.teamId === r.teamId);
+    const rounds = bd.rounds.map((rd, i) => ({ title: rd.full, pts: row ? row.rounds[i].pts : 0, joker: !!(row && row.rounds[i].joker) }));
+    const bestR = rounds.slice().sort((a, b) => b.pts - a.pts)[0];
+    const joker = rounds.find((x) => x.joker);
+    const mine = aw.filter((a) => a.teams.some((t) => t.name === r.name)).map((a) => `${a.emoji} ${a.title}`);
+    const stats = [];
+    stats.push(`Plaats ${r.rank} van ${rk.length} teams`);
+    if (bestR && bestR.pts > 0) stats.push(`Beste ronde: ${bestR.title} (${bestR.pts} punten)`);
+    if (joker) stats.push(`Jokerronde: ${joker.title} (${joker.pts} punten)`);
+    if (mine.length) stats.push(`Prijsjes: ${mine.slice(0, 3).join(', ')}`);
+    return { teamId: r.teamId, rank: r.rank, name: r.name, score: r.score, photo: r.photo, color: r.color, year, date,
+      title: r.rank === 1 ? `${brandInfo().name} Kampioen ${year}` : `${brandInfo().name} ${year}`, place: r.rank === 1 ? 'Winnaar' : `${r.rank}e plaats`, stats, awards: mine, teams: rk.length };
+  });
+}
+// Prijsjes van één team als badges (voor de telefoon), pas zodra de quizmaster de prijsjes toont
+const teamBadges = (teamId) => { const t = G.teams[teamId]; return t ? awards().filter((a) => a.teams.some((x) => x.name === t.name)).map((a) => ({ emoji: a.emoji, title: a.title, detail: a.detail })) : []; };
+const cardsAvailable = () => G.phase === 'END' && G.reveal === 'done';
+const cardSlug = (n) => String(n).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'team';
+const cardFile = (c) => `kaarten/${String(c.rank).padStart(2, '0')}-${cardSlug(c.name)}.png`;
+// De tv tekent de kaarten (die heeft alle gegevens en een canvas) en stuurt ze op; de server bewaart ze bij de foto's
+function issueCardKeys() {
+  const dir = path.join(ORIG_DIR, 'kaarten');
+  try { for (const f of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, f)); } catch (e) { quiet('oude kaarten weghalen')(e); } // vers beginnen
+  return teamCards().map((c) => ({ teamId: c.teamId, key: originalUploadKey(cardFile(c)), card: c }));
 }
 function proposalFor(team, device) {
   const p = team.proposal;
@@ -2382,10 +3074,23 @@ function applyOp(strokes, op) {
 // Alles wat de losse socket-bestanden (lib/sockets/*) nodig hebben, in één object
 function socketApi() {
   return {
+    forgetFrozenQuiz,
+    restoreBackup,
+    emitOpening,
+    openingBusy,
+    writeFileAtomic,
+    cardsAvailable,
+    issueCardKeys,
+    nextDilemma,
+    dilemmaList,
     SOUNDBOARD,
     customSounds,
     baseApprovals,
     baseChangeAllowed,
+    personalMode, familyList, people, unassigned, personTaken, buildTeams, detachFromTeam, pickBase, ageOf,
+    everyoneAnswers,
+    planThirty, startThirtySelect, thirtyStarted, thirtyPickValid, thirtyCut,
+    resetBrandCache: () => { brandCache = { at: 0, value: null }; },
     pauseReading,
     DATA_DIR,
     END_VIEWS,
@@ -2437,6 +3142,7 @@ function socketApi() {
     dynamicStartReady,
     editLibrary,
     ensureTimeline,
+    timelineFor,
     enterStep,
     failPlaylist,
     findTeamByName,
@@ -2557,7 +3263,11 @@ function addBots(n) {
     const team = { teamId: newId('t_'), name, seq: ++G.seq, baseDeviceId: null, jokerRound: null, timelines: {}, proposal: null, bot: true, color: pickColor() };
     G.teams[team.teamId] = team;
     for (let k = 0; k < 2; k++) { // twee "spelers", zodat tekenen en 30 Seconds ook werken
-      const d = { deviceId: newId('d_'), memberId: newId('m_'), teamId: team.teamId, label: `Robot ${k + 1}`, seq: ++G.seq, socketId: null, connected: true, bot: true };
+      // net als echte deelnemers: een familie (uit de lijst, anders 'Robot') en een leeftijd; de eerste is volwassen
+      const fams = familyList();
+      const family = fams.length ? fams[Math.floor(Math.random() * fams.length)].name : 'Robot';
+      const age = k ? 6 + Math.floor(Math.random() * 65) : 18 + Math.floor(Math.random() * 53);
+      const d = { deviceId: newId('d_'), memberId: newId('m_'), teamId: team.teamId, label: `Robot ${k + 1}`, seq: ++G.seq, socketId: null, connected: true, bot: true, family, age };
       d.socketId = `bot_${d.deviceId}`; // robots hebben een eigen nep-verbinding
       G.devices[d.deviceId] = d;
       if (!k) team.baseDeviceId = d.deviceId;
@@ -2595,7 +3305,7 @@ function botAct(team) {
     case 'song':
       if (s.status === 'open' && s.placements[id] === undefined) {
         const song = G.songs[s.songId] || {};
-        call(base, 'place_card', { stepId: step.id, slot: rnd(ensureTimeline(team, step.round).length + 1), year: song.year ? song.year + rnd(5) - 2 : undefined, title: lucky ? song.title : 'Geen idee', artist: Math.random() < 0.5 ? song.artist : undefined });
+        call(base, 'place_card', { stepId: step.id, slot: rnd(timelineFor(team, step).length + 1), year: song.year ? song.year + rnd(5) - 2 : undefined, title: lucky ? song.title : 'Geen idee', artist: Math.random() < 0.5 ? song.artist : undefined });
       }
       break;
     case 'memory':
@@ -2638,7 +3348,20 @@ process.on('SIGTERM', shutdown);
 if (require.main === module) {
   // Via een voorpost die https-pogingen op dit http-adres meteen afbreekt (zie lib/https-guard.js)
   const { createGuard } = require('./lib/https-guard');
-  createGuard(server).listen(PORT, () => {
+  const guard = createGuard(server);
+  // Poort al bezet = de quiz draait al (bijv. start-lokaal twee keer gestart). Deze tweede kopie mag dan NIETS
+  // opslaan: bij het afsluiten zou hij anders zijn oude stand over de stand van de echte quiz heen schrijven.
+  guard.on('error', (error) => {
+    G.restoring = true; // vanaf nu nooit meer opslaan
+    if (error && error.code === 'EADDRINUSE') {
+      console.error(`\n✘ Poort ${PORT} is al in gebruik: de quiz draait waarschijnlijk al in een ander venster.`);
+      console.error('  Gebruik dat venster (of sluit het eerst). Dit venster mag dicht; er is niets veranderd.\n');
+      process.exit(0); // 0: de bewaker (scripts/run.js) start dan niet opnieuw
+    }
+    console.error('\n✘ De server kon niet starten:', error && error.message);
+    process.exit(1);
+  });
+  guard.listen(PORT, () => {
     const url = getJoinUrl();
     console.log(`Quiz server actief op http://localhost:${PORT}`);
     console.log(`Telefoons (zelfde wifi):  ${url}`);
@@ -2673,8 +3396,9 @@ if (process.env.QUIZ_TEST === '1') {
   module.exports.__test = {
     get steps() { return G.steps; }, get rounds() { return G.rounds; }, get teams() { return G.teams; }, get devices() { return G.devices; },
     get songs() { return G.songs; }, get phase() { return G.phase; }, get stepIndex() { return G.stepIndex; }, get roundById() { return G.roundById; },
-    settings: G.settings, ss, cur, roundScore, roundRaw, scoreOf, ranking, totalBeforeFinal, finalDelta, tiebreakBonus, jokerFactor, awards,
+    settings: G.settings, ss, cur, nightStats, dealStartCards, songsExhausted, hasAnswered, teamDevices, thirtyPickValid, personalMode, buildTeams, signupView, get G() { return G; }, roundScore, roundRaw, scoreOf, ranking, totalBeforeFinal, finalDelta, tiebreakBonus, jokerFactor, awards,
     momentumFor: (r) => momentumFor(r), reviewPages: (x) => reviewPages(x), PHOTO_DIR, playlistFirst: (r) => playlistFirst(r), failPlaylist: (id, why) => failPlaylist(id, why), originalUploads, ORIG_DIR,
-    priceAwards, logoAwards, mcAward, songAward, looksLike, pickLanAddress, upNext: () => upNext(), saveNow, readiness: () => readiness()
+    priceAwards, logoAwards, mcAward, songAward, looksLike, pickLanAddress, upNext: () => upNext(), saveNow, readiness: () => readiness(),
+    pauseTimer, get pauseUntil() { return G.pauseUntil; }, brandInfo, parseStartTime, mediaInfo, musicState, get musicOn() { return G.musicOn; }, backupNow, backups, restoreBackup, get restartRequested() { return G.restartRequested; }, get quizSource() { return G.quizSource; }, get restoreNotes() { return G.restoreNotes; }, FROZEN_FILE
   };
 }

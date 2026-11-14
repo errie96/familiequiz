@@ -39,8 +39,18 @@ socket.on("state_update", (state) => {
   const f = state.controls.force;
   $("btn-force").classList.toggle("hidden", !f);
   if (f) $("btn-force").textContent = f.label;
-  $("btn-force").disabled = onPause;
+  $("btn-force").disabled = onPause || !!state.review;
+  QuizFX.setSoundFiles(state.soundFiles);
   renderSoundboard(state.soundboard);
+  // Pauzedilemma: alleen tijdens een pauze
+  const pausedNow = state.phase === "PLAY" && !!state.paused;
+  $("dilemma-box").classList.toggle("hidden", !pausedNow);
+  if (pausedNow) {
+    const dl = state.dilemma || {};
+    $("btn-dilemma-hide").classList.toggle("hidden", !dl.text);
+    $("btn-dilemma").disabled = !dl.count; // geen dilemma's in de Excel: niets te pushen
+    $("dilemma-info").textContent = !dl.count ? "Er staan nog geen dilemma's in de Excel (tabblad Dilemma's)." : dl.text ? `${dl.text} · A ${dl.counts.a} – B ${dl.counts.b} · nog ${dl.left} nieuw` : `${dl.count} dilemma's klaar`;
+  }
   // Muziek pauze / verder tijdens een muziekvraag (ook op de telefoonbediening)
   $("btn-music").classList.toggle("hidden", !state.music);
   if (state.music) { $("btn-music").textContent = state.music.paused ? "▶️ Muziek verder" : "⏸ Muziek pauze"; $("btn-music").style.background = state.music.paused ? "#16a34a" : ""; }
@@ -48,6 +58,18 @@ socket.on("state_update", (state) => {
   $("btn-undo").textContent = undo.label;
   $("btn-undo").disabled = !undo.enabled || !!state.review;
   $("btn-pause").textContent = state.paused ? "▶️ Hervat" : "☕ Pauze";
+  // Pauzetimer instellen (alleen tijdens de pauze); belletje hier als de geluiden via deze bediening gaan
+  $("pause-timer-ctl").classList.toggle("hidden", !(state.phase === "PLAY" && state.paused));
+  $("start-timer-ctl").classList.toggle("hidden", state.phase !== "LOBBY");
+  // Persoonlijk aanmelden: knop naar het overzicht (in de lobby altijd; tijdens de quiz alleen als er iemand zonder team is)
+  const su = state.signup;
+  const showSu = !!su && (state.phase === "LOBBY" || su.unassigned > 0) && state.phase !== "END";
+  $("btn-signup-panel").classList.toggle("hidden", !showSu);
+  if (showSu) {
+    $("btn-signup-panel").textContent = state.phase !== "LOBBY" ? `⚠️ ${su.unassigned} laatkomer(s) zonder team: deel in` : `👥 Aanmeldingen en teams · ${su.total}${su.expected != null ? " van " + su.expected : ""} aangemeld${su.teamsMade ? (su.unassigned ? ` · ${su.unassigned} zonder team` : " · teams gemaakt") : ""}`;
+    $("btn-signup-panel").style.background = su.unassigned && su.teamsMade ? "#b45309" : "#1d4ed8";
+  }
+  QuizFX.setPauseTimer(state.pauseTimer, () => { if (soundOut === "bediening" && soundHere()) QuizFX.chime(); });
   $("btn-positions").classList.toggle("hidden", state.phase !== "PLAY");
   $("btn-positions").textContent = state.showPositions === "list" ? "↩ Posities van tv" : "🏅 Posities op tv";
   $("btn-positions").style.background = state.showPositions === "list" ? "#0ea5e9" : "";
@@ -55,12 +77,12 @@ socket.on("state_update", (state) => {
   $("btn-race").textContent = state.showPositions === "race" ? "↩ Balkenrace van tv" : "📈 Balkenrace op tv";
   $("btn-race").style.background = state.showPositions === "race" ? "#0ea5e9" : "";
   $("btn-pause").disabled = state.phase !== "PLAY";
-  $("btn-prev").disabled = state.phase !== "PLAY" || onPause;
+  $("btn-prev").disabled = state.phase !== "PLAY" || onPause || !state.canPrev || !!state.review;
   $("btn-standings").textContent = state.showStandings ? "↩ Terug" : "📊 Stand";
   $("btn-standings").classList.toggle("hidden", state.phase !== "END");
   $("btn-review").classList.toggle("hidden", state.phase !== "END");
   $("btn-time").classList.toggle("hidden", !(state.step && state.step.timer));
-  $("status-line").textContent = state.phase === "LOBBY" ? `${state.teams.length} team(s) aangemeld`
+  $("status-line").textContent = state.phase === "LOBBY" ? (state.signup ? `${state.signup.total}${state.signup.expected != null ? " van " + state.signup.expected : ""} aangemeld · ${state.teams.length} team(s)` : `${state.teams.length} team(s) aangemeld`)
     : state.phase === "END" ? "De quiz is afgelopen"
     : `${state.header.round} · stap ${state.stepNo} van ${state.stepTotal}${state.paused ? " · ⏸ PAUZE" : ""}`;
 
@@ -91,6 +113,7 @@ socket.on("state_update", (state) => {
   if (state.panel && state.panel.type === "song" && state.panel.status === "loading") fetchForPanel(state.panel);
   if (state.panel && state.panel.type === "song" && state.panel.verify && state.panel.verify.length) verifyForPanel(state.panel);
   QuizFX.applyTheme(state.theme);
+  if (state.brand) QuizFX.setBrand(state.brand); // naam en logo (o.a. voor het uitslagplaatje)
   $("btn-welcome").classList.toggle("hidden", !(state.phase === "LOBBY" && state.lobbyStage === "join"));
   renderScores(state);
   renderThemes(state);
@@ -103,6 +126,7 @@ socket.on("state_update", (state) => {
 
   // Einde
   $("end-box").classList.toggle("hidden", state.phase !== "END");
+  $("end-cards").disabled = !(state.end && state.end.reveal === "done"); // kaarten kunnen pas na de ontknoping
   if (state.phase === "END") {
     const ul = $("end-list");
     ul.replaceChildren();
@@ -120,9 +144,17 @@ socket.on("state_update", (state) => {
   $("pl-fill").disabled = state.phase !== "LOBBY" || plFillBusy;
   if (document.activeElement !== $("s-sound-tv")) $("s-sound-tv").checked = state.settings.tvCheatSound !== false;
   if (document.activeElement !== $("s-momentum")) $("s-momentum").checked = state.settings.momentum !== false;
+  const sa = state.settings.showAnswers || { mc: false, logo: true };
+  if (document.activeElement !== $("s-ans-mc")) $("s-ans-mc").checked = !!sa.mc;
+  if (document.activeElement !== $("s-ans-logo")) $("s-ans-logo").checked = !!sa.logo;
   if (document.activeElement !== $("s-cheat-grace")) $("s-cheat-grace").value = String(state.settings.cheatGrace ?? 1);
   // Geluid via de bediening: alleen het toestel waarop dat gekozen is speelt af (anders hoor je het dubbel)
   soundOut = state.settings.soundOut || "tv";
+  // Achtergrondmuziek: alleen hier als de quizgeluiden via deze bediening gaan
+  const mu = state.ambience || {};
+  if (document.activeElement !== $("s-music")) $("s-music").checked = mu.on !== false;
+  if (document.activeElement !== $("s-sting")) $("s-sting").checked = mu.sting !== false;
+  QuizFX.setBackgroundMusic(mu.background, soundOut === "bediening" && soundHere() && mu.on && (state.phase === "LOBBY" || (state.phase === "PLAY" && state.paused)));
   if (document.activeElement !== $("s-sound-out")) $("s-sound-out").value = soundOut === "bediening" && soundHere() ? "bediening" : "tv";
   $("s-sound-out").title = soundOut === "bediening" && !soundHere() ? "De geluiden klinken nu op een andere bediening." : "";
   renderPrep(state);
@@ -144,11 +176,11 @@ socket.on("state_update", (state) => {
   // Instellingen
   const locked = state.settingsLocked;
   $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
-  ["s-round", "s-timer", "s-time", "s-read", "s-preview", "s-wager", "s-thirty", "s-blur", "s-price", "s-logo", "s-hitster", "s-hplace", "s-hyear", "s-htitle", "s-hartist", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+  ["s-round", "s-timer", "s-time", "s-logocount", "s-wager", "s-thirty", "s-thirtyper", "s-hitsterstart", "s-blur", "s-price", "s-logo", "s-hitster", "s-hplace", "s-hyear", "s-htitle", "s-hartist", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
   const ae = document.activeElement && document.activeElement.id;
   if (!settingsFilled || !ae || !ae.startsWith("s-")) {
-    $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime; $("s-read").value = state.settings.readSeconds ?? 2; $("s-preview").value = state.settings.previewSeconds ?? 2;
-    $("s-wager").value = state.settings.finalMaxWager; $("s-thirty").value = state.settings.thirtySeconds;
+    $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime; $("s-logocount").value = state.settings.logoCount ?? 10;
+    $("s-wager").value = state.settings.finalMaxWager; $("s-hitsterstart").value = state.settings.hitsterStartCards || 2; $("s-thirty").value = state.settings.thirtySeconds; $("s-thirtyper").value = state.settings.thirtyPer || 0;
     $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", "); $("s-hitster").value = state.settings.hitsterTarget;
     $("s-hplace").value = state.settings.hitsterPlacePoints; $("s-hyear").value = (state.settings.hitsterYearPoints || []).join(", "); $("s-htitle").value = state.settings.hitsterTitlePoints ?? 2; $("s-hartist").value = state.settings.hitsterArtistPoints ?? 2;
     settingsFilled = true;

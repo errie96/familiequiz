@@ -45,6 +45,7 @@
     const sum = q(id).querySelector("summary");
     const b = document.createElement("button");
     b.className = "btn-option";
+    b.dataset.for = id;
     b.textContent = (sum ? sum.childNodes[0].textContent : id).replace(/\(.*$/, "").trim(); // zonder tellers als "(0 van 2)"
     b.onclick = () => showPanel(id);
     index.append(b);
@@ -57,6 +58,7 @@
   }
   q("menu-back").onclick = () => showPanel(null);
   const openMenu = (id) => { menu.classList.add("open"); showPanel(id || null); };
+  window.openQuizMenu = openMenu; // ook voor snelknoppen elders (bijv. "Aanmeldingen en teams")
   q("tb-menu").onclick = () => openMenu();
   q("menu-close").onclick = () => { menu.classList.remove("open"); showPanel(null); };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menu.classList.contains("open")) { menu.classList.remove("open"); showPanel(null); } });
@@ -67,6 +69,25 @@
   // brede schermen: twee kolommen
   const wide = () => document.body.classList.toggle("wide", window.innerWidth >= 1100);
   wide(); window.addEventListener("resize", wide);
+  // Brede schermen: past de middelste kolom (de knoppen) niet in het venster, dan wordt hij vanzelf iets kleiner
+  // gemaakt (tot 75%), zoals het tv-scherm. Pas daaronder schuift de kolom alsnog.
+  // Met setTimeout en niet met requestAnimationFrame: dat laatste loopt niet in een tabblad op de achtergrond.
+  let fitFrame = 0;
+  const fitCenter = () => {
+    fitFrame = 0;
+    const mc = q("main-controls");
+    if (!mc) return;
+    mc.style.zoom = "";
+    if (!document.body.classList.contains("wide")) return;
+    const need = center.scrollHeight, avail = center.clientHeight;
+    if (avail > 0 && need > avail + 1) mc.style.zoom = String(Math.max(0.75, (avail / need) * 0.985).toFixed(3));
+  };
+  const scheduleCenterFit = () => { if (!fitFrame) fitFrame = setTimeout(fitCenter, 30); };
+  window.addEventListener("load", scheduleCenterFit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleCenterFit);
+  window.addEventListener("resize", scheduleCenterFit);
+  center.addEventListener("toggle", scheduleCenterFit, true); // een uitklapblok (telefoonbediening) open of dicht
+  socket.on("state_update", () => setTimeout(scheduleCenterFit, 0));
   // bestaande "spring naar blok"-links uit de checklist laten het menu openen
   window.openPanel = (id) => {
     if (wizard.classList.contains("open")) { const i = STEPS.findIndex((st) => (st.panels || []).includes(id)); if (i >= 0) { step = i; render(); } return; }
@@ -79,14 +100,15 @@
   wizard.innerHTML = '<div class="wz-inner"><div style="display:flex; align-items:center; gap:8px;"><h2 id="wz-title" style="margin:0; flex:1;"></h2><button id="wz-close" class="btn-option" style="width:auto; margin:0;">Later</button></div><div id="wz-steps"></div><p id="wz-intro" class="muted" style="font-size:15px; line-height:1.5;"></p><div id="wz-extra"></div><div id="wz-body"></div><div id="wz-nav"><button id="wz-prev" class="btn-option" style="text-align:center;">⬅️ Vorige</button><button id="wz-next" class="btn-primary">Volgende ➡️</button></div></div>';
   document.body.append(wizard);
   const STEPS = [
-    { title: "1. Tv aansluiten", intro: "Open op de tv (of de laptop aan de tv) het adres /host.html. Hieronder zie je of de tv verbonden is. Zet op een laptop ook de slaapstand uit.", extra: "tv" },
-    { title: "2. Vragenlijst", intro: "Controleer of de juiste vragenlijst is ingelezen en of er waarschuwingen zijn (bijv. ontbrekende foto's of logo's). Upload hier eventueel een nieuwe Excel.", panels: ["quiz-panel"], extra: "warnings" },
-    { title: "3. Rondes en volgorde", intro: "Bepaal welke rondes er zijn en in welke volgorde. Na de start ligt dit vast; een extra ronde (bijv. muziek) toevoegen kan tijdens de quiz wel.", panels: ["plan-panel"], done: "plan" },
-    { title: "4. Teams", intro: "Stel het maximale aantal teams in. Wil je eerst oefenen? Voeg testteams toe (en verwijder ze daarna weer).", panels: ["teams-panel"] },
-    { title: "5. Spotify", intro: "Verbind met Spotify, kies het apparaat bij de speakers en tik op Test. Nodig voor de muziekrondes.", panels: ["spotify-panel"] },
-    { title: "6. Hitster-muziek", intro: "Controleer de Hitster-playlists per editie. Optioneel: lijsten bijwerken, aanvullen en jaartallen controleren.", panels: ["playlists-panel"] },
-    { title: "7. Thema, geluid en spelregels", intro: "Kies een thema, waar het geluid klinkt, en controleer de punten en tijden.", panels: ["theme-panel", "live-panel", "settings-panel"], done: "theme" },
-    { title: "8. Klaar om te beginnen", intro: "Overzicht van alles hierboven. Alles groen? Sluit dit menu en tik op de grote knop om het aanmeldscherm op de tv te zetten. Alles is later nog aan te passen via ⚙️ Instellingen.", panels: ["prep-panel"], last: true }
+    { title: "1. Tv aansluiten", intro: "Open op de tv (of de laptop aan de tv) het adres /host.html en druk één keer op OK op de afstandsbediening (of klik op het tv-scherm), anders blokkeert de browser het geluid. Hieronder zie je of de tv verbonden is en geluid heeft. Zet op een laptop ook de slaapstand uit.", extra: "tv" },
+    { title: "2. Naam, logo en wifi", intro: "Naam, ondertitel en de tekst bij de opening staan in de Excel, tabblad Teksten, bovenaan. Logo en app-icoon: map public/media/huisstijl/. Wifi-QR voor het welkomstscherm: public/media/wifi-qr.png. De aftelklok zet je zelf aan met de knoppen ⏱️ onder de grote knop. Hieronder zie je wat er nu gebruikt wordt.", extra: "brand", done: "naam" },
+    { title: "3. Vragenlijst", intro: "Controleer of de juiste vragenlijst is ingelezen en of er waarschuwingen zijn (bijv. ontbrekende foto's of logo's). Upload hier eventueel een nieuwe Excel.", panels: ["quiz-panel"], extra: "warnings" },
+    { title: "4. Rondes en volgorde", intro: "Bepaal welke rondes er zijn en in welke volgorde. Na de start ligt dit vast; een extra ronde (bijv. muziek) toevoegen kan tijdens de quiz wel.", panels: ["plan-panel"], done: "plan" },
+    { title: "5. Teams", intro: "Persoonlijk aanmelden (families in de Excel, tabblad Families): vul het aantal teams in; op de avond zie je hier per familie wie er is en maak je met één knop de teams. Zelf teams maken: stel het maximale aantal teams in. Wil je eerst oefenen? Voeg testteams toe (en verwijder ze daarna weer).", panels: ["teams-panel"] },
+    { title: "6. Spotify", intro: "Verbind met Spotify, kies het apparaat bij de speakers en tik op Test. Nodig voor de muziekrondes.", panels: ["spotify-panel"] },
+    { title: "7. Hitster-muziek", intro: "Controleer de Hitster-playlists per editie. Optioneel: lijsten bijwerken, aanvullen en jaartallen controleren.", panels: ["playlists-panel"] },
+    { title: "8. Thema, geluid, muziek en spelregels", intro: "Kies een thema en waar het geluid klinkt. Tik bij 🎬 Opening op Testen om het logo en de jingle op de tv te zien en te horen, en zet de achtergrondmuziek aan of uit. Eigen jingle of muziek: map public/media/muziek/. Controleer daarna de punten en tijden.", panels: ["theme-panel", "live-panel", "settings-panel"], done: "theme" },
+    { title: "9. Klaar om te beginnen", intro: "Overzicht van alles hierboven. Alles groen? Sluit dit menu en tik op de grote knop om het aanmeldscherm op de tv te zetten. Alles is later nog aan te passen via ⚙️ Instellingen.", panels: ["prep-panel"], last: true }
   ];
   let step = 0, borrowed = [];
   // Blokken terugzetten op hun eigen plek. In omgekeerde volgorde: staan twee geleende blokken in het menu direct
@@ -114,7 +136,23 @@
     const st = STEPS[step], box = q("wz-extra");
     if (st.extra === "tv") {
       const ok = typeof S !== "undefined" && S && S.tvCount > 0;
-      box.innerHTML = `<div class="qbox" style="font-size:20px; text-align:center; border:2px solid ${ok ? "#22c55e" : "#ef4444"};">${ok ? "📺 ✅ De tv is verbonden" : "📺 ⏳ Nog geen tv verbonden…"}</div>`;
+      const snd = ok && S.tvAudioOk, viaTv = !S || !S.settings || (S.settings.soundOut || "tv") === "tv";
+      box.innerHTML = `<div class="qbox" style="font-size:20px; text-align:center; border:2px solid ${ok && (snd || !viaTv) ? "#22c55e" : "#ef4444"};">${ok ? "📺 ✅ De tv is verbonden" : "📺 ⏳ Nog geen tv verbonden…"}` +
+        (ok && viaTv ? `<div style="font-size:16px; margin-top:6px;">${snd ? "🔊 ✅ De tv heeft geluid" : "🔇 Nog geen geluid: druk één keer op OK op de afstandsbediening van de tv"}</div>` : "") + `</div>`;
+    } else if (st.extra === "brand") {
+      const b = (typeof S !== "undefined" && S && S.brand) || {}, m = (typeof S !== "undefined" && S && S.ambience) || {};
+      const esc = (x) => String(x == null ? "" : x).replace(/[<>&]/g, "");
+      const row = (ok, txt) => `<div>${ok ? "✅" : "⬜"} ${txt}</div>`;
+      box.innerHTML = `<div class="qbox" style="font-size:15px; line-height:1.7;">` +
+        (b.logo ? `<img src="${esc(b.logo)}" alt="" style="height:64px; float:right; margin-left:12px;">` : "") +
+        row(true, `Naam: <b>${esc(b.name)}</b>${b.subtitle ? ` · ${esc(b.subtitle)}` : ""} · onder het app-icoon: ${esc(b.short)}`) +
+        row(true, b.start ? `Aftelklok loopt tot <b>${esc(b.start.label)}</b> (welkomstscherm)` : "Aftelklok: zet hem aan met de knoppen ⏱️ onder de grote knop (5/10/15/30 min), wanneer jullie willen") +
+        row(!!b.logo, b.logo ? `Logo: public/media/huisstijl/${esc(b.logoFile)}` : "Geen logo: alleen de naam") +
+        row(!!b.icon, b.icon ? "App-icoon: public/media/huisstijl/app-icoon.png" : "Geen app-icoon") +
+        row(!!(S && S.wifiQr), S && S.wifiQr ? "Wifi-QR staat op het welkomstscherm" : "Nog geen wifi-QR: zet public/media/wifi-qr.png neer") +
+        row(!!m.opening, m.opening ? `Opening-jingle: ${esc(m.opening.split("?")[0].replace("/media/", "public/media/"))}` : "Opening: ingebouwde fanfare") +
+        row(!!m.background, m.background ? `Achtergrondmuziek: ${esc(m.background.split("?")[0].replace("/media/", "public/media/"))}` : "Geen achtergrondmuziek") +
+        `</div>`;
     } else if (st.extra === "warnings") {
       const rd = (typeof S !== "undefined" && S && S.readiness) || { ok: true, errors: [], warnings: [] };
       const esc = (x) => String(x).replace(/[<>&]/g, "");
@@ -132,6 +170,12 @@
     q("tb-wizard").classList.toggle("hidden", state.phase !== "LOBBY");
     // Tijdens de quiz alleen de bediening zelf; instellingen via ⚙️ (ook op een groot scherm niet meer vast in beeld)
     document.body.classList.toggle("playing", state.phase !== "LOBBY");
+    // Vaste spelregels en de vragenlijst: alleen vóór de start (in de voorbereiding), tijdens de quiz niet meer in het menu
+    ["settings-panel", "quiz-panel"].forEach((id) => {
+      if (q(id)) q(id).classList.toggle("locked-out", state.phase !== "LOBBY");
+      const t = document.querySelector(`#menu-index button[data-for="${id}"]`);
+      if (t) t.classList.toggle("locked-out", state.phase !== "LOBBY");
+    });
     if (wizard.classList.contains("open")) renderExtra();
     if (state.phase !== "LOBBY" && wizard.classList.contains("open")) close();
     const seen = Number(localStorage.getItem("quiz_wizard_seen") || 0);

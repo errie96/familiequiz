@@ -1,0 +1,18 @@
+JINGLE EN ACHTERGRONDMUZIEK
+===========================
+
+opening.wav       De jingle bij de opening: als de quizmaster op "Start de quiz" drukt, vliegt het logo groot
+                  in beeld en klinkt deze jingle (ongeveer 5 seconden).
+achtergrond.wav   Rustige muziek die steeds herhaalt: op het welkomst- en aanmeldscherm (vóór de start) en
+                  tijdens de pauze. Tijdens de vragen is het stil.
+
+Eigen muziek? Zet een opening.mp3 en/of achtergrond.mp3 in deze map. Een mp3 gaat altijd voor de wav
+(ook .m4a en .ogg werken). Tip: achtergrondmuziek die mooi rondloopt, en een jingle van 4 tot 8 seconden.
+Een nieuw bestand wordt binnen een paar seconden gebruikt; de server hoeft niet opnieuw te starten.
+
+De muziek klinkt op het toestel waar de quizgeluiden heen gaan (bediening, blok Tijdens de quiz:
+"Geluid via" tv of deze bediening). Daar staat ook de knop om de achtergrondmuziek aan of uit te zetten,
+en de knop "Testen" om de opening te bekijken en te beluisteren.
+
+Geen achtergrondmuziek willen? Verwijder achtergrond.wav (en .mp3), of zet hem uit in de bediening.
+De standaardbestanden kwijt? "npm run standaard-muziek" maakt ze opnieuw.

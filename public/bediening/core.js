@@ -15,7 +15,7 @@ function registerRemote(askCode) {
   if (pin) socket.emit("register_remote", { pin });
   else setStatus("● Geen toegangscode. Ververs de pagina.", "#ef4444");
 }
-socket.on("connect", () => registerRemote(false));
+socket.on("connect", () => { registerRemote(false); QuizFX.syncClock(socket); });
 QuizFX.wantAwake(); // bediening-telefoon mag niet in slaap vallen
 socket.on("remote_confirmed", (data) => {
   if (data && data.token) localStorage.setItem("quiz_host_token", data.token);

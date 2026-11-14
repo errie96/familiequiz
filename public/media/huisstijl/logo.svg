@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Standaardlogo van de quiz. Vervang dit bestand door een eigen logo.svg of zet er een logo.png naast (die gaat voor). -->
+  <defs>
+    <linearGradient id="goud" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.45" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="glans" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M166 60 H346 C410 60 452 102 452 166 V286 C452 350 410 392 346 392 H238 L138 462 L158 392 H166 C102 392 60 350 60 286 V166 C60 102 102 60 166 60 Z" fill="url(#goud)" stroke="#92400e" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M170 80 H342 C396 80 428 110 432 160 C380 150 260 150 82 178 C88 116 118 80 170 80 Z" fill="url(#glans)"/>
+  <path d="M196 182 C196 140 224 118 258 118 C294 118 320 142 320 176 C320 206 300 220 282 232 C266 242 258 254 258 276 L258 288" fill="none" stroke="#1e1b4b" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="258" cy="342" r="27" fill="#1e1b4b"/>
+  <path d="M440 30 L448 54 L472 62 L448 70 L440 94 L432 70 L408 62 L432 54 Z" fill="#ffffff"/>
+  <path d="M70 380 L75 395 L90 400 L75 405 L70 420 L65 405 L50 400 L65 395 Z" fill="#ffffff" opacity="0.9"/>
+</svg>

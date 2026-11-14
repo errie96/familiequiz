@@ -110,7 +110,7 @@ async function spPlay(song) {
   if (!QuizSpotify.connected()) return;
   const dev = spTarget();
   if (!dev) return spStatus("Geen afspeelapparaat gekozen: open Spotify op een apparaat en tik op ↻.", true);
-  const item = song.uri ? { uri: song.uri, name: song.title } : await QuizSpotify.find(song.title, song.artist);
+  const item = song.uri ? { uri: song.uri, name: song.title } : await QuizSpotify.find(song.title, song.artist, song.year);
   if (!item) return spStatus(`"${song.title}" niet gevonden in Spotify: speel het zelf af.`, true);
   const r = await QuizSpotify.play(item.uri, dev);
   if ([200, 202, 204].includes(r.status)) { spPlaying = true; spStatus(`▶️ Speelt: ${item.name}`); }

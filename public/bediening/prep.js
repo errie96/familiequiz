@@ -10,8 +10,12 @@ function renderPrep(state) {
   const media = (state.warnings || []).filter((w) => w.startsWith("📁")).length;
   const other = (state.warnings || []).filter((w) => !w.startsWith("📁")).length;
   const spOn = QuizSpotify.connected();
+  const soundTv = (state.settings.soundOut || "tv") === "tv";
   const items = [
     { ok: state.tvCount > 0, text: "📺 Tv is verbonden", hint: "Open /host.html op de tv." },
+    { ok: !soundTv || !!state.tvAudioOk, text: soundTv ? "🔊 Tv heeft geluid" : "🔊 Geluid via deze bediening", hint: "Druk één keer op OK op de afstandsbediening van de tv (of klik één keer op het tv-scherm)." },
+    { ok: !!state.wifiQr, text: "📶 Wifi-QR op het welkomstscherm", hint: "Zet een plaatje neer als public/media/wifi-qr.png." },
+    { ok: prepDone("naam"), text: "🏷️ Naam, logo en app-icoon gecontroleerd", manual: "naam", hint: "Excel, tabblad Teksten (bovenaan) en de map public/media/huisstijl/." },
     { ok: !!state.settings.maxTeams, text: "👥 Maximaal aantal teams ingesteld", panel: "teams-panel" },
     { ok: prepDone("plan"), text: "🗂️ Rondevolgorde bekeken", panel: "plan-panel", manual: "plan", hint: "Ligt vast na de start; extra rondes kunnen later nog." },
     { ok: spOn, text: "🎵 Spotify verbonden", panel: "spotify-panel" },
@@ -19,8 +23,10 @@ function renderPrep(state) {
     { ok: Object.keys(state.hitsterPlaylists || {}).length > 0, text: `🎶 Hitster-playlists gekoppeld (${Object.keys(state.hitsterPlaylists || {}).length})`, panel: "playlists-panel" },
     { ok: !other, text: other ? `📋 Vragenlijst: ${other} waarschuwing(en)` : "📋 Vragenlijst zonder waarschuwingen", panel: "quiz-panel" },
     { ok: !media, text: media ? "🖼️ Foto's of logo's ontbreken (zie bovenin)" : "🖼️ Alle foto's en logo's aanwezig" },
-    { ok: !(state.onlineHost && state.pinIsDefault), text: "🔐 Eigen toegangscode ingesteld", hint: state.onlineHost ? "Zet HOST_PIN in Render." : "Lokaal is 1234 prima." },
-    { ok: prepDone("theme"), text: "🎨 Thema gekozen", panel: "theme-panel", manual: "theme" }
+    { ok: prepDone("muziek"), text: "🎺 Opening en achtergrondmuziek getest", panel: "live-panel", manual: "muziek", hint: "Blok 🎛️ Tijdens de quiz → Opening testen. Eigen muziek: public/media/muziek/." },
+    { ok: !(state.onlineHost && state.pinIsDefault), text: "🔐 Eigen toegangscode ingesteld", hint: "De code staat in pincode.txt naast server.js." },
+    { ok: prepDone("theme"), text: "🎨 Thema gekozen", panel: "theme-panel", manual: "theme" },
+    { ok: prepDone("draaiboek"), text: "📋 Checklist in het draaiboek doorgelopen", manual: "draaiboek", hint: "DRAAIBOEK.md, hoofdstuk \"Voorbereiding: alles wat vooraf moet\"." }
   ];
   const n = items.filter((i) => i.ok).length;
   $("prep-badge").textContent = `(${n} van ${items.length} klaar)`;

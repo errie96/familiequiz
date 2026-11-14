@@ -4,17 +4,19 @@
   "description": "Familiequiz met rondes, teams, tv-scherm en bediening",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "fresh": "node server.js --fresh",
+    "start": "node scripts/run.js",
+    "server": "node server.js",
+    "fresh": "node scripts/run.js --fresh",
     "vendor": "node scripts/download-vendor.js",
+    "standaard-muziek": "node scripts/standaard-muziek.js",
     "test": "node --test",
     "update-hitster": "node scripts/update-hitster.js",
     "syntax": "node scripts/check-syntax.js",
     "check": "npm run syntax && npm test",
-    "start:fresh": "node server.js --fresh",
+    "start:fresh": "node scripts/run.js --fresh",
     "offline-check": "node scripts/offline-check.js",
     "pakket": "node scripts/make-offline-package.js",
-    "lokaal": "node scripts/offline-check.js && node server.js"
+    "lokaal": "node scripts/offline-check.js && node scripts/run.js"
   },
   "dependencies": {
     "express": "4.21.2",

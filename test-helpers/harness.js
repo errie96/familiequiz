@@ -28,7 +28,8 @@ function startServer({ dataDir, fresh = true, fastTimers = false, env = {} } = {
     if (req === 'socket.io') return { Server: FakeServer };
     return orig.call(this, req, ...a);
   };
-  Object.assign(process.env, { DATA_DIR: dir, QUIZ_TEST: '1', ...env });
+  // De tests maken teams zoals voorheen (zelf op de telefoon), tenzij een test uitdrukkelijk om persoonlijk aanmelden vraagt
+  Object.assign(process.env, { DATA_DIR: dir, QUIZ_TEST: '1', QUIZ_SIGNUP: 'teams', ...env });
   if (fresh && !process.argv.includes('--fresh')) process.argv.push('--fresh');
   if (!fresh) process.argv = process.argv.filter((a) => a !== '--fresh');
   const root = path.join(__dirname, '..');

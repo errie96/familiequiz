@@ -6,6 +6,16 @@
   <title>Familiequiz - Team</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="themes.css">
+  <!-- App-icoon en naam als iemand de quiz op het beginscherm zet (icoon: public/media/huisstijl/app-icoon.png) -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico">
+  <meta name="apple-mobile-web-app-title" content="Familiequiz">
+  <!-- Als app openen (zonder adresbalk). Dit mag alleen vóór het aanmelden: speler.js haalt deze regel weg zodra de telefoon bij een team hoort. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="theme-color" content="#1e1b4b">
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
   <style>
@@ -57,7 +67,9 @@
     @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
     #flash { position: fixed; inset: 0; z-index: 9998; pointer-events: none; opacity: 0; }
     @keyframes flashOn { 0% { opacity: 0; } 25% { opacity: 0.55; } 100% { opacity: 0; } }
-  </style>
+      @keyframes badgePop { from { opacity: 0; transform: scale(0.6) translateY(10px); } }
+</style>
+  <link rel="stylesheet" href="design.css"> <!-- na de eigen stijlen: kleuren en glas uit het thema -->
 </head>
 <body>
   <button id="settings-btn" aria-label="Instellingen">⚙️</button>
@@ -75,7 +87,7 @@
       </div>
 
       <label class="toggle-row"><span><b>Hoog contrast</b></span><input type="checkbox" id="set-contrast"></label>
-      <label class="toggle-row"><span><b>Oplichten bij een nieuwe vraag</b></span><input type="checkbox" id="set-vibrate"></label>
+      <label class="toggle-row"><span><b>Trillen en oplichten bij een nieuwe vraag</b><br><small style="font-weight:normal; opacity:.7;">Trillen werkt alleen op Android; een iPhone licht alleen op.</small></span><input type="checkbox" id="set-vibrate"></label>
 
       <div id="set-me" class="hidden">
         <h3>🙋 Mijn naam</h3>
@@ -101,7 +113,32 @@
 
     <!-- 1. Team maken of aansluiten -->
     <div id="join-screen">
-      <h1>Familiequiz 🏆</h1>
+      <div data-brand="tel"></div>
+      <div data-preshow class="preshow-tel hidden"></div>
+      <!-- Installeren als app: alleen hier, vóór het aanmelden. Verborgen als de quiz al als app draait. -->
+      <details id="install-tip" class="hidden" style="background:rgba(255,255,255,0.07); border-radius:12px; padding:10px 12px; margin:0 0 14px; font-size:14px;">
+        <summary style="cursor:pointer; font-weight:bold;">📲 Quiz als app op je telefoon zetten (mag, hoeft niet)</summary>
+        <p style="margin:8px 0 4px;"><b>Doe dit nu, vóór je je aanmeldt.</b> Daarna kan het niet meer.</p>
+        <p id="install-ios" class="hidden" style="margin:4px 0;">iPhone (Safari): tik onderin op <b>Deel</b> (vierkantje met pijl omhoog) → <b>Zet op beginscherm</b> → <b>Voeg toe</b>.</p>
+        <p id="install-android" class="hidden" style="margin:4px 0;">Android (Chrome): tik rechtsboven op <b>⋮</b> → <b>Toevoegen aan startscherm</b>. Je krijgt een icoon dat de quiz in Chrome opent; "App installeren" biedt Android hier niet aan.</p>
+        <p style="margin:4px 0;">Sluit daarna dit venster en open de quiz via het nieuwe icoon. Meld je dáár aan.</p>
+      </details>
+      <!-- Persoonlijk aanmelden (naam, familie, leeftijd): de quizmaster maakt daarna de teams -->
+      <div id="signup-personal" class="hidden">
+        <h2 style="text-align:center; margin:0 0 12px;" data-t="aanmeld.titel">Meld je aan</h2>
+        <label class="lbl" for="su-name">Je naam</label>
+        <input type="text" id="su-name" placeholder="Bijv. Sanne" maxlength="16" autocomplete="off" autocapitalize="words">
+        <div id="su-family-wrap">
+          <label class="lbl">Je familie</label>
+          <div id="su-families" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;"></div>
+          <input type="text" id="su-family-free" class="hidden" placeholder="Bijv. Jansen" maxlength="30" autocomplete="off">
+        </div>
+        <label class="lbl" for="su-age">Je leeftijd</label>
+        <input type="number" id="su-age" placeholder="Bijv. 34" min="0" max="110" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+        <p class="note" style="margin:0 0 10px;">Met de leeftijd maakt de quizmaster eerlijke teams (jong en oud gemengd). Ze komen niet op de tv.</p>
+        <button class="btn-primary" id="btn-signup">Aanmelden</button>
+      </div>
+      <div id="signup-teams">
       <p style="text-align:center; margin-bottom:10px;"><b>Stap 1:</b> vul je eigen naam in</p>
       <input type="text" id="my-name" placeholder="Jouw naam" maxlength="16" autocomplete="off">
       <div id="join-steps" class="hidden">
@@ -127,6 +164,7 @@
           <p id="team-list-empty" class="note">Er zijn nog geen teams. Maak er zelf een aan, of wacht even.</p>
         </div>
       </div>
+      </div>
       <p id="join-error" class="hidden" style="color:#f87171; text-align:center; margin-top:10px;"></p>
     </div>
 
@@ -150,6 +188,7 @@
           <button id="btn-team-photo-remove" class="btn-option hidden" style="text-align:center; font-size:14px; margin:0;">🗑 Teamfoto verwijderen</button>
           <p id="team-photo-status" class="note hidden" style="margin-top:6px;"></p>
         </div>
+        <div id="team-setup" class="hidden" style="background:rgba(255,255,255,0.07); border-radius:12px; padding:12px; margin:8px 0 12px;"></div>
         <p id="role-text" class="note" style="margin:0 0 6px;"></p>
         <ul id="member-list"></ul>
         <div id="member-actions" class="hidden">
@@ -163,7 +202,15 @@
     <div id="pause-screen" class="hidden" style="text-align:center; padding: 20px 10px;">
       <div style="font-size: 54px; animation: bounce 2s infinite;">☕ 🍕 🍷</div>
       <h2 style="font-size: 26px; margin: 12px 0; color: #f59e0b;" data-t="pauze.titel">Pauze!</h2>
+      <div data-pausetimer class="preshow-tel hidden"></div>
       <p style="color: #cbd5e1; font-size: 16px; line-height: 1.5;">Even de glazen bijvullen, wat lekkers pakken en bijkletsen.</p>
+      <div id="pause-dilemma" class="hidden" style="background:#1e293b; border-radius:12px; padding:14px; margin-top:16px; text-align:left;">
+        <span style="font-size:12px; color:#fbbf24; font-weight:bold;">🤔 Pauzedilemma</span>
+        <p id="dil-q" style="font-size:18px; font-weight:bold; margin:6px 0 10px;"></p>
+        <button id="dil-btn-a" class="btn-option" style="text-align:left;"></button>
+        <button id="dil-btn-b" class="btn-option" style="text-align:left;"></button>
+        <p id="dil-res" class="note" style="margin-top:8px;"></p>
+      </div>
       <div style="background: #0f172a; border-radius: 10px; padding: 14px; margin-top: 20px; border: 1px dashed #475569;">
         <span style="font-size: 12px; color: #38bdf8; font-weight: bold;">Wist je dat?</span>
         <p id="pause-funfact" style="font-size: 14px; color: #94a3b8; margin-top: 6px; font-style: italic;"></p>

@@ -164,8 +164,26 @@ function renderPanel(state) {
   }
 
   if (p.type === "thirty") {
-    box.append(el("h3", "", `30 Seconds: beurt ${p.turn} van ${p.total}`));
-    if (p.team) box.append(el("p", "", `Aan de beurt: ${p.team} · ${p.explainer}`));
+    box.append(el("h3", "", p.status === "select" ? "30 Seconds: teams kiezen hun vertellers" : `30 Seconds: beurt ${p.turn} van ${p.total}`));
+    // Vóór de eerste beurt: hoeveel vertellers per team? Minder vertellers = kortere ronde (er speelt er steeds maar één).
+    if (p.canChoose) {
+      const teams = p.sizes.length, all = p.sizes.reduce((a, b) => a + b, 0), perTurn = p.seconds + 40;
+      const mins = (turns) => Math.max(1, Math.round((turns * perTurn) / 60));
+      const wrap = el("div", "qbox");
+      wrap.append(el("b", "", "Aantal vertellers per team"), el("div", "muted", "Kies dit vóór je de eerste beurt start. De basistelefoon van elk team tikt daarna aan wie er uitleggen."));
+      const row = el("div", "row"); row.style.flexWrap = "wrap";
+      const maxSize = Math.max(1, ...p.sizes);
+      [0, 1, 2, 3, 4].filter((n) => n === 0 || n <= Math.max(2, maxSize)).forEach((n) => {
+        const b = el("button", "btn-option", n === 0 ? `Iedereen · ±${mins(all)} min` : `${n} per team · ±${mins(n * teams)} min`);
+        b.style.cssText = "text-align:center; flex:1 1 30%;" + (p.per === n ? " background:#2563eb; color:#fff; font-weight:bold;" : "");
+        b.onclick = () => socket.emit("thirty_per", { per: n });
+        row.append(b);
+      });
+      wrap.append(row);
+      box.append(wrap);
+    }
+    if (p.picks) p.picks.forEach((t) => { const r = el("div", "line"); r.append(el("span", "", t.name), el("span", "muted", t.names.length ? "✅ " + t.names.join(", ") : "⏳ kiest nog")); box.append(r); });
+    if (p.team && p.status !== "select") box.append(el("p", "", `Aan de beurt: ${p.team} · ${p.explainer}`));
     if (p.words) {
       p.words.forEach((w, i) => {
         const row = el("div", "line");
@@ -175,6 +193,14 @@ function renderPanel(state) {
       });
     }
     box.append(el("p", "muted", p.status === "running" ? "Tik een woord aan zodra het goed geraden is: het kleurt meteen groen op de tv." : p.status === "judging" ? "Controleer en bevestig." : ""));
+    // Noodknop als het uitloopt: na deze rondgang stoppen (elk team is dan even vaak geweest)
+    if (p.cutPossible || p.cut) {
+      const b = el("button", "btn-option", p.cut ? `↩ Toch alle beurten spelen (${p.cutSaves} ${p.cutSaves === 1 ? "beurt" : "beurten"} terug)` : "⏱️ Loopt het uit? Stop na deze rondgang");
+      b.style.cssText = "text-align:center; margin-top:10px;" + (p.cut ? " background:#b45309; color:#fff;" : "");
+      b.onclick = () => { if (p.cut || confirm("Na deze rondgang stoppen? Elk team is dan even vaak aan de beurt geweest; de overige beurten vervallen.")) socket.emit("thirty_cut", { on: !p.cut }); };
+      box.append(b);
+      if (p.cut) box.append(el("p", "muted", "Ingekort: dit is de laatste rondgang."));
+    }
   }
 
   if (p.type === "demo_thirty") {
