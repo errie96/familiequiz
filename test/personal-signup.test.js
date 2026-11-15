@@ -114,6 +114,21 @@ test('een laatkomer meldt zich aan, de bediening deelt hem in; verwijderen en ve
   assert.equal(remote().controls.main.enabled, true);
 });
 
+test('de bediening kan een laatkomer altijd bij een team zetten, ook als dat team al 8 of meer spelers heeft', async () => {
+  const to = remote().signup.teams[0];
+  const ids = [];
+  for (let i = 0; i < 9; i++) {
+    const p = app.connect('extra' + i);
+    const r = await p.call('signup', { label: `Extra${i}`, family: 'Bakker', age: 30 + i });
+    ids.push(r.deviceId);
+    host.send('assign_person', { deviceId: r.deviceId, teamId: to.teamId });
+  }
+  assert.ok(ids.every((id) => T.devices[id].teamId === to.teamId), 'iedereen zit in het team');
+  assert.ok(remote().signup.teams.find((t) => t.teamId === to.teamId).size >= 9, 'meer dan 8 in één team');
+  for (const id of ids) host.send('remove_person', { deviceId: id }); // weer opruimen voor de volgende tests
+  assert.equal(remote().signup.unassigned, 0);
+});
+
 test('aanmeldingen en teams overleven een herstart (opslag)', () => {
   T.saveNow();
   const fs = require('fs'), path = require('path');
