@@ -208,6 +208,13 @@ function countFrom(node, from, to, suffix = "", ms = 1000, delay = 0) {
 }
 let lastSecs = null;
 let curTimer = null;
+// Klokje rechtsboven alleen als er geen groot getal in beeld staat (30 Seconds, tekenen). Bij 30 Seconds is het een
+// tijdbeurt van de verteller: ook vóór het grote getal verschijnt (wisselen van beurt) geen klokje, anders flitst het even.
+function syncSmallTimer(info) {
+  const big = ["th-bigtimer", "draw-bigtimer"].some((id) => { const e = document.getElementById(id); return e && e.offsetParent !== null; });
+  const ownClock = !$("v-thirty").classList.contains("hidden");
+  $("tv-timer").classList.toggle("hidden", !info || big || ownClock);
+}
 // Klokje bovenin: een ring die leegloopt (groen → amber → rood) met het aantal seconden, dat bij elke seconde even "tikt"
 const RING_C = 2 * Math.PI * 15.5;
 function timerRing(info) {
@@ -1108,6 +1115,7 @@ function duoCard(p) {
 function showDuo(top2) {
   if (duoShown) return;
   duoShown = true;
+  endSpot(); // staat de vorige plek nog groot in beeld (snel doorgeklikt)? Die eerst weg, anders liggen ze over elkaar
   // vaste volgorde op naam, zodat de plaats op het scherm niets verraadt
   const pair = [...top2].sort((a, b) => a.name.localeCompare(b.name, "nl"));
   $("duo-cards").replaceChildren(...pair.map(duoCard));
@@ -1207,7 +1215,13 @@ function spotlight(player, ms, done) {
   clearTimeout(spotTimer);
   if (spotDone) spotDone(); // vorige plek nog in beeld? die eerst in de lijst zetten
   spotDone = done || null;
-  spotTimer = setTimeout(() => { sp.classList.add("hidden"); const d = spotDone; spotDone = null; if (d) d(); }, ms);
+  spotTimer = setTimeout(endSpot, ms);
+}
+// De grote plek-weergave nu wegzetten en het team in de lijst zetten (ook als hij nog niet klaar was)
+function endSpot() {
+  clearTimeout(spotTimer);
+  $("reveal-spot").classList.add("hidden");
+  const d = spotDone; spotDone = null; if (d) d();
 }
 function showWinnerBanner(list, fresh) {
   if (!$("winner-banner").classList.contains("hidden")) return;
@@ -1364,7 +1378,8 @@ function startPauseShow(style, photos) {
   pauseShown = pauseList.slice(0, slots);
   const wall = el("div", "pause-wall");
   wall.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-  wall.style.maxWidth = cols <= 2 ? "60vw" : cols <= 4 ? "92vw" : "96vw";
+  // Breedte zo kiezen dat ook één of twee foto's (4:3) in de hoogte passen, onder de regel met "Pauze!" en de timer
+  wall.style.maxWidth = cols === 1 ? "min(60vw, 78vh)" : cols === 2 ? "min(60vw, 140vh)" : cols <= 4 ? "92vw" : "96vw";
   pauseShown.forEach((item, i) => wall.append(pauseTile(item, fresh && i === 0)));
   const more = pauseList.length - slots;
   $("pause-show").replaceChildren(wall, el("p", "tv-sub pw-hint", `📸 ${pics.length} pauzefoto${pics.length === 1 ? "" : "'s"}${more > 0 ? ` · de rest wisselt vanzelf` : ""} · maak er zelf ook een met je telefoon!`));
@@ -1579,8 +1594,7 @@ socket.on("state_update", function tvState(state) {
   // Aftelklok bovenin en (bij tekenen en 30 seconds) groot in beeld
   QuizFX.countdown("tv", step && step.timer ? step.timer : null, (info) => {
     $("tv-timerbar").classList.toggle("hidden", !info);
-    const big = ["th-bigtimer", "draw-bigtimer"].some((id) => { const e = document.getElementById(id); return e && e.offsetParent !== null; });
-    $("tv-timer").classList.toggle("hidden", !info || big); // staat het grote getal in beeld, dan geen tweede klokje
+    syncSmallTimer(info);
     curTimer = info;
     document.body.classList.toggle("hurry", !!(info && info.running && info.secs <= 5 && info.secs > 0));
     if (!info) { barAnim = null; return; }
@@ -1708,6 +1722,7 @@ socket.on("state_update", function tvState(state) {
   }
   bigTimer(curTimer, $("draw-bigtimer"));
   bigTimer(curTimer, $("th-bigtimer"));
+  syncSmallTimer(curTimer); // pas nu staat het grote getal (30 Seconds, tekenen) eventueel in beeld
   scheduleFit();
 });
 

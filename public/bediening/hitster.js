@@ -157,6 +157,6 @@ $("bots-add").onclick = () => socket.emit("add_bots", { n: 3 });
 $("bots-remove").onclick = () => { if (confirm("Alle testteams verwijderen?")) socket.emit("remove_bots"); };
 $("btn-save-settings").onclick = () => socket.emit("update_settings", {
   roundPoints: Number($("s-round").value), timerEnabled: $("s-timer").checked, defaultTime: Number($("s-time").value), logoCount: Number($("s-logocount").value),
-  finalMaxWager: Number($("s-wager").value), thirtySeconds: Number($("s-thirty").value), thirtyPer: Number($("s-thirtyper").value) || 0,
+  finalMaxWager: Number($("s-wager").value), thirtySeconds: Number($("s-thirty").value), thirtyPer: Number($("s-thirtyper").value) || 0, pauseMinutes: Number($("s-pausemin").value) || 0,
   blurPoints: parseList($("s-blur").value), pricePoints: parseList($("s-price").value), logoPoints: parseList($("s-logo").value), hitsterStartCards: Number($("s-hitsterstart").value) || 2, hitsterTarget: Number($("s-hitster").value), hitsterPlacePoints: Number($("s-hplace").value), hitsterYearPoints: parseList($("s-hyear").value), hitsterTitlePoints: Number($("s-htitle").value), hitsterArtistPoints: Number($("s-hartist").value)
 });

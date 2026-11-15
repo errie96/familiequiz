@@ -1,6 +1,10 @@
 // Bediening (quizmaster) – Teams beheren.
 // Gewone scripts (geen modules): ze delen hun variabelen en worden in vaste volgorde geladen, zie bediening.html.
 // ---------------- Teams beheren ----------------
+// Het keuzevenster ("naar team…") staat in de HTML binnen de hoofdkaart, die een eigen laag heeft (z-index 2).
+// Daardoor viel het venster achter het instellingenmenu en leek indelen (bijv. van een laatkomer) niet te werken.
+// Direct onder <body> zetten, dan ligt het boven alles.
+document.body.appendChild($("move-dialog"));
 function openMove(device, from) {
   const dlg = $("move-dialog");
   $("move-title").textContent = `${device.label}: verplaatsen naar…`;

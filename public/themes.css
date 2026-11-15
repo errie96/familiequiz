@@ -16,7 +16,9 @@ body { transition: background 0.6s; }
 @keyframes fx-sweep { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
 .fx-layer .fade { position: absolute; left: 0; right: 0; bottom: 0; height: 33%; background: linear-gradient(to top, var(--bg, #0f172a) 0%, transparent 100%); opacity: 0.8; }
 body > *:not(.fx-layer) { position: relative; z-index: 2; }
-#tv-alerts, #toast, #move-dialog, #tv-timerbar { z-index: 60 !important; }
+#tv-alerts, #toast, #tv-timerbar { z-index: 60 !important; }
+/* Keuzevenster "naar team…" in de bediening: boven het instellingenmenu (z-index 70–90), anders opent het onzichtbaar erachter */
+#move-dialog { z-index: 100 !important; }
 @media (prefers-reduced-motion: reduce) { .fx-layer { display: none; } }
 
 /* ---------- Winter: ijsblauw met sneeuw ---------- */

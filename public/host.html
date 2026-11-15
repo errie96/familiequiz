@@ -261,9 +261,10 @@
     #v-pause { text-align: center; padding-top: 12vh; }
     body.has-brand-logo #v-pause { padding-top: 3vh; }
     #pause-head { display: flex; flex-direction: column; align-items: center; }
-    /* Met pauzefoto's of een dilemma: "Pauze!" en de timer vast bovenaan (in de bovenste band), de rest krijgt het scherm */
+    /* Met pauzefoto's of een dilemma: "Pauze!" en de timer als één regel bovenaan, de rest krijgt het scherm.
+       Geen position: fixed: wordt het scherm passend verkleind (transform), dan zou de regel over de foto's schuiven. */
     #v-pause.has-photos, #v-pause.has-dilemma { padding-top: 0 !important; }
-    #v-pause.has-photos #pause-head, #v-pause.has-dilemma #pause-head { position: fixed; top: 2.4vh; left: 0; right: 0; height: 8.6vh; flex-direction: row; justify-content: center; gap: 2vw; z-index: 6; }
+    #v-pause.has-photos #pause-head, #v-pause.has-dilemma #pause-head { position: relative; min-height: 7vh; margin: 0 0 2vh; flex-direction: row; justify-content: center; align-items: center; gap: 2vw; }
     #v-pause.has-photos #pause-head .tv-title, #v-pause.has-dilemma #pause-head .tv-title { font-size: clamp(26px, 3.6vw, 68px); margin: 0; }
     #v-pause.has-photos #pause-timer, #v-pause.has-dilemma #pause-timer { margin: 0; }
     #v-pause.has-photos #pause-logo, #v-pause.has-dilemma #pause-logo { display: none; }
@@ -298,6 +299,10 @@
     .award-grid.rows-1 .aw-emoji { font-size: clamp(60px, 9vw, 180px); } .award-grid.rows-1 .aw-title { font-size: clamp(26px, 3.4vw, 70px); } .award-grid.rows-1 .aw-teams { font-size: clamp(20px, 2.4vw, 50px); } .award-grid.rows-1 .aw-detail { font-size: clamp(16px, 1.8vw, 36px); }
     .award-grid.rows-3 .aw-emoji { font-size: clamp(24px, 2.8vw, 58px); line-height: 1.1; } .award-grid.rows-3 .aw-title { font-size: clamp(16px, 1.8vw, 38px); } .award-grid.rows-3 .aw-teams { font-size: clamp(13px, 1.4vw, 28px); margin: 0.3em 0; } .award-grid.rows-3 .aw-detail { font-size: clamp(11px, 1.05vw, 22px); }
     #pause-timer { margin: 1vh 0 2vh; }
+    /* Pauze zonder foto's/dilemma: de aftelklok groot in beeld, de laatste minuut in de alarmkleur */
+    #v-pause:not(.has-photos):not(.has-dilemma) #pause-timer { flex-direction: column; align-items: center; gap: 0.4vh; padding: 1.6vh 3.5vw; border-radius: 2vh; }
+    #v-pause:not(.has-photos):not(.has-dilemma) #pause-timer .ps-time { font-size: clamp(48px, 9vw, 180px); line-height: 1; color: var(--primary, #fbbf24); text-shadow: 0 0 3vh color-mix(in srgb, var(--primary, #fbbf24) 40%, transparent); font-variant-numeric: tabular-nums; }
+    #pause-timer.ps-done .ps-label { font-size: clamp(22px, 3vw, 56px); }
     #v-pause.has-photos #pause-timer { margin: 0.6vh 0 1.4vh; }
     /* Tussenpagina: "Nu gaan we door naar…" */
     .trans-pre { font-size: clamp(26px, 4vw, 76px); color: #fbbf24; font-weight: 800; letter-spacing: 0.02em; }

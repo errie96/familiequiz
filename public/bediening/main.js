@@ -176,11 +176,11 @@ socket.on("state_update", (state) => {
   // Instellingen
   const locked = state.settingsLocked;
   $("settings-note").textContent = locked ? "De instellingen kunnen alleen vóór de start worden gewijzigd." : "Pas aan en sla op, voordat je de quiz start.";
-  ["s-round", "s-timer", "s-time", "s-logocount", "s-wager", "s-thirty", "s-thirtyper", "s-hitsterstart", "s-blur", "s-price", "s-logo", "s-hitster", "s-hplace", "s-hyear", "s-htitle", "s-hartist", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
+  ["s-round", "s-timer", "s-time", "s-logocount", "s-wager", "s-pausemin", "s-thirty", "s-thirtyper", "s-hitsterstart", "s-blur", "s-price", "s-logo", "s-hitster", "s-hplace", "s-hyear", "s-htitle", "s-hartist", "btn-save-settings"].forEach((id) => { $(id).disabled = locked; });
   const ae = document.activeElement && document.activeElement.id;
   if (!settingsFilled || !ae || !ae.startsWith("s-")) {
     $("s-round").value = state.settings.roundPoints; $("s-timer").checked = state.settings.timerEnabled; $("s-time").value = state.settings.defaultTime; $("s-logocount").value = state.settings.logoCount ?? 10;
-    $("s-wager").value = state.settings.finalMaxWager; $("s-hitsterstart").value = state.settings.hitsterStartCards || 2; $("s-thirty").value = state.settings.thirtySeconds; $("s-thirtyper").value = state.settings.thirtyPer || 0;
+    $("s-wager").value = state.settings.finalMaxWager; $("s-hitsterstart").value = state.settings.hitsterStartCards || 2; $("s-thirty").value = state.settings.thirtySeconds; $("s-thirtyper").value = state.settings.thirtyPer || 0; $("s-pausemin").value = state.settings.pauseMinutes ?? 15;
     $("s-blur").value = state.settings.blurPoints.join(", "); $("s-price").value = state.settings.pricePoints.join(", "); $("s-logo").value = state.settings.logoPoints.join(", "); $("s-hitster").value = state.settings.hitsterTarget;
     $("s-hplace").value = state.settings.hitsterPlacePoints; $("s-hyear").value = (state.settings.hitsterYearPoints || []).join(", "); $("s-htitle").value = state.settings.hitsterTitlePoints ?? 2; $("s-hartist").value = state.settings.hitsterArtistPoints ?? 2;
     settingsFilled = true;

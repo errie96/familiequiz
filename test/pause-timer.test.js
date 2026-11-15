@@ -16,6 +16,7 @@ test('pauzetimer instellen, verlengen en wissen; verdwijnt bij hervatten', async
 
   host.send('toggle_pause');
   const t0 = Date.now();
+  assert.ok(tvState().pauseTimer && Math.abs(tvState().pauseTimer.until - (t0 + 15 * 60e3)) < 2000, 'de pauze start vanzelf met 15 minuten');
   host.send('set_pause_timer', { minutes: 10 });
   const tv = tvState().pauseTimer;
   assert.ok(Math.abs(tv.until - (t0 + 10 * 60e3)) < 2000);
@@ -33,4 +34,10 @@ test('pauzetimer instellen, verlengen en wissen; verdwijnt bij hervatten', async
   host.send('toggle_pause');
   assert.equal(tvState().pauseTimer, null, 'bij hervatten is de timer weg');
   assert.equal(T.pauseUntil, null);
+
+  // standaardtijd 0 = pauze zonder timer
+  T.G.settings.pauseMinutes = 0;
+  host.send('toggle_pause');
+  assert.equal(tvState().pauseTimer, null, 'zonder standaardtijd geen timer');
+  host.send('toggle_pause');
 });
