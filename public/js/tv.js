@@ -655,12 +655,38 @@ function showPicks(opts, s) {
     made.push([p.name, av]);
   });
   if (!fresh) return;
+  // Het fotootje vliegt als kopie in een eigen laag boven alles (anders schuift het onder de andere antwoordkaarten
+  // door en zie je het pas als het in zijn vak landt). Het echte fotootje verschijnt bij de landing met een klein "plop".
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   requestAnimationFrame(() => made.forEach(([name, av], k) => {
     const a = from[name], b = av.getBoundingClientRect();
-    if (!a || !av.animate) return;
+    if (!a || !av.animate || reduce || !b.width) return;
     const dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
-    av.animate([{ transform: `translate(${dx}px, ${dy}px) scale(0.9)`, opacity: 0.6 }, { transform: "translate(0, 0) scale(1.25)", opacity: 1, offset: 0.8 }, { transform: "none", opacity: 1 }],
-      { duration: 900, delay: k * 110, easing: "cubic-bezier(.2,.8,.3,1)", fill: "backwards" });
+    const scale = b.width / Math.max(1, av.offsetWidth); // het scherm kan passend verkleind zijn
+    const fly = av.cloneNode(true);
+    fly.style.position = "fixed"; fly.style.left = `${b.left}px`; fly.style.top = `${b.top}px`;
+    fly.style.width = `${b.width}px`; fly.style.height = `${b.height}px`; fly.style.margin = "0";
+    fly.style.fontSize = `${parseFloat(getComputedStyle(av).fontSize) * scale}px`;
+    fly.style.zIndex = "80"; fly.style.pointerEvents = "none"; fly.style.boxShadow = "0 0.6vh 1.6vh rgba(0,0,0,0.45)";
+    document.body.append(fly);
+    av.style.visibility = "hidden";
+    const delay = k * 120;
+    const anim = fly.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(0.95)`, opacity: 0.85 },
+      { transform: `translate(${dx * 0.45}px, ${dy * 0.45 - b.height * 1.6}px) scale(1.35)`, opacity: 1, offset: 0.5 }, // boogje omhoog
+      { transform: "none", opacity: 1 }
+    ], { duration: 850, delay, easing: "cubic-bezier(.45,.05,.3,1)", fill: "both" });
+    let landed = false;
+    const land = () => {
+      if (landed) return;
+      landed = true;
+      fly.remove();
+      av.style.visibility = "";
+      av.animate([{ transform: "scale(1.3)" }, { transform: "scale(1)" }], { duration: 260, easing: "cubic-bezier(.34,1.56,.64,1)" });
+      try { QuizFX.pop(k); } catch (e) { /* geen geluid */ }
+    };
+    anim.onfinish = land; anim.oncancel = land;
+    setTimeout(() => { if (fly.isConnected) land(); }, delay + 1600); // vangnet (bijv. tabblad op de achtergrond)
   }));
 }
 function fixedGallery(n) {

@@ -18,10 +18,13 @@ body[data-look="nieuw"] {
 
 /* ================= TV ================= */
 
-/* Minder drukte: geen hoekdecoratie, geen glans/deinen op het logo, geen gloed op titels, rustiger deeltjes */
+/* Minder drukte: geen hoekdecoratie, geen gloed op titels, rustiger deeltjes. Het logo linksboven blijft wel speels:
+   het deint zacht en af en toe glijdt er een lichtstreep overheen (zelfde effect als klassiek, iets rustiger). */
 body.tv[data-look="nieuw"]::after { display: none !important; }
-body[data-look="nieuw"] #tv-logo .brand-logo { animation: none; filter: drop-shadow(0 0.4vh 1vh rgba(0, 0, 0, 0.45)); height: clamp(40px, 8.5vh, 120px); }
-body[data-look="nieuw"] #tv-logo::after { display: none; }
+body[data-look="nieuw"] #tv-logo .brand-logo { height: clamp(40px, 8.5vh, 120px); animation: n-logo-float 7s ease-in-out infinite;
+  filter: drop-shadow(0 0.4vh 1vh rgba(0, 0, 0, 0.45)) drop-shadow(0 0 1.4vh color-mix(in srgb, var(--primary) 35%, transparent)); }
+@keyframes n-logo-float { 0%, 100% { transform: translateY(0) rotate(-1deg) scale(1); } 50% { transform: translateY(-0.5vh) rotate(1deg) scale(1.03); } }
+body[data-look="nieuw"] #tv-logo::after { animation: tvLogoShine 8s ease-in-out infinite 2s; }
 body[data-look="nieuw"] .tv-title { text-shadow: none; letter-spacing: -0.02em; font-weight: 800; }
 body[data-look="nieuw"] .fx-layer { opacity: 0.45; }
 
