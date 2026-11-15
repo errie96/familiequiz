@@ -170,9 +170,10 @@ socket.on("state_update", (state) => {
   if (sel.dataset.key !== gotoKey) { // alleen opnieuw opbouwen als de rondes veranderen (anders springt je keuze terug)
     sel.dataset.key = gotoKey;
     sel.replaceChildren(new Option("Kies een ronde…", ""));
-    sel.append(new Option("Testvragen (begin)", "test_intro"), new Option("Teamfoto", "teamphoto"), new Option("Uitleg van de rondes", "rounds_overview"));
+    // Zelfde volgorde als in de quiz: de joker wordt ingezet na de uitleg, vóór ronde 1
+    sel.append(new Option("Testvragen (begin)", "test_intro"), new Option("Teamfoto", "teamphoto"), new Option("Uitleg van de rondes", "rounds_overview"), new Option("Joker", "joker"));
     state.rounds.forEach((r) => sel.append(new Option(`Ronde ${r.no}: ${r.title}`, r.introId)));
-    sel.append(new Option("Joker", "joker"), new Option("Slotvraag", "final"));
+    sel.append(new Option("Slotvraag", "final"));
   }
 
   // Instellingen

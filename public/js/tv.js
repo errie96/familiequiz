@@ -475,8 +475,8 @@ function renderSong(s) {
     ? (s.song ? `🎵 ${s.song.title} · ${s.song.artist} · ${s.song.year}` : QuizFX.t("muziek.onthuld")) + (s.done ? "  🏁" : "")
     : "🎵 " + QuizFX.t("muziek.vraag");
   $("song-sub").textContent = rev
-    ? (s.done ? QuizFX.t("muziek.klaar") + " " + QuizFX.t("muziek.klaar.tekst", { doel: s.target }) : (s.test ? "Oefenliedje: zo gaat het straks. " : "") + QuizFX.t("muziek.onthuld.tekst", { doel: s.target }))
-    : QuizFX.t("muziek.uitleg", { doel: s.target });
+    ? (s.done ? QuizFX.t("muziek.klaar") + " " + QuizFX.t("muziek.klaar.tekst", { doel: s.target }) : s.test ? QuizFX.t("muziek.oefen.onthuld") : QuizFX.t("muziek.onthuld.tekst", { doel: s.target }))
+    : QuizFX.t(s.test ? "muziek.oefen.uitleg" : "muziek.uitleg", { doel: s.target });
   renderTimelines(s);
 }
 
@@ -514,9 +514,13 @@ function renderTimelines(s) {
   const rev = s.status === "revealed";
   // Maat van de kaarten: vooraf vastgelegd voor de hele ronde, zodat de tijdlijnen tijdens het spel niet krimpen.
   // Breedte voor het doel (zoveel kaarten kan een tijdlijn hooguit worden) plus de dichte kaart; past in de hoogte (aantal teams).
-  const rows = Math.max(1, s.teams.length);
-  const goal = s.test ? 0 : Number(s.target) || 0;
-  const most = Math.max(4, goal + 1, ...s.teams.map((t) => t.timeline.length + 1));
+  // Oefenliedje: alle teams oefenen op dezelfde tijdlijn, dus één rij met per team een eigen (dichte) kaart
+  const shared = !!s.test;
+  const rows = shared ? 1 : Math.max(1, s.teams.length);
+  const goal = shared ? 0 : Number(s.target) || 0;
+  const most = shared
+    ? Math.max(4, (s.teams[0] ? s.teams[0].timeline.length : 0) + s.teams.length)
+    : Math.max(4, goal + 1, ...s.teams.map((t) => t.timeline.length + 1));
   const vh = window.innerHeight / 100, vw = window.innerWidth / 100;
   const size = Math.max(40, Math.min(16 * vh, (76 * vh) / rows - 2.2 * vh, (72 * vw) / (most * 1.07)));
   box.style.setProperty("--hc", `${size.toFixed(1)}px`);
@@ -542,7 +546,8 @@ function renderTimelines(s) {
   box.querySelectorAll(".hslot[data-k]").forEach((n) => oldRects.set(n.dataset.k, n.getBoundingClientRect()));
   box.replaceChildren();
   const pendings = [];
-  s.teams.forEach((t) => {
+  if (shared) renderSharedLine();
+  else s.teams.forEach((t) => {
     const st = TEAMSTYLE[t.name] || {};
     const row = el("div", "hrow" + (t.connected ? "" : " off"));
     row.style.setProperty("--tc", st.color || "#64748b");
@@ -573,6 +578,41 @@ function renderTimelines(s) {
     row.append(who, cards);
     box.append(row);
   });
+  // Eén gedeelde oefentijdlijn: elke ingediende kaart krijgt het rondje van het team erop. Eerst liggen ze dicht rechts,
+  // daarna op de gekozen plek (kozen twee teams dezelfde plek, dan naast elkaar); bij het onthullen draaien ze om.
+  function renderSharedLine() {
+    const line = s.teams[0] ? s.teams[0].timeline : [];
+    const row = el("div", "hrow hshared");
+    const who = el("div", "hteam");
+    const txt = el("div");
+    txt.append(el("div", "hname", "🎧 Samen oefenen"), el("div", "hcount", "Alle teams op één tijdlijn"));
+    who.append(txt);
+    const cards = el("div", "hcards");
+    const picks = s.teams.map((t) => ({ t, chosen: rev ? (t.result ? t.result.slot : null) : t.slot })).filter((p) => p.chosen !== null && p.chosen !== undefined);
+    let parkedFirst = true;
+    const mk = ({ t }) => {
+      const st = TEAMSTYLE[t.name] || {};
+      const p = hPendingCard(rev ? s.song : null);
+      p.dataset.k = "oefen|?" + t.name;
+      p.style.setProperty("--tc", st.color || "#64748b");
+      const badge = QuizFX.avatar(t.name, st.photo, `${Math.max(18, size * 0.36).toFixed(0)}px`, st.color);
+      badge.classList.add("hbadge");
+      badge.title = t.name;
+      p.append(badge);
+      if (!allIn && parkedFirst) { p.classList.add("parked"); parkedFirst = false; } // alleen de eerste tegen de rand, de rest ernaast
+      const k = s.id + "|" + t.name;
+      if (!rev && !droppedIn.has(k)) { droppedIn.add(k); p.classList.add("drop-in"); try { QuizFX.pop(droppedIn.size); } catch (e) { /* geen geluid */ } }
+      if (rev) pendings.push({ el: p, ok: !!(t.result && t.result.ok), keep: false, count: null, total: 0 });
+      return p;
+    };
+    line.forEach((c, i) => {
+      if (allIn) picks.filter((p) => p.chosen === i).forEach((p) => cards.append(mk(p)));
+      const o = hOpenCard(c); o.dataset.k = "oefen|" + c.id; cards.append(o);
+    });
+    picks.filter((p) => !allIn || p.chosen >= line.length).forEach((p) => cards.append(mk(p)));
+    row.append(who, cards);
+    box.append(row);
+  }
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (oldRects.size && !reduce) {
     box.querySelectorAll(".hslot[data-k]").forEach((n) => {
@@ -1176,6 +1216,9 @@ function duoCard(p) {
   c.append(el("div", "duo-label", ""), QuizFX.avatar(p.name, p.photo || st.photo, "clamp(160px, 30vh, 480px)", p.color || st.color), el("div", "", p.name));
   return c;
 }
+// "Wie wordt er eerste?" ligt over het hele scherm. Het eindscherm wordt geschaald (fitView), en dan vult een vaste
+// laag daarbinnen maar een blok in het midden. Daarom direct onder <body> zetten.
+document.body.appendChild($("reveal-duo"));
 function showDuo(top2) {
   if (duoShown) return;
   duoShown = true;

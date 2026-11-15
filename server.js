@@ -1548,6 +1548,10 @@ function revealSong(step) {
   s.judge = {};
   for (const [teamId, g] of Object.entries(s.guesses || {})) s.judge[teamId] = { title: looksLike(g.title, song.title), artist: looksLike(g.artist, song.artist), auto: true };
   s.status = 'revealed';
+  // Kaarten gaan om: muziek stoppen (tv-fragment direct, Spotify op de bediening volgt music.paused).
+  // De quizmaster kan met de muziekknop gewoon verder laten spelen.
+  G.musicPaused = true;
+  io.to('tv_room').emit('pause_audio');
 }
 
 // Lijkt een ingevuld antwoord genoeg op het goede antwoord? (hoofdletters, leestekens, "the", toevoegingen

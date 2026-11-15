@@ -598,6 +598,12 @@
       .hslot.pending .hfront { transform: rotateY(0deg); }
       .hslot.pending.flipped .hcard { transform: rotateY(0deg); }
       .hslot.parked { margin-left: auto; }
+      /* Oefenliedje: één gedeelde tijdlijn; het rondje van het team op zijn kaart */
+      .hrow.hshared { border-left-color: var(--primary, #fbbf24); padding-top: 2vh; padding-bottom: 2vh; }
+      .hshared .hslot.pending { position: relative; }
+      .hshared .hslot.pending .hface { outline: 0.35vh solid var(--tc, #64748b); outline-offset: 0.2vh; }
+      .hshared .hbadge { position: absolute; top: -14%; left: -14%; z-index: 3; box-shadow: 0 0.4vh 1vh rgba(0,0,0,0.45); pointer-events: none; }
+      .hshared .hslot.bad.gone .hbadge { opacity: 0; transition: opacity 0.4s; }
       .hslot.drop-in { animation: hDrop 0.55s cubic-bezier(.2,1.5,.4,1) both; }
       @keyframes hDrop { from { opacity: 0; transform: translateY(-6vh) rotate(-8deg) scale(1.15); } }
       .hslot.good .hface { box-shadow: 0 0 0 0.4vh #4ade80, 0 0 2.4vh rgba(74,222,128,0.8); }

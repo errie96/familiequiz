@@ -47,7 +47,9 @@ test('kaarten liggen dicht op de tv tot de quizmaster ze omdraait; goed blijft l
   assert.equal(app.tvState().step.song, null);
   assert.match(remote().controls.main.label, /Toon het antwoord/);
   assert.equal(a.state().view.result, null, 'ook de telefoon weet het nog niet');
+  assert.equal(remote().music.paused, false, 'muziek speelt nog');
   host.send('host_main', { key: remote().controls.key });
+  assert.equal(remote().music.paused, true, 'kaarten gaan om: de muziek stopt (Spotify volgt music.paused)');
 
   tv = app.tvState().step;
   assert.equal(tv.status, 'revealed');
