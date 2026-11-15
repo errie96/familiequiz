@@ -3,6 +3,10 @@
 const socket = io();
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+QuizFX.restoreLook(); // meteen in het laatst gebruikte thema/uiterlijk, niet eerst even de standaardstijl
+// Tot de eerste status binnen is blijft het scherm leeg (body.booting); na 4 s toch tonen, dan helpt het offlinescherm verder
+const endBoot = () => document.body.classList.remove("booting");
+setTimeout(endBoot, 4000);
 const VIEWS = ["v-welcome", "v-demodraw", "v-lobby", "v-info", "v-mc", "v-memory", "v-song", "v-price", "v-draw", "v-thirty", "v-roundresult", "v-teamphoto", "v-joker", "v-final", "v-end", "v-review", "v-standings", "v-pause"];
 // Eén vaste overgang voor alle schermen: kort invagen (opacity + translate, los van de schaalberekening). Alleen als het
 // scherm echt wisselt; een update van hetzelfde scherm animeert niet opnieuw.
@@ -1788,6 +1792,8 @@ socket.on("state_update", function tvState(state) {
   syncSmallTimer(curTimer); // pas nu staat het grote getal (30 Seconds, tekenen) eventueel in beeld
   scheduleFit();
 });
+// Na elke status (ook bij een vroege return hierboven) het scherm vrijgeven; staat ná de handler, dus het juiste scherm staat er al
+socket.on("state_update", () => { endBoot(); });
 
 // ---------- Wifi-QR op het welkomstscherm (plaatje zelf neerzetten: public/media/wifi-qr.png of .jpg) ----------
 // Alleen tonen als het plaatje er is én de wifi aan staat in de bediening (uit bij bijv. een Tailscale Funnel)

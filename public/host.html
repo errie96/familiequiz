@@ -172,6 +172,8 @@
     main { padding: 0.5vh 4vw 4vh; flex: 1 1 auto; min-height: 0; overflow: hidden; position: relative; }
     /* Automatisch passend maken: een te groot scherm wordt in zijn geheel kleiner geschaald */
     main > .view { transform-origin: top center; }
+    /* Bij (her)laden niets tonen tot de server de eerste status stuurt; anders zie je kort een verkeerd scherm */
+    body.booting #tv-top, body.booting main, body.booting #audio-banner { visibility: hidden; }
     .tv-title, .tv-q, .tv-sub, .qo, .word, .slot, .tchip, .rtable td { overflow-wrap: anywhere; }
     .tv-title { font-size: clamp(36px, 6vw, 110px); margin-bottom: 2vh; }
     .tv-q { font-size: clamp(24px, 3.6vw, 70px); line-height: 1.15; margin: 0.5vh 0 1.5vh; }
@@ -465,7 +467,7 @@
   <link rel="stylesheet" href="design.css"> <!-- na de eigen stijlen: kleuren en glas uit het thema -->
   <link rel="stylesheet" href="look-nieuw.css"> <!-- uiterlijk "Nieuw" (alleen actief bij body[data-look="nieuw"]) -->
 </head>
-<body class="tv">
+<body class="tv booting">
   <div id="fx-flash" aria-hidden="true"></div>
 
   <div id="tv-alerts"></div>
@@ -514,7 +516,7 @@
       </div>
     </section>
 
-    <section id="v-lobby" class="view">
+    <section id="v-lobby" class="view hidden">
       <div style="text-align:center;"><div data-brand="lobby"></div></div>
       <div class="lobby-grid">
         <div style="text-align:center;">

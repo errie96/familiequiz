@@ -19,6 +19,9 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="shared.js"></script>
   <style>
+    /* Bij (her)laden niets tonen tot duidelijk is welk scherm hoort (anders even het aanmeldformulier); zie speler.js */
+    body.booting .card { visibility: hidden; }
+    body.join-wait #signup-teams, body.join-wait #signup-personal { visibility: hidden; }
     .note { text-align: center; color: #94a3b8; margin-top: 12px; font-size: 14px; }
     .good { color: #4ade80; font-weight: bold; }
     .bad { color: #f87171; font-weight: bold; }
@@ -72,7 +75,7 @@
   <link rel="stylesheet" href="design.css"> <!-- na de eigen stijlen: kleuren en glas uit het thema -->
   <link rel="stylesheet" href="look-nieuw.css"> <!-- uiterlijk "Nieuw" (alleen actief bij body[data-look="nieuw"]) -->
 </head>
-<body>
+<body class="booting">
   <button id="settings-btn" aria-label="Instellingen">⚙️</button>
   <div id="settings-panel" class="hidden" role="dialog" aria-label="Instellingen">
     <div class="sheet">

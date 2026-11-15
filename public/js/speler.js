@@ -10,7 +10,11 @@ let lastState = null;
 let currentView = null;
 
 const SCREENS = ["join-screen", "game-screen", "pause-screen", "standings-screen", "look-screen"];
-function showScreen(id) { SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id)); }
+QuizFX.restoreLook(); // meteen in het laatst gebruikte thema/uiterlijk
+// Tot het eerste echte scherm gekozen is blijft de kaart leeg (body.booting); na 4 s toch tonen (bijv. geen verbinding)
+const endBoot = () => document.body.classList.remove("booting");
+setTimeout(endBoot, 4000);
+function showScreen(id) { SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id)); endBoot(); }
 
 // ---------------- Instellingen van deze telefoon ----------------
 const PREF_KEY = "fq_prefs";
@@ -229,7 +233,11 @@ function showJoin(message) {
   updateSteps();
   selectTab(!$("join-existing").classList.contains("hidden") ? "join" : "new");
   showJoinError(message);
-  socket.emit("signup_info", null, (info) => { applyJoinMode(info); if (message) showJoinError(message); });
+  // Eerst weten of het persoonlijk aanmelden of teams maken is, anders zie je kort het verkeerde formulier
+  document.body.classList.add("join-wait");
+  const ready = () => document.body.classList.remove("join-wait");
+  setTimeout(ready, 2500);
+  socket.emit("signup_info", null, (info) => { applyJoinMode(info); ready(); if (message) showJoinError(message); });
 }
 function signUp() {
   const label = $("su-name").value.trim();

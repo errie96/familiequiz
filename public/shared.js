@@ -508,6 +508,19 @@ window.QuizFX = (function () {
   function applyLook(look) {
     const l = look === "nieuw" ? "nieuw" : "klassiek";
     if (document.body.dataset.look !== l) document.body.dataset.look = l;
+    rememberLook({ look: l });
+  }
+  // Thema en uiterlijk onthouden op dit apparaat, zodat de pagina bij F5 meteen in de goede stijl opent
+  // (anders even de standaardstijl tot de server de eerste status stuurt). Alleen een gemak: zonder opslag werkt alles gewoon.
+  const LOOK_KEY = "fq_look";
+  function rememberLook(part) {
+    try { const cur = JSON.parse(localStorage.getItem(LOOK_KEY) || "{}"); localStorage.setItem(LOOK_KEY, JSON.stringify(Object.assign(cur, part))); } catch (e) { /* privémodus */ }
+  }
+  function restoreLook() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(LOOK_KEY) || "{}") || {}; } catch (e) { /* geen opslag */ }
+    if (saved.look) applyLook(saved.look);
+    if (saved.theme) applyTheme(saved.theme);
   }
   const isNewLook = () => document.body && document.body.dataset.look === "nieuw";
   let currentTheme = null;
@@ -516,6 +529,7 @@ window.QuizFX = (function () {
     if (theme === currentTheme) return;
     currentTheme = theme;
     document.body.dataset.theme = theme;
+    rememberLook({ theme });
     document.querySelectorAll(".fx-layer").forEach((x) => x.remove());
     const fx = FX[theme];
     if (!fx) return;
@@ -926,7 +940,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, applyLook, isNewLook, serverNow: () => Date.now() + clockOffset,tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, applyLook, isNewLook, restoreLook, serverNow: () => Date.now() + clockOffset,tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.
