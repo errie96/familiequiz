@@ -651,7 +651,9 @@ const BUILD = {
     if (v.status === "open" && !v.answered) opts.className = "ds-stagger"; // antwoorden één voor één erbij
     let selected = v.answered ? v.given : null;
     const buttons = v.options.map((opt, i) => {
-      const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
+      // letter en tekst los (zelfde tekst "A: Sydney"); zo kan het nieuwe uiterlijk de letter in een vakje zetten
+      const b = el("button", "btn-option mc-opt");
+      b.append(el("b", "opt-l", QuizFX.letter(i)), el("span", "opt-sep", ": "), el("span", "opt-t", opt));
       b.style.setProperty("--i", i);
       b.disabled = !canAnswer;
       b.onclick = () => { selected = i; paint(); };
@@ -669,7 +671,11 @@ const BUILD = {
     send.style.marginTop = "16px";
     const err = el("p", "bad hidden"); err.style.textAlign = "center";
     function paint() {
-      buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; });
+      buttons.forEach((b, i) => {
+        b.style.background = i === selected ? "#2563eb" : "";
+        b.classList.toggle("is-sel", i === selected);
+        b.classList.toggle("is-other", selected !== null && i !== selected); // nieuw uiterlijk: de rest vervaagt
+      });
       send.classList.toggle("hidden", !canAnswer || selected === null);
     }
     paint();
@@ -1138,14 +1144,16 @@ const BUILD = {
     let selected = v.answered ? v.given : null;
     const opts = el("div");
     const buttons = v.options.map((opt, i) => {
-      const b = el("button", "btn-option", `${QuizFX.letter(i)}: ${opt}`);
+      // letter en tekst los (zelfde tekst "A: Sydney"); zo kan het nieuwe uiterlijk de letter in een vakje zetten
+      const b = el("button", "btn-option mc-opt");
+      b.append(el("b", "opt-l", QuizFX.letter(i)), el("span", "opt-sep", ": "), el("span", "opt-t", opt));
       b.disabled = !canAnswer;
       b.onclick = () => { selected = i; paint(); };
       opts.append(b);
       return b;
     });
     const send = submitBtn("Antwoord indienen 📤", () => { if (selected !== null) act("submit_answer", { stepId: v.id, value: selected }, () => {}); });
-    function paint() { buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; }); send.classList.toggle("hidden", !canAnswer || selected === null); }
+    function paint() { buttons.forEach((b, i) => { b.style.background = i === selected ? "#2563eb" : ""; b.classList.toggle("is-sel", i === selected); b.classList.toggle("is-other", selected !== null && i !== selected); }); send.classList.toggle("hidden", !canAnswer || selected === null); }
     paint();
     box.append(opts, send);
     if (v.answered) box.append(el("p", "note good", "✅ Ingediend! Wachten tot iedereen klaar is…"));
@@ -1296,6 +1304,7 @@ socket.on("state_update", (state) => {
   me = state.me;
   lastState = state;
   QuizFX.applyTheme(state.theme);
+  QuizFX.applyLook(state.look);
   QuizFX.setTexts(state.texts);
   QuizFX.setBrand(state.brand);
   document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = QuizFX.t(e.dataset.t); });

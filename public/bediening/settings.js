@@ -83,8 +83,11 @@ function renderHistory(entries) {
   });
 }
 const THEME_NAMES = { standaard: "Standaard", winter: "❄️ Winter", kerst: "🎄 Kerst", oudennieuw: "🥂 Oud & nieuw", zomer: "☀️ Zomer", halloween: "🎃 Halloween", tvshow: "📺 Tv-show", feest: "🎈 Feest", sinterklaas: "🎁 Sinterklaas", disco: "🪩 Disco" };
+document.querySelectorAll("#look-list button[data-look]").forEach((b) => { b.onclick = () => socket.emit("set_look", { look: b.dataset.look }); });
 function renderThemes(st) {
-  $("theme-badge").textContent = THEME_NAMES[st.theme] || st.theme;
+  const look = (st.settings && st.settings.look) || "klassiek";
+  $("theme-badge").textContent = `${THEME_NAMES[st.theme] || st.theme} · ${look === "nieuw" ? "nieuw uiterlijk" : "klassiek"}`;
+  document.querySelectorAll("#look-list button[data-look]").forEach((b) => { b.style.outline = b.dataset.look === look ? "2px solid #fbbf24" : ""; });
   const box = $("theme-list");
   if (box.childElementCount !== st.themes.length) {
     box.replaceChildren();

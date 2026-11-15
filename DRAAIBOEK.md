@@ -294,7 +294,7 @@ Test de eerste drie regels één keer vooraf: trek tijdens een oefenquiz de stek
 
 **Teamkleuren.** Elk team kiest bij het aanmelden zelf een kleur (al gekozen kleuren zijn niet meer beschikbaar). Het telefoonscherm van het team kleurt daarna subtiel mee. Die kleur komt overal terug: rond de teamfoto, in de bolletjes "wie heeft geantwoord" (die oplichten zodra een team indient), in de balken na elke ronde, in de ranglijst en bovenin op de telefoons.
 
-**Thema.** In de bediening (blokje Thema) kies je Standaard, Winter, Kerst, Oud & nieuw, Zomer of Halloween. Het thema verandert de kleuren en decoratie op de tv en alle telefoons, met bijvoorbeeld vallende sneeuw bij Winter en Kerst. Dat kan altijd, ook tijdens de quiz.
+**Thema en uiterlijk.** In de bediening (blokje 🎨 Thema en uiterlijk) kies je eerst het **uiterlijk**: *Klassiek* (zoals altijd) of *Nieuw* (strakke game-show-stijl: rustige kaarten met dunne randen, letters in een vakje, initialen in de teamrondjes, voortgangsstreepjes en een grote timerring, minder drukke effecten). Daaronder het **thema**: Standaard, Winter, Kerst, Oud & nieuw, Zomer, Halloween, Tv-show, Feest, Sinterklaas of Disco. Het thema bepaalt de kleuren en decoratie, ook in het nieuwe uiterlijk. Beide kun je altijd wisselen, ook tijdens de quiz; de rondes en knoppen blijven precies hetzelfde.
 
 **Rondevolgorde.** In het blokje Rondes zet je vóór de start de rondes in de gewenste volgorde en zet je rondes aan of uit.
 

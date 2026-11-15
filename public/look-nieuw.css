@@ -1,0 +1,131 @@
+/* Uiterlijk "Nieuw": strakke game-show-stijl voor tv en telefoons (kiezen in de bediening: 🎨 Thema en uiterlijk).
+   Alles staat onder body[data-look="nieuw"], dus bij "Klassiek" verandert er niets. Kleuren komen uit het thema
+   (design.css / themes.css), zodat elk thema blijft werken. Alleen opmaak: geen andere knoppen, rondes of regels. */
+
+/* Klassiek ongewijzigd laten: de letter op de telefoonknop was gewone tekst ("A: Sydney") */
+.mc-opt .opt-l { font-weight: inherit; }
+#tv-segs.hidden, body:not([data-look="nieuw"]) #tv-segs { display: none !important; }
+
+body[data-look="nieuw"] {
+  --n-line: rgba(255, 255, 255, 0.09);
+  --n-line-strong: rgba(255, 255, 255, 0.16);
+  --n-surface: color-mix(in srgb, var(--card, #18223a) 70%, #000);
+  --n-surface-2: color-mix(in srgb, var(--card, #18223a) 88%, #fff 2%);
+  --n-r-lg: 18px;
+  --n-r-md: 12px;
+  --n-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ================= TV ================= */
+
+/* Minder drukte: geen hoekdecoratie, geen glans/deinen op het logo, geen gloed op titels, rustiger deeltjes */
+body.tv[data-look="nieuw"]::after { display: none !important; }
+body[data-look="nieuw"] #tv-logo .brand-logo { animation: none; filter: drop-shadow(0 0.4vh 1vh rgba(0, 0, 0, 0.45)); height: clamp(40px, 8.5vh, 120px); }
+body[data-look="nieuw"] #tv-logo::after { display: none; }
+body[data-look="nieuw"] .tv-title { text-shadow: none; letter-spacing: -0.02em; font-weight: 800; }
+body[data-look="nieuw"] .fx-layer { opacity: 0.45; }
+
+/* Bovenbalk: rondenaam als rustige tekst, voortgang als kleine tekst met streepjes eronder */
+body[data-look="nieuw"] #tv-round { background: none !important; box-shadow: none; border: 0; padding: 0 0.2em; font-weight: 700; color: var(--fg); opacity: 0.9; }
+body[data-look="nieuw"] .tt-mid { display: flex; flex-direction: column; align-items: center; gap: 0.7vh; }
+body[data-look="nieuw"] #tv-prog { background: none !important; border: 0; box-shadow: none; padding: 0; font-weight: 600; color: var(--muted); font-size: calc(clamp(12px, 1.25vw, 24px) * var(--fit, 1)) !important; font-variant-numeric: tabular-nums; }
+body[data-look="nieuw"] #tv-segs { display: flex; gap: 0.35vw; }
+body[data-look="nieuw"] #tv-segs i { display: block; width: 1.1vw; height: 0.55vh; min-height: 3px; border-radius: 99px; background: rgba(255, 255, 255, 0.13); transition: background-color 0.3s var(--n-ease), width 0.3s var(--n-ease); }
+body[data-look="nieuw"] #tv-segs i.done { background: color-mix(in srgb, var(--primary) 55%, transparent); }
+body[data-look="nieuw"] #tv-segs { gap: 0.25vw; max-width: 22vw; }
+body[data-look="nieuw"] #tv-segs i.on { background: var(--primary); width: 1.8vw; }
+body[data-look="nieuw"] #tv-segs i.bar { width: 14vw; background: rgba(255, 255, 255, 0.13); position: relative; overflow: hidden; }
+body[data-look="nieuw"] #tv-segs i.bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); background: var(--primary); border-radius: inherit; }
+
+/* Timer: grotere ring rechtsboven, met zachte gloed; het getal in het midden */
+body[data-look="nieuw"] #tv-timer { position: relative; width: clamp(56px, 9vh, 120px); height: clamp(56px, 9vh, 120px); padding: 0; gap: 0; justify-content: center;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tr) 10%, transparent) 0 60%, transparent 61%) !important; border: 0; box-shadow: none; border-radius: 50%; filter: drop-shadow(0 0 1.2vh color-mix(in srgb, var(--tr) 45%, transparent)); }
+body[data-look="nieuw"] #tv-timer .tring { position: absolute; inset: 0; width: 100%; height: 100%; }
+body[data-look="nieuw"] #tv-timer .tring circle { stroke-width: 2.6; }
+body[data-look="nieuw"] #tv-timer .tr-num { position: relative; min-width: 0; text-align: center; font-size: clamp(20px, 3.4vh, 46px); font-weight: 800; }
+body[data-look="nieuw"] #tv-timer .tr-s { display: none; }
+body[data-look="nieuw"] #tv-timer.low { animation: none; background: radial-gradient(circle, color-mix(in srgb, var(--tr) 22%, transparent) 0 60%, transparent 61%) !important; }
+body[data-look="nieuw"] #tv-timerbar { height: 0.6vh !important; background: rgba(255, 255, 255, 0.06); }
+body[data-look="nieuw"] #tv-timerbar.low #tv-timerfill { animation: none; }
+
+/* Categorie als klein gouden kopje in plaats van een gekleurde pil */
+body[data-look="nieuw"] .cat { background: none !important; padding: 0; border-radius: 0; color: var(--primary); font-size: clamp(11px, 1.15vw, 22px); font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: 1.4vh; }
+body[data-look="nieuw"] .tv-q { font-weight: 800; letter-spacing: -0.02em; line-height: 1.12; margin: 0.4vh auto 3vh; max-width: 82vw; }
+
+/* Antwoordkaarten: rustig vlak, 1px rand, letter in een afgerond vierkantje */
+body.tv[data-look="nieuw"] .qo { background: linear-gradient(180deg, var(--n-surface-2), var(--n-surface)) !important; border: 1px solid var(--n-line) !important; border-radius: clamp(10px, 1.1vw, 22px);
+  box-shadow: 0 1.4vh 3vh -2vh rgba(0, 0, 0, 0.7); backdrop-filter: none; -webkit-backdrop-filter: none; transition: opacity 0.25s var(--n-ease), filter 0.25s var(--n-ease), box-shadow 0.25s var(--n-ease), border-color 0.25s var(--n-ease); }
+body.tv[data-look="nieuw"] .qo .letter { display: inline-grid; place-items: center; width: 1.55em; height: 1.55em; margin-right: 0.6em; vertical-align: middle; border-radius: 0.38em; font-size: 0.85em;
+  color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent); }
+body.tv[data-look="nieuw"] .qgrid { gap: clamp(10px, 1.3vw, 26px); }
+/* Onthulling: goed antwoord rustig groen, de rest vervaagt (zonder schittering of uitvergroting) */
+body.tv[data-look="nieuw"] .qo.correct { transform: none !important; animation: none !important; background-image: none;
+  background: color-mix(in srgb, var(--success) 15%, var(--n-surface)) !important; border-color: color-mix(in srgb, var(--success) 75%, transparent) !important;
+  box-shadow: 0 0 0 1px var(--success), 0 0 4vw -1vw var(--success) !important; }
+body.tv[data-look="nieuw"] .qo.correct .letter { background: var(--success); color: #06281a; border-color: var(--success); }
+body.tv[data-look="nieuw"] .qo.dim { opacity: 0.38 !important; filter: saturate(0.4) !important; animation: none; }
+body.tv[data-look="nieuw"] .qgrid.has-picks .qo.dim { background: linear-gradient(180deg, var(--n-surface-2), var(--n-surface)) !important; color: inherit; }
+
+/* Teampillen: slank, 1px rand, vinkje in groen als het team heeft gekozen (geen dikke gekleurde rand) */
+body[data-look="nieuw"] .tchip { background: rgba(255, 255, 255, 0.03) !important; border: 1px solid var(--n-line) !important; color: #d5dbe7; font-weight: 600; box-shadow: none; }
+body[data-look="nieuw"] .tchip.done { border-color: color-mix(in srgb, var(--success) 45%, transparent) !important; background: color-mix(in srgb, var(--success) 8%, transparent) !important; color: var(--fg); }
+body[data-look="nieuw"] .tchip.pop { animation: n-pop 0.25s var(--n-ease); }
+@keyframes n-pop { from { transform: scale(0.96); } to { transform: scale(1); } }
+body[data-look="nieuw"] .chips-row { gap: clamp(6px, 0.8vw, 16px); }
+
+/* Kaarten in het algemeen (glas → rustig vlak met 1px rand) */
+body[data-look="nieuw"] .card, body[data-look="nieuw"] .qbox { border: 1px solid var(--n-line) !important; border-radius: var(--n-r-lg); }
+body.tv[data-look="nieuw"] .pill { border: 1px solid var(--n-line); box-shadow: none; }
+body.tv[data-look="nieuw"] .pill.points { border-color: color-mix(in srgb, var(--primary) 45%, transparent); }
+body[data-look="nieuw"] .preshow-inline { border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent); background: color-mix(in srgb, var(--primary) 6%, transparent); }
+
+/* Tussenstand (posities): rijen met 1px rand; top 3 in goud, zilver en brons */
+body[data-look="nieuw"] #positions-overlay { background: var(--stage), var(--bg); }
+body[data-look="nieuw"] .pos-row { background: linear-gradient(180deg, var(--n-surface-2), var(--n-surface)) !important; border: 1px solid var(--n-line) !important; border-radius: clamp(10px, 1.1vw, 22px); animation-duration: 0.3s; }
+body[data-look="nieuw"] .pos-row .pos-rank { color: var(--muted); }
+body[data-look="nieuw"] .pos-row.top1 { border-color: color-mix(in srgb, var(--primary) 60%, transparent) !important; box-shadow: 0 0 4vw -1.4vw var(--primary); }
+body[data-look="nieuw"] .pos-row.top1 .pos-rank { color: var(--primary); }
+body[data-look="nieuw"] .pos-row.top2 .pos-rank { color: var(--silver); }
+body[data-look="nieuw"] .pos-row.top3 .pos-rank { color: var(--bronze); }
+body[data-look="nieuw"] #standings-list li { border: 1px solid var(--n-line); }
+
+/* Muziekronde: rustige rijen met 1px rand; teamkleur als dun streepje */
+body[data-look="nieuw"] .hrow { background: rgba(255, 255, 255, 0.025); border: 1px solid var(--n-line); border-left: 0.3vw solid var(--tc, #64748b); border-radius: clamp(10px, 1.1vw, 22px); }
+body[data-look="nieuw"] .hteam .hcount { color: var(--muted); }
+body[data-look="nieuw"] .hback { border-color: var(--primary); }
+
+/* Rondebegin (doek) en overlays: themakleuren, rustiger schaduw */
+body[data-look="nieuw"] #round-curtain .rc-no { color: var(--primary); letter-spacing: 0.3em; text-transform: uppercase; font-size: clamp(16px, 2vw, 44px); }
+body[data-look="nieuw"] #round-curtain .rc-title { text-shadow: none; letter-spacing: -0.03em; font-weight: 800; }
+
+/* Pauze */
+body[data-look="nieuw"] #v-pause #pause-head .tv-title { color: var(--fg) !important; }
+
+/* Schermovergang iets sneller en zonder schaal */
+body[data-look="nieuw"] .view:not(.hidden) { animation-duration: 0.35s !important; }
+
+/* ================= TELEFOON ================= */
+body[data-look="nieuw"]:not(.tv) .card { border-radius: var(--n-r-lg); background: linear-gradient(180deg, var(--n-surface-2), var(--n-surface)) !important; }
+body[data-look="nieuw"]:not(.tv) #view .badge, body[data-look="nieuw"]:not(.tv) .card > .badge { background: none !important; padding: 0; color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
+body[data-look="nieuw"]:not(.tv) label { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+body[data-look="nieuw"]:not(.tv) input[type="text"], body[data-look="nieuw"]:not(.tv) input[type="number"], body[data-look="nieuw"]:not(.tv) input:not([type]), body[data-look="nieuw"]:not(.tv) select, body[data-look="nieuw"]:not(.tv) textarea {
+  border-radius: var(--n-r-md); border: 1px solid var(--n-line-strong); background: rgba(0, 0, 0, 0.25); transition: border-color 0.2s, box-shadow 0.2s; }
+body[data-look="nieuw"]:not(.tv) input:focus, body[data-look="nieuw"]:not(.tv) select:focus, body[data-look="nieuw"]:not(.tv) textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent); }
+body[data-look="nieuw"]:not(.tv) .btn-option { border-radius: 14px; border: 1px solid var(--n-line-strong); background: linear-gradient(180deg, var(--n-surface-2), var(--n-surface)); transition: transform 0.15s var(--n-ease), border-color 0.2s, box-shadow 0.2s, opacity 0.25s; }
+body[data-look="nieuw"]:not(.tv) .btn-option:not(:disabled):active { transform: scale(0.97); }
+body[data-look="nieuw"]:not(.tv) .btn-option:disabled { opacity: 0.5; }
+body[data-look="nieuw"]:not(.tv) .btn-primary { border-radius: 14px; }
+body[data-look="nieuw"]:not(.tv) .btn-primary:disabled { opacity: 0.35; box-shadow: none; }
+/* Antwoordknoppen: letter in een vakje, gekozen antwoord met gouden rand en vinkje, de rest vervaagt */
+body[data-look="nieuw"]:not(.tv) .mc-opt { display: flex; align-items: center; gap: 12px; }
+body[data-look="nieuw"]:not(.tv) .mc-opt .opt-sep { display: none; }
+body[data-look="nieuw"]:not(.tv) .mc-opt .opt-l { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 13px; font-weight: 800;
+  color: var(--primary); border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+body[data-look="nieuw"]:not(.tv) .mc-opt.is-sel { background: linear-gradient(180deg, var(--n-surface-2), var(--n-surface)) !important; border-color: var(--primary) !important; box-shadow: 0 0 0 1px var(--primary), 0 10px 30px -14px var(--primary); opacity: 1 !important; }
+body[data-look="nieuw"]:not(.tv) .mc-opt.is-sel .opt-l { background: var(--primary); color: var(--primary-fg, #1a1405); }
+body[data-look="nieuw"]:not(.tv) .mc-opt.is-sel::after { content: "✓"; margin-left: auto; color: var(--primary); font-weight: 800; }
+body[data-look="nieuw"]:not(.tv) .mc-opt.is-other { opacity: 0.4; }
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-look="nieuw"] * { transition: none !important; }
+}

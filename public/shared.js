@@ -504,6 +504,12 @@ window.QuizFX = (function () {
     sinterklaas: { mode: "fall", dots: true, chars: ["🍪"], n: 28 },
     disco: { mode: "twinkle", dots: true, beams: ["#ff4fd8", "#22d3ee", "#a855f7"], n: 30 }
   };
+  // Uiterlijk: body[data-look] = "klassiek" of "nieuw" (public/look-nieuw.css doet alleen iets bij "nieuw")
+  function applyLook(look) {
+    const l = look === "nieuw" ? "nieuw" : "klassiek";
+    if (document.body.dataset.look !== l) document.body.dataset.look = l;
+  }
+  const isNewLook = () => document.body && document.body.dataset.look === "nieuw";
   let currentTheme = null;
   function applyTheme(theme) {
     theme = theme || "standaard";
@@ -841,13 +847,23 @@ window.QuizFX = (function () {
     c.fillStyle = rgba("#ffffff", 0.5); fit(`${card.date || ""} · ${brandName()}`, `500 30px ${FAM}`, W - 200); c.fillText(`${card.date || ""} · ${brandName()}`, W / 2, H - 72);
     return new Promise((res) => cv.toBlob(res, "image/png"));
   }
-  // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is)
+  // Rond teamfotootje (of de eerste letter van de teamnaam als er geen foto is).
+  // Nieuw uiterlijk: twee initialen ("De Sneeuwpoppen" → DS) in donkere letters op de teamkleur.
+  function initials(name) {
+    const all = String(name || "?").trim().split(/\s+/).filter(Boolean);
+    const words = all.filter((w) => /\p{L}|\p{N}/u.test(w)).length ? all.filter((w) => /\p{L}|\p{N}/u.test(w)) : all; // emoji-woorden overslaan ("🤖 Robot Appel" → RA)
+    const first = (w) => (Array.from(w)[0] || "").toUpperCase();
+    if (words.length >= 2) return first(words[0]) + first(words[1]);
+    const ch = Array.from(words[0] || "?");
+    return (ch[0] || "?").toUpperCase() + (ch[1] && /\p{L}/u.test(ch[1]) ? ch[1].toLowerCase() : "");
+  }
   function avatar(name, photo, size, color) {
     const a = document.createElement(photo ? "img" : "span");
     a.className = "team-avatar";
-    a.style.cssText = `width:${size};height:${size};border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:${color || "#475569"};color:#fff;font-weight:bold;font-size:calc(${size} * 0.45);vertical-align:middle;box-sizing:border-box;${color ? `border:max(2px, calc(${size} * 0.06)) solid ${color};` : ""}`;
+    const nw = isNewLook() && !photo;
+    a.style.cssText = `width:${size};height:${size};border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:${color || "#475569"};color:${nw ? "#0b1222" : "#fff"};font-weight:bold;font-size:calc(${size} * ${nw ? 0.36 : 0.45});vertical-align:middle;box-sizing:border-box;${color && !nw ? `border:max(2px, calc(${size} * 0.06)) solid ${color};` : ""}${nw ? "letter-spacing:0.02em;box-shadow:0 0 0 max(1.5px, calc(" + size + " * 0.05)) rgba(255,255,255,0.14);" : ""}`;
     if (photo) { a.src = photo; a.alt = ""; }
-    else a.textContent = (Array.from(String(name || "?").trim())[0] || "?").toUpperCase(); // Array.from: ook emoji als eerste teken
+    else a.textContent = nw ? initials(name) : (Array.from(String(name || "?").trim())[0] || "?").toUpperCase(); // Array.from: ook emoji als eerste teken
     return a;
   }
   // ---------- Uitslag als plaatje (om te delen in de familie-app) ----------
@@ -910,7 +926,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, serverNow: () => Date.now() + clockOffset,tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, applyLook, isNewLook, serverNow: () => Date.now() + clockOffset,tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

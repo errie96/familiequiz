@@ -225,6 +225,21 @@ function countFrom(node, from, to, suffix = "", ms = 1000, delay = 0) {
     requestAnimationFrame(step);
   }, delay);
 }
+// Nieuw uiterlijk: voortgang als streepjes (één per vraag) onder "Vraag 6 van 12". Alleen zichtbaar bij het nieuwe
+// uiterlijk (look-nieuw.css); bij meer dan 20 vragen één doorlopend balkje.
+let segsKey = null;
+function renderSegs(prog) {
+  const box = $("tv-segs");
+  if (!box) return;
+  const ok = prog && !prog.label && prog.total > 1;
+  box.classList.toggle("hidden", !ok);
+  if (!ok) { segsKey = null; return; }
+  const key = `${prog.n}/${prog.total}`;
+  if (key === segsKey) return;
+  segsKey = key;
+  if (prog.total > 20) { box.replaceChildren(el("i", "bar")); box.firstChild.style.setProperty("--p", `${Math.round((prog.n / prog.total) * 100)}%`); return; }
+  box.replaceChildren(...Array.from({ length: prog.total }, (_, i) => el("i", i + 1 < prog.n ? "done" : i + 1 === prog.n ? "on" : "")));
+}
 let lastSecs = null;
 let curTimer = null;
 // Klokje rechtsboven alleen als er geen groot getal in beeld staat (30 Seconds, tekenen). Bij 30 Seconds is het een
@@ -1587,6 +1602,7 @@ socket.on("state_update", function tvState(state) {
   chipStep = step ? step.id : state.phase;
   fxTransitions(state);
   QuizFX.applyTheme(state.theme);
+  QuizFX.applyLook(state.look);
   QuizFX.setTexts(state.texts);
   QuizFX.setBrand(state.brand);
   lastTv = state;
@@ -1607,6 +1623,7 @@ socket.on("state_update", function tvState(state) {
   const prog = onPause ? null : state.header.progress;
   $("tv-prog").classList.toggle("hidden", !prog);
   if (prog) $("tv-prog").textContent = prog.label ? prog.label : `Vraag ${prog.n} van ${prog.total}`;
+  renderSegs(prog);
   renderJokerPill(onPause ? [] : state.header.jokers || []);
   fitTop(); // past alles in de bovenste regel? anders kleiner
 

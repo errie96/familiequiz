@@ -463,6 +463,7 @@
     #tv-top .tt-right { justify-self: stretch !important; justify-content: flex-end; }
 </style>
   <link rel="stylesheet" href="design.css"> <!-- na de eigen stijlen: kleuren en glas uit het thema -->
+  <link rel="stylesheet" href="look-nieuw.css"> <!-- uiterlijk "Nieuw" (alleen actief bij body[data-look="nieuw"]) -->
 </head>
 <body class="tv">
   <div id="fx-flash" aria-hidden="true"></div>
@@ -489,7 +490,7 @@
 
   <header id="tv-top">
     <div class="tt-left"><span id="tv-logo" data-brand="klein"></span><span class="pill" id="tv-round">Familiequiz</span></div>
-    <div class="tt-mid"><span class="pill hidden" id="tv-prog" style="background:#3b82f6;"></span></div>
+    <div class="tt-mid"><span class="pill hidden" id="tv-prog" style="background:#3b82f6;"></span><span id="tv-segs" class="hidden" aria-hidden="true"></span></div>
     <div class="tt-right"><span class="pill hidden" id="tv-timer"></span><span class="pill points hidden" id="tv-points"></span></div>
     <span id="audio-banner">🔊 Druk één keer op OK om het geluid te activeren</span>
   </header>

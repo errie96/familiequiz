@@ -2131,7 +2131,7 @@ function archiveFinishedQuiz() {
     gameId: G.gameId,
     completedAt: new Date().toISOString(),
     quiz: G.quizSource,
-    theme: G.settings.theme,
+    theme: G.settings.theme, look: G.settings.look,
     ranking: ranking(),
     breakdown: breakdown()
   });
@@ -2682,7 +2682,7 @@ function broadcastState() {
     },
     standings: G.phase === 'END' ? ranking() : null,
     alerts: Object.values(G.alerts),
-    theme: G.settings.theme, lobbyStage: G.lobbyStage, welcome: G.content.welcome, texts: G.content.texts,
+    theme: G.settings.theme, look: G.settings.look, lobbyStage: G.lobbyStage, welcome: G.content.welcome, texts: G.content.texts,
     showWifi: G.settings.showWifi !== false, joinUrl: getJoinUrl(),
     end: G.phase === 'END' ? { reveal: G.reveal, revealN: G.revealN, duo: G.revealDuo, endView: G.endView, scores: G.reveal !== 'idle' ? ranking() : null, breakdown: G.reveal === 'done' ? breakdown() : null,
       awards: G.reveal === 'done' && G.endView === 'awards' ? awards() : null, stats: G.reveal === 'done' && G.endView === 'stats' ? nightStats() : null, album: null, gameDate: new Date().toISOString() } : null,
@@ -2759,7 +2759,7 @@ function broadcastState() {
     if (!t) {
       // Aangemeld maar nog niet in een team (persoonlijk aanmelden): wachtscherm
       if (!personalMode()) return;
-      sendState(d.socketId, { brand: brandInfo(), pauseTimer: null, phase: G.phase, paused: false, showStandings: false, reviewing: false, theme: G.settings.theme, texts: G.content.texts, standings: null, roundName: brandInfo().name, timer: null, dilemma: null,
+      sendState(d.socketId, { brand: brandInfo(), pauseTimer: null, phase: G.phase, paused: false, showStandings: false, reviewing: false, theme: G.settings.theme, look: G.settings.look, texts: G.content.texts, standings: null, roundName: brandInfo().name, timer: null, dilemma: null,
         view: { type: 'signup_wait', id: 'signup_wait', started: G.phase !== 'LOBBY', count: people().length },
         me: { memberId: d.memberId, teamId: null, label: d.label, family: d.family || '', age: ageOf(d) } });
       return;
@@ -2769,7 +2769,7 @@ function broadcastState() {
       dilemma: dilemmaView(d.deviceId),
       brand: brandInfo(),
       pauseTimer: pauseTimer(),
-      phase: G.phase, paused: G.paused, showStandings: false, reviewing: !!G.review, theme: G.settings.theme, texts: G.content.texts,
+      phase: G.phase, paused: G.paused, showStandings: false, reviewing: !!G.review, theme: G.settings.theme, look: G.settings.look, texts: G.content.texts,
       standings: null,
       roundName: common.header.round,
       timer: null,
