@@ -299,10 +299,8 @@
     .award-grid.rows-1 .aw-emoji { font-size: clamp(60px, 9vw, 180px); } .award-grid.rows-1 .aw-title { font-size: clamp(26px, 3.4vw, 70px); } .award-grid.rows-1 .aw-teams { font-size: clamp(20px, 2.4vw, 50px); } .award-grid.rows-1 .aw-detail { font-size: clamp(16px, 1.8vw, 36px); }
     .award-grid.rows-3 .aw-emoji { font-size: clamp(24px, 2.8vw, 58px); line-height: 1.1; } .award-grid.rows-3 .aw-title { font-size: clamp(16px, 1.8vw, 38px); } .award-grid.rows-3 .aw-teams { font-size: clamp(13px, 1.4vw, 28px); margin: 0.3em 0; } .award-grid.rows-3 .aw-detail { font-size: clamp(11px, 1.05vw, 22px); }
     #pause-timer { margin: 1vh 0 2vh; }
-    /* Pauze zonder foto's/dilemma: de aftelklok groot in beeld, de laatste minuut in de alarmkleur */
-    #v-pause:not(.has-photos):not(.has-dilemma) #pause-timer { flex-direction: column; align-items: center; gap: 0.4vh; padding: 1.6vh 3.5vw; border-radius: 2vh; }
-    #v-pause:not(.has-photos):not(.has-dilemma) #pause-timer .ps-time { font-size: clamp(48px, 9vw, 180px); line-height: 1; color: var(--primary, #fbbf24); text-shadow: 0 0 3vh color-mix(in srgb, var(--primary, #fbbf24) 40%, transparent); font-variant-numeric: tabular-nums; }
-    #pause-timer.ps-done .ps-label { font-size: clamp(22px, 3vw, 56px); }
+    /* Pauzetimer: rustig, één regel ("We gaan verder om … nog 12:34") in de themakleur */
+    #pause-timer .ps-time { color: var(--primary, #fbbf24); font-variant-numeric: tabular-nums; }
     #v-pause.has-photos #pause-timer { margin: 0.6vh 0 1.4vh; }
     /* Tussenpagina: "Nu gaan we door naar…" */
     .trans-pre { font-size: clamp(26px, 4vw, 76px); color: #fbbf24; font-weight: 800; letter-spacing: 0.02em; }

@@ -92,6 +92,18 @@ function renderThemes(st) {
   }
   box.querySelectorAll("button").forEach((bt) => { bt.style.outline = bt.dataset.t === st.theme ? "2px solid #fbbf24" : ""; });
 }
+// Aanmeldadres (QR) en wifi-QR: los van de andere instellingen, want ook tijdens de quiz te wijzigen
+function renderAccess(st) {
+  const s = st.settings || {};
+  $("access-badge").textContent = (s.publicUrl ? "eigen adres" : "wifi-adres") + (s.showWifi === false ? " · wifi-QR uit" : "");
+  $("access-now").textContent = st.joinUrl ? `QR-code gaat nu naar: ${st.joinUrl}` : "";
+  const ae = document.activeElement && document.activeElement.id;
+  if (ae !== "s-publicurl") $("s-publicurl").value = s.publicUrl || "";
+  if (ae !== "s-wifi") $("s-wifi").checked = s.showWifi !== false;
+}
+$("access-save").onclick = () => socket.emit("set_access", { publicUrl: $("s-publicurl").value.trim(), showWifi: $("s-wifi").checked }, (res) => {
+  if (res && res.ok === false && res.message) alert(res.message);
+});
 // Concept van de rondevolgorde: pas na "opslaan" naar de server (alleen vóór de start)
 let planDraft = [], planKey = "", planLocked = false;
 function renderPlan(st) {

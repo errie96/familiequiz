@@ -43,20 +43,39 @@ function showOffline(on) {
 }
 socket.on("connect", () => { socket.emit("register_tv"); showOffline(false); QuizFX.syncClock(socket); if (audioUnlocked) socket.emit("tv_audio", { ok: true }); });
 // ---------- Opening (quizmaster drukt op Start, of "Opening testen" in de bediening) ----------
-let lastTv = null, openingTimer = null;
-socket.on("opening", (info) => {
+let lastTv = null, openingTimer = null, pauseEndShown = false;
+// Logo groot in beeld (met jingle als sound). keep = blijft staan tot hideOpening() (einde van de pauzetimer)
+function showOpening({ title, sound = true, keep = false, confetti = true } = {}) {
   const o = $("opening");
-  if (info && info.hold) holdScreen(info.ms || 6000); // bij de start: het eerste scherm komt pas na de opening
-  $("op-title").textContent = QuizFX.t("opening.tekst").replace(/^opening\.tekst$/, "De quiz gaat beginnen!");
-  const sub = (lastTv && lastTv.brand && lastTv.brand.subtitle) || "";
-  $("op-sub").textContent = sub;
+  $("op-title").textContent = title;
+  $("op-sub").textContent = (lastTv && lastTv.brand && lastTv.brand.subtitle) || "";
   QuizFX.renderBrand(o);
   o.classList.remove("show"); void o.offsetWidth; o.classList.add("show");
-  if (!lastTv || (lastTv.soundOut || "tv") === "tv") QuizFX.playOpening(lastTv && lastTv.ambience ? lastTv.ambience.opening : null);
-  setTimeout(() => { try { QuizFX.launchConfetti(); } catch (e) { /* geen confetti */ } }, 1700);
+  if (sound && (!lastTv || (lastTv.soundOut || "tv") === "tv")) QuizFX.playOpening(lastTv && lastTv.ambience ? lastTv.ambience.opening : null);
+  if (confetti) setTimeout(() => { try { QuizFX.launchConfetti(); } catch (e) { /* geen confetti */ } }, 1700);
   clearTimeout(openingTimer);
-  openingTimer = setTimeout(() => o.classList.remove("show"), 6000);
+  if (!keep) openingTimer = setTimeout(() => o.classList.remove("show"), 6000);
+}
+function hideOpening() { clearTimeout(openingTimer); $("opening").classList.remove("show"); }
+socket.on("opening", (info) => {
+  if (info && info.hold) holdScreen(info.ms || 6000); // bij de start: het eerste scherm komt pas na de opening
+  pauseEndShown = false;
+  showOpening({ title: QuizFX.t("opening.tekst").replace(/^opening\.tekst$/, "De quiz gaat beginnen!") });
 });
+// Pauzetimer afgelopen: opening (logo + jingle) en het logo blijft in beeld tot de quizmaster op Hervat drukt.
+// fresh = de timer liep hier echt af (jingle); anders (tv net herladen) alleen het logo, zonder geluid.
+const pauseEndTitle = () => QuizFX.t("pauze.einde").replace(/^pauze\.einde$/, "We gaan weer verder!");
+function showPauseEnd(fresh) {
+  if (pauseEndShown) return;
+  pauseEndShown = true;
+  showOpening({ title: pauseEndTitle(), sound: fresh, keep: true, confetti: fresh });
+}
+function syncPauseEnd(state) {
+  const p = state.phase === "PLAY" && state.paused && state.pauseTimer;
+  const over = p && state.pauseTimer.until <= QuizFX.serverNow();
+  if (over) showPauseEnd(false);
+  else if (pauseEndShown) { pauseEndShown = false; hideOpening(); } // hervat of de timer is verlengd
+}
 socket.on("disconnect", () => showOffline(true));
 fetch("/api/brand").then((r) => r.json()).then((b) => QuizFX.setBrand(b)).catch(() => {}); // logo al vóór de eerste stand
 QuizFX.wantAwake(); // tv mag niet in slaap vallen
@@ -1625,8 +1644,9 @@ socket.on("state_update", function tvState(state) {
 
 
   // Overlays hebben voorrang op de gewone schermen
-  // Pauzetimer: als hij afloopt een belletje (alleen als de quizgeluiden via de tv gaan)
-  QuizFX.setPauseTimer(state.pauseTimer, () => { if ((lastTv && lastTv.soundOut || "tv") === "tv") QuizFX.chime(); });
+  // Pauzetimer: loopt hij hier af, dan de opening (logo + jingle); het logo blijft staan tot er op Hervat gedrukt wordt
+  QuizFX.setPauseTimer(state.pauseTimer, () => showPauseEnd(true));
+  syncPauseEnd(state);
   if (state.phase === "PLAY" && state.paused) { showView("v-pause"); renderDilemma(state.dilemma); startPauseShow(state.teamStyle || {}, state.pausePhotos || []); return; }
   stopPauseShow();
   if (state.review && state.review.data) {
@@ -1727,11 +1747,25 @@ socket.on("state_update", function tvState(state) {
 });
 
 // ---------- Wifi-QR op het welkomstscherm (plaatje zelf neerzetten: public/media/wifi-qr.png of .jpg) ----------
+// Alleen tonen als het plaatje er is én de wifi aan staat in de bediening (uit bij bijv. een Tailscale Funnel)
+let wifiImgOk = false, wifiWanted = true;
+function syncWifi() {
+  const on = wifiImgOk && wifiWanted;
+  $("welcome-wifi").classList.toggle("hidden", !on);
+  $("welcome-row").classList.toggle("has-wifi", on);
+  scheduleFit();
+}
+socket.on("state_update", (s) => {
+  if (!s) return;
+  const want = s.showWifi !== false;
+  if (want !== wifiWanted) { wifiWanted = want; syncWifi(); }
+  if (s.joinUrl && s.joinUrl !== joinUrl) loadJoinQr(); // ander aanmeldadres ingesteld: QR-code meteen vernieuwen
+});
 (() => {
   const img = $("welcome-wifi-img");
   const tries = ["/media/wifi-qr.png", "/media/wifi-qr.jpg", "/media/wifi-qr.jpeg"];
   let i = 0;
-  img.onload = () => { $("welcome-wifi").classList.remove("hidden"); $("welcome-row").classList.add("has-wifi"); scheduleFit(); };
+  img.onload = () => { wifiImgOk = true; syncWifi(); };
   img.onerror = () => { i++; if (i < tries.length) img.src = tries[i] + "?v=" + Date.now(); };
   img.src = tries[0] + "?v=" + Date.now();
 })();

@@ -910,7 +910,7 @@ window.QuizFX = (function () {
     return "downloaded";
   }
 
-  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
+  return { setPauseTimer, setBackgroundMusic, retryMusic, playOpening, setBrand, brandName, brandLogo, renderBrand, syncClock, serverNow: () => Date.now() + clockOffset,tickPreshow, setSoundFiles, trophyCard, drumroll, sadTrombone, cheer, pop, chime, shutter, aww, reveal, heartbeat, applause, burst, buzzer, triumph, ding, whoosh, resultImage, shareImage, wantAwake, releaseAwake, compressPhoto, uploadOriginal, setSoundRoute, avatar, setTexts, t, unlockAudio, drumHit, fanfare, alarm, tick, launchConfetti, sparkBurst, countdown, letter, renderMedia, placeholder, renderBlur, blurPx, renderLogo, paintStrokes, renderTable, euro, runReveal, rankRow, showWinners, applyTheme };
 })();
 
 // Spotify: inloggen (PKCE) en afspelen in deze browser met de Web Playback SDK, zoals in de Hitster-app.

@@ -187,6 +187,14 @@
       <div id="theme-list" class="row" style="flex-wrap:wrap;"></div>
     </details>
 
+    <details id="access-panel">
+      <summary>📶 Aanmelden en wifi <span id="access-badge" class="muted"></span></summary>
+      <div class="muted" style="font-size:13px; margin:4px 0 8px;">Ook tijdens de quiz te wijzigen. Draait de quiz via een eigen adres (bijv. Tailscale Funnel), vul dat hier in: de QR-code op de tv gaat dan daarheen. Leeg = het wifi-adres van deze laptop.</div>
+      <div class="setting"><label for="s-publicurl">Adres in de aanmeld-QR</label><input type="url" id="s-publicurl" placeholder="https://quiz.jouwnaam.ts.net" style="min-width:260px;"></div>
+      <div class="setting"><label for="s-wifi">Wifi-QR op het welkomstscherm tonen</label><input type="checkbox" id="s-wifi"></div>
+      <div class="row" style="align-items:center; gap:8px;"><button id="access-save" class="btn-primary" style="margin:0;">Opslaan</button><span id="access-now" class="muted" style="font-size:13px;"></span></div>
+    </details>
+
     <details id="plan-panel">
       <summary>🗂️ Rondes: volgorde en extra rondes</summary>
       <p id="plan-note" class="muted" style="margin:4px 0 8px;"></p>

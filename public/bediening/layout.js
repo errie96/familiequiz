@@ -17,7 +17,7 @@
   const menu = document.createElement("aside");
   menu.id = "menu";
   menu.innerHTML = '<div id="menu-head"><button id="menu-back" class="btn-option" style="width:auto; margin:0;">⬅️ Alles</button><h2 id="menu-title" style="margin:0; flex:1; font-size:20px;">⚙️ Instellingen en beheer</h2><button id="menu-close" class="btn-option" style="width:auto; margin:0;">✕ Sluiten</button></div><div id="menu-index"></div>';
-  const MENU_IDS = ["teams-panel", "plan-panel", "live-panel", "settings-panel", "spotify-panel", "playlists-panel", "quiz-panel", "theme-panel", "scores-panel", "history-panel", "backup-panel", "emergency-panel", "btn-reset"];
+  const MENU_IDS = ["teams-panel", "plan-panel", "live-panel", "settings-panel", "spotify-panel", "playlists-panel", "quiz-panel", "theme-panel", "access-panel", "scores-panel", "history-panel", "backup-panel", "emergency-panel", "btn-reset"];
   const nodes = [...card.children];
   card.append(main, menu);
   nodes.forEach((n) => { if (n === header) return; if (MENU_IDS.includes(n.id)) return; main.append(n); });

@@ -69,7 +69,8 @@ socket.on("state_update", (state) => {
     $("btn-signup-panel").textContent = state.phase !== "LOBBY" ? `⚠️ ${su.unassigned} laatkomer(s) zonder team: deel in` : `👥 Aanmeldingen en teams · ${su.total}${su.expected != null ? " van " + su.expected : ""} aangemeld${su.teamsMade ? (su.unassigned ? ` · ${su.unassigned} zonder team` : " · teams gemaakt") : ""}`;
     $("btn-signup-panel").style.background = su.unassigned && su.teamsMade ? "#b45309" : "#1d4ed8";
   }
-  QuizFX.setPauseTimer(state.pauseTimer, () => { if (soundOut === "bediening" && soundHere()) QuizFX.chime(); });
+  // Pauzetimer afgelopen: de jingle van de opening (zoals op de tv), als de quizgeluiden via de bediening gaan
+  QuizFX.setPauseTimer(state.pauseTimer, () => { if (soundOut === "bediening" && soundHere()) QuizFX.playOpening(state.ambience ? state.ambience.opening : null); });
   $("btn-positions").classList.toggle("hidden", state.phase !== "PLAY");
   $("btn-positions").textContent = state.showPositions === "list" ? "↩ Posities van tv" : "🏅 Posities op tv";
   $("btn-positions").style.background = state.showPositions === "list" ? "#0ea5e9" : "";
@@ -117,6 +118,7 @@ socket.on("state_update", (state) => {
   $("btn-welcome").classList.toggle("hidden", !(state.phase === "LOBBY" && state.lobbyStage === "join"));
   renderScores(state);
   renderThemes(state);
+  renderAccess(state);
   renderPlan(state);
   spOnState(state);
   $("quiz-badge").textContent = state.quiz.kind === "excel" ? "● uit Excel" : "○ questions.json";

@@ -98,7 +98,7 @@ app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'ignore', ind
 const network = require('./lib/network');
 const pickLanAddress = network.pickLanAddress;
 const getLanAddress = network.getLanAddress;
-const getJoinUrl = () => network.getJoinUrl(PORT);
+const getJoinUrl = () => network.getJoinUrl(PORT, G.settings && G.settings.publicUrl);
 app.get('/api/join-url', (req, res) => res.json({ url: getJoinUrl() }));
 // QR-code van het aanmeldadres: door de server zelf gemaakt, dus ook zonder internet
 app.get('/qr.svg', (req, res) => {
@@ -2683,6 +2683,7 @@ function broadcastState() {
     standings: G.phase === 'END' ? ranking() : null,
     alerts: Object.values(G.alerts),
     theme: G.settings.theme, lobbyStage: G.lobbyStage, welcome: G.content.welcome, texts: G.content.texts,
+    showWifi: G.settings.showWifi !== false, joinUrl: getJoinUrl(),
     end: G.phase === 'END' ? { reveal: G.reveal, revealN: G.revealN, duo: G.revealDuo, endView: G.endView, scores: G.reveal !== 'idle' ? ranking() : null, breakdown: G.reveal === 'done' ? breakdown() : null,
       awards: G.reveal === 'done' && G.endView === 'awards' ? awards() : null, stats: G.reveal === 'done' && G.endView === 'stats' ? nightStats() : null, album: null, gameDate: new Date().toISOString() } : null,
     hallOfFame: G.phase === 'LOBBY' ? hallOfFame() : null,
@@ -2747,7 +2748,7 @@ function broadcastState() {
     showPositions: G.showPositions,
     libraryUpdate: G.libraryUpdate,
     quiz: { ...G.quizSource, steps: G.steps.length, rounds: G.rounds.length, library: G.librarySource, librarySongs: (G.baseRaw.hitsterLibrary || []).length },
-    plan: planView(), extraOptions: extraOptions(), themes: THEMES,
+    plan: planView(), extraOptions: extraOptions(), themes: THEMES, joinUrl: getJoinUrl(),
     hostScores: G.phase !== 'LOBBY' ? breakdown() : null, // alleen voor de quizmasters
     history: G.historyEntries // alleen in de beveiligde bediening; nooit naar tv of spelers
   }));
